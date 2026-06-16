@@ -1,0 +1,205 @@
+# =============================================================================
+# Hydrolyze — top-level monorepo .gitignore
+# Stricter superset of the per-subproject .gitignore files.
+# Subprojects: hydrolyze-mobile (RN/Expo), ios-native (Swift/Xcode),
+#              pairing-engine, pairing-engine-v2, web-dashboard, supabase
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Node / JavaScript
+# -----------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+web-build/
+.expo/
+.expo-shared/
+*.tsbuildinfo
+*.jsbundle
+
+# -----------------------------------------------------------------------------
+# React Native / Expo
+# -----------------------------------------------------------------------------
+.kotlin/
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# Generated native folders (RN)
+/ios
+/android
+
+# -----------------------------------------------------------------------------
+# iOS / Xcode / Swift
+# -----------------------------------------------------------------------------
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcodeproj/xcuserdata/
+project.xcworkspace/xcuserdata/
+!default.xcworkspace/xcuserdata/
+!*.xcodeproj/xcuserdata/
+!*.xcworkspace/xcuserdata/
+build/
+Build/
+
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.dSYM/*
+*.xcarchive
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# Swift Package Manager
+.packages/
+.swiftpm/
+.build/
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Test outputs
+*.xcresult/
+
+# xcodegen side-project (Xcode may create "<dirname> 2.xcodeproj" when the
+# parent dir has a space — see ios-native/.gitignore for canonical project)
+# Pattern catches " 2.xcodeproj" siblings anywhere in the tree.
+*\ 2.xcodeproj/
+
+# -----------------------------------------------------------------------------
+# Python (pairing-engine, scripts)
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# -----------------------------------------------------------------------------
+# Supabase / Postgres
+# -----------------------------------------------------------------------------
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+
+# -----------------------------------------------------------------------------
+# Secrets — NEVER commit (anon key in seed scripts is OK; service_role is NOT)
+# -----------------------------------------------------------------------------
+.env
+.env.*
+.env*.local
+!.env.example
+*.pem
+*.key
+*.p12
+config/secrets.swift
+config/Config.xcconfig
+google-services.json
+GoogleService-Info.plist
+
+# -----------------------------------------------------------------------------
+# Agent / orchestrator runtime state (working state, not source)
+# -----------------------------------------------------------------------------
+.antigravitycli/
+.claude/
+.gemini/
+.gstack/
+.ruff_cache/
+.maestro/
+.hermes/
+.pi/
+
+# -----------------------------------------------------------------------------
+# Agent / orchestrator project-local configs (personal, not project source)
+# -----------------------------------------------------------------------------
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+.cursorrules
+
+# -----------------------------------------------------------------------------
+# Editors / IDE
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------------------------------------------------------
+# macOS
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+.AppleDouble
+.fseventsd
+.localized
+
+# -----------------------------------------------------------------------------
+# Logs / temp / misc
+# -----------------------------------------------------------------------------
+*.log
+logs/
+.cache/
+.cache/*
+.cache/projects.json
+tmp/
+temp/
+*.bak
+*.swp
+*.orig
+
+# OS / shell
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

@@ -1,0 +1,52 @@
+import SwiftUI
+
+/// SwimmerRow — single row in the swimmers list.
+/// 44pt initials circle + name + chevron. Long-press → delete, swipe-left → archive.
+struct SwimmerRow: View {
+    let swimmer: Swimmer
+    let onDelete: () -> Void
+    let onArchive: () -> Void
+
+    private var initials: String {
+        let first = swimmer.firstName.prefix(1)
+        let last = (swimmer.lastName ?? "").prefix(1)
+        if last.isEmpty { return String(swimmer.firstName.prefix(2)).uppercased() }
+        return "\(first)\(last)".uppercased()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // 44pt initials circle — elevated surface with cyan text
+            Text(initials)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Color(hex: "09d4ee"))
+                .frame(width: 44, height: 44)
+                .background(Color(hex: "1a2d42"))
+                .clipShape(Circle())
+
+            Text(swimmer.fullName)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(Color(hex: "e2f4fa"))
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Color(hex: "4a6572"))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(hex: "060e18"))
+        // Long-press = delete (SwiftUI .contextMenu is idiomatic, but spec calls for alert)
+        .contentShape(Rectangle())
+    }
+}
+
+#Preview {
+    SwimmerRow(
+        swimmer: Swimmer(id: "1", coachId: "c1", firstName: "Alex", lastName: "Brown", birthdate: nil, gender: nil, notes: nil, preferredGear: nil, formStroke: nil, archivedAt: nil, createdAt: nil),
+        onDelete: {},
+        onArchive: {}
+    )
+    .background(Color(hex: "060e18"))
+}

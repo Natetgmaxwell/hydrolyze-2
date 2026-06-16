@@ -1,0 +1,396 @@
+import SwiftUI
+import Supabase
+
+/// SessionStartViewModel — orchestrates the session-start flow:
+/// Step 1: roster picker (multi-select swimmers) → Step 2: wave preview (drag-and-drop)
+/// Then "Start" writes wave_assignments and navigates to TimingView.
+@MainActor
+final class SessionStartViewModel: ObservableObject {
+
+    enum Step: String {
+        case rosterPicker
+        case wavePreview
+    }
+
+    @Published var step: Step = .rosterPicker
+    @Published var availableSwimmers: [Swimmer] = []
+    @Published var selectedSwimmerIds: Set<UUID> = []
+    @Published var searchQuery: String = ""
+    @Published var waveAssignments: [WaveAssignment] = []
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String?
+
+    @Published var sessionId: String?
+    @Published var workoutSets: [WorkoutSet] = []
+    @Published var previewSetIndex: Int = 0
+    @Published var poolConfig: WaveAllocator.PoolConfig = WaveAllocator.PoolConfig()
+
+    private var coachId: String?
+    private(set) var pbBySwimmer: [String: Int] = [:]
+
+    /// Per-set predictions: workoutSetId → swimmerId → Prediction. Built in
+    /// `lockRoster` from the recorded_times + swimmer_pbs tables via the
+    /// 3-layer HistoricalTimePredictor. Used by the WaveAllocator for
+    /// per-set wave re-evaluation — a swimmer's 50 Free PB is a terrible
+    /// predictor of their 200 IM time, so the wave order that minimises
+    /// close finishes for Set 1 differs from the wave order for Set 2.
+    /// Also surfaced in the wave preview UI as a "predicted from N swims"
+    /// maturity badge per chip. (Phase 2.6 pairing engine v2.)
+    private(set) var predictionsBySwimmerBySet: [String: [String: Prediction]] = [:]
+
+    /// All recorded_times for the selected swimmers, fetched once during
+    /// `lockRoster` and passed to the HistoricalTimePredictor per call.
+    /// Kept around so the view layer can introspect maturity per chip.
+    private(set) var recordedTimes: [RecordedTime] = []
+
+    /// All swimmer_pbs for the selected swimmers, fetched once during
+    /// `lockRoster` and passed to the HistoricalTimePredictor (Layer 2 fallback).
+    private(set) var allPBs: [SwimmerPB] = []
+
+    /// Coach preferences (prediction algorithm + confidence display toggle).
+    /// Sourced from `AuthManager.coachPreferences` once sign-in is complete.
+    var coachPreferences: CoachPreferences = .default
+
+    // swimmerId → fullName map, populated during loadRoster for name resolution in wave preview
+    var swimmerNamesById: [UUID: String] = [:]
+
+    private let supabase = SupabaseService.shared.client
+    private let swimmerService = SwimmerService()
+
+    private(set) var createdSessionId: String?
+
+    var selectedSwimmers: [Swimmer] {
+        // Dedupe by id — if `availableSwimmers` somehow contains the same swimmer
+        // twice (e.g. RLS join or stale cache), the optimizer would otherwise emit
+        // two WaveAssignments for the same (swimmer, set) pair and the preview
+        // would render the same swimmer twice. First occurrence wins.
+        var seen = Set<String>()
+        return availableSwimmers.filter { swimmer in
+            guard selectedSwimmerIds.contains(UUID(uuidString: swimmer.id) ?? UUID()) else { return false }
+            let (inserted, _) = seen.insert(swimmer.id)
+            return inserted
+        }
+    }
+
+    var filteredSwimmers: [Swimmer] {
+        if searchQuery.isEmpty { return availableSwimmers }
+        let q = searchQuery.lowercased()
+        return availableSwimmers.filter {
+            $0.fullName.lowercased().contains(q)
+        }
+    }
+
+    func loadRoster(coachId: String?) async {
+        self.coachId = coachId
+        guard let coachId = coachId else { return }
+        isLoading = true
+        errorMessage = nil
+        do {
+            let fetched = try await swimmerService.fetchSwimmers(coachId: coachId)
+            // Dedupe by id — protects downstream ForEach (Identifiable) and the
+            // optimizer from processing the same swimmer twice.
+            var seen = Set<String>()
+            availableSwimmers = fetched.filter { swimmer in
+                let (inserted, _) = seen.insert(swimmer.id)
+                return inserted
+            }
+            swimmerNamesById = Dictionary(uniqueKeysWithValues: availableSwimmers.compactMap { swimmer -> (UUID, String)? in
+                guard let uuid = UUID(uuidString: swimmer.id) else { return nil }
+                return (uuid, swimmer.fullName)
+            })
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    func toggleSwimmer(_ id: UUID) {
+        if selectedSwimmerIds.contains(id) {
+            selectedSwimmerIds.remove(id)
+        } else {
+            selectedSwimmerIds.insert(id)
+        }
+    }
+
+    func selectAll() {
+        selectedSwimmerIds = Set(availableSwimmers.compactMap { UUID(uuidString: $0.id) })
+    }
+
+    func clearAll() {
+        selectedSwimmerIds.removeAll()
+    }
+
+    func lockRoster(
+        sessionId: String,
+        workoutSets: [WorkoutSet],
+        poolConfig: WaveAllocator.PoolConfig = WaveAllocator.PoolConfig()
+    ) async {
+        guard !selectedSwimmers.isEmpty else { return }
+        self.sessionId = sessionId
+        self.workoutSets = workoutSets
+        self.poolConfig = poolConfig
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            // Build the session + roster rows (in-memory; sent in parallel below).
+            struct SessionRow: Encodable {
+                let id: String
+                let coachId: String
+                let startedAt: String
+
+                enum CodingKeys: String, CodingKey {
+                    case id
+                    case coachId = "coach_id"
+                    case startedAt = "started_at"
+                }
+            }
+            let sessionRow = SessionRow(
+                id: sessionId,
+                coachId: self.coachId ?? "",
+                startedAt: ISO8601DateFormatter().string(from: Date())
+            )
+            struct RosterRow: Encodable {
+                let sessionId: String
+                let swimmerId: String
+                let attendanceMarkedAt: String
+
+                enum CodingKeys: String, CodingKey {
+                    case sessionId = "session_id"
+                    case swimmerId = "swimmer_id"
+                    case attendanceMarkedAt = "attendance_marked_at"
+                }
+            }
+            let rosterPayload = selectedSwimmers.map { swimmer in
+                RosterRow(
+                    sessionId: sessionId,
+                    swimmerId: swimmer.id,
+                    attendanceMarkedAt: ISO8601DateFormatter().string(from: Date())
+                )
+            }
+
+            // PARALLEL FETCH (Phase 2.5-c + 2.6 performance): 4 independent
+            // writes/fetches. The recorded_times + swimmer_pbs queries are
+            // needed for the 3-layer HistoricalTimePredictor. Firing all
+            // four concurrently cuts the Lock Roster wait from
+            // sum(t_session + t_roster + t_pbs + t_times) to max of all
+            // four. On a healthy Supabase: ~500ms (vs ~1-2s sequential).
+            //
+            // We can't annotate the async let with `: Void` — `.execute()`
+            // returns `PostgrestResponse<Void>`, not `Void`. Letting the
+            // compiler infer the type and awaiting the result works.
+            let selectedSwimmerIds = selectedSwimmers.map { $0.id }
+            async let sessionInsert = supabase.from("sessions")
+                .upsert(sessionRow)
+                .execute()
+            async let rosterInsert = supabase.from("session_roster")
+                .upsert(rosterPayload)
+                .execute()
+            async let pbsFetch = supabase.from("swimmer_pbs")
+                .select()
+                .execute()
+            async let timesFetch = swimmerService.fetchRecordedTimes(
+                swimmerIds: selectedSwimmerIds
+            )
+
+            // Await writes first (writes must commit before we trust the
+            // session exists; the reads can be parallel with the writes
+            // but the predictor needs the data after).
+            //
+            // The write calls return `PostgrestResponse<Void>` — we don't
+            // need the value, just need to know the write succeeded.
+            // Explicit `_ =` silences the "Expression of type
+            // 'PostgrestResponse<Void>' is unused" warning.
+            _ = try await sessionInsert
+            _ = try await rosterInsert
+            let pbResponse = try await pbsFetch
+            let allPBsFetched = try JSONDecoder().decode([SwimmerPB].self, from: pbResponse.data)
+            let allTimesFetched = try await timesFetch
+
+            self.allPBs = allPBsFetched
+            self.recordedTimes = allTimesFetched
+
+            // 3-layer HistoricalTimePredictor (Phase 2.6): build per-swimmer
+            // predictions for each (set, swimmer) pair. Layer 1 uses the
+            // recorded_times we just fetched. Layer 2 uses the PBs.
+            // Layer 3 is the population fallback (no I/O).
+            let predictor = HistoricalTimePredictor()
+            var perSetPredictions: [String: [String: Prediction]] = [:]
+            for set in workoutSets {
+                guard set.stroke != nil, set.distance != nil else { continue }
+                var predsForSet: [String: Prediction] = [:]
+                for swimmer in selectedSwimmers {
+                    if let pred = predictor.predict(
+                        swimmer: swimmer,
+                        set: set,
+                        recordedTimes: allTimesFetched,
+                        pbs: allPBsFetched,
+                        prefs: coachPreferences
+                    ) {
+                        predsForSet[swimmer.id] = pred
+                    }
+                }
+                if !predsForSet.isEmpty {
+                    perSetPredictions[set.id] = predsForSet
+                }
+            }
+            self.predictionsBySwimmerBySet = perSetPredictions
+
+            // Also build a per-swimmer prediction map (any set) for the
+            // legacy `pbBySwimmer` accessor (still used by old debug paths
+            // and by the v1 WavePreviewView's tight-gap heuristic). v2
+            // surfaces predictions through `predictionsBySwimmerBySet`
+            // for the maturity badges.
+            var fallbackPBMap: [String: Int] = [:]
+            for set in workoutSets {
+                guard let preds = perSetPredictions[set.id] else { continue }
+                for (swimmerId, pred) in preds {
+                    if let existing = fallbackPBMap[swimmerId] {
+                        fallbackPBMap[swimmerId] = min(existing, pred.timeMs)
+                    } else {
+                        fallbackPBMap[swimmerId] = pred.timeMs
+                    }
+                }
+            }
+            self.pbBySwimmer = fallbackPBMap
+
+            // WaveAllocator: constraint-aware wave + lane assignment using
+            // the per-set predictions. Replaces the old WaveOptimizer.
+            // WaveAllocator.allocate is a `static` method, so no instance
+            // creation — call it on the type directly. (This was an
+            // instance-method call in 1b7d65c, which caused a 'static
+            // member cannot be used on instance' error on the Mac Studio
+            // build.)
+            waveAssignments = WaveAllocator.allocate(
+                roster: selectedSwimmers,
+                sets: workoutSets,
+                poolConfig: poolConfig,
+                predictions: perSetPredictions
+            )
+
+            step = .wavePreview
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    /// Update the lane count and re-allocate waves for the current
+    /// poolConfig. Used by the lane picker slider in WavePreviewView
+    /// (Phase 2.5-c coach-configurable lanes).
+    func setLaneCount(_ count: Int) {
+        let clamped = max(1, min(10, count))
+        guard clamped != poolConfig.laneCount else { return }
+        poolConfig.laneCount = clamped
+        // Re-run the allocation with the new lane count. We use the
+        // existing predictions (no DB roundtrip needed) so the
+        // re-allocation is instant. WaveAllocator.allocate is a
+        // static method.
+        guard !selectedSwimmers.isEmpty else { return }
+        waveAssignments = WaveAllocator.allocate(
+            roster: selectedSwimmers,
+            sets: workoutSets,
+            poolConfig: poolConfig,
+            predictions: predictionsBySwimmerBySet
+        )
+    }
+
+    func moveSwimmer(from source: WaveAssignment, toLane: Int, toPosition: Int) {
+        guard let sourceIndex = waveAssignments.firstIndex(where: { $0.id == source.id }) else { return }
+
+        var updated = waveAssignments
+
+        // Swap position with whoever is already at (toLane, toPosition).
+        if let targetIndex = updated.firstIndex(where: {
+            $0.lane == toLane && $0.positionInLane == toPosition
+        }) {
+            updated[targetIndex].lane = source.lane
+            updated[targetIndex].positionInLane = source.positionInLane
+        }
+
+        updated[sourceIndex].lane = toLane
+        updated[sourceIndex].positionInLane = toPosition
+
+        waveAssignments = updated
+    }
+
+    func resetToSuggested() {
+        guard !selectedSwimmers.isEmpty else { return }
+        // Re-run the WaveAllocator with the existing predictions. No
+        // DB roundtrip needed — the predictions were computed once
+        // in `lockRoster` and stored. WaveAllocator.allocate is a
+        // static method.
+        waveAssignments = WaveAllocator.allocate(
+            roster: selectedSwimmers,
+            sets: workoutSets,
+            poolConfig: poolConfig,
+            predictions: predictionsBySwimmerBySet
+        )
+    }
+
+    func startSession() async -> Bool {
+        guard let sessionId = sessionId else { return false }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            struct WaveAssignmentRow: Encodable {
+                let id: String
+                let sessionId: String
+                let swimmerId: String
+                let workoutSetId: String
+                let lane: Int
+                let positionInLane: Int
+                let predictedTouchMs: Int
+                let waveNumber: Int
+                let sendOffOffsetMs: Int
+                let coachId: String
+                let createdAt: String
+
+                enum CodingKeys: String, CodingKey {
+                    case id
+                    case sessionId = "session_id"
+                    case swimmerId = "swimmer_id"
+                    case workoutSetId = "workout_set_id"
+                    case lane
+                    case positionInLane = "position_in_lane"
+                    case predictedTouchMs = "predicted_touch_ms"
+                    case waveNumber = "wave_number"
+                    case sendOffOffsetMs = "send_off_offset_ms"
+                    case coachId = "coach_id"
+                    case createdAt = "created_at"
+                }
+            }
+            let assignmentsPayload = waveAssignments.map { wa in
+                WaveAssignmentRow(
+                    id: wa.id,
+                    sessionId: sessionId,
+                    swimmerId: wa.swimmerId,
+                    workoutSetId: wa.workoutSetId,
+                    lane: wa.lane,
+                    positionInLane: wa.positionInLane,
+                    predictedTouchMs: wa.predictedTouchMs,
+                    waveNumber: wa.waveNumber,
+                    sendOffOffsetMs: wa.sendOffOffsetMs,
+                    coachId: self.coachId ?? "",
+                    createdAt: ISO8601DateFormatter().string(from: Date())
+                )
+            }
+
+            try await supabase.from("wave_assignments")
+                .upsert(assignmentsPayload)
+                .execute()
+
+            createdSessionId = sessionId
+            isLoading = false
+            return true
+        } catch {
+            print("[SessionStartViewModel] Error in startSession: \(error)")
+            errorMessage = error.localizedDescription
+            isLoading = false
+            return false
+        }
+    }
+}
