@@ -329,9 +329,16 @@ struct ReviewRowView: View {
                                 Button {
                                     onAccept()
                                 } label: {
+                                    // PHASE 2.6 v1.14 Slice 5b: 44pt hit
+                                    // area per Apple HIG. The icon stays
+                                    // 18pt visually (via the .frame), but
+                                    // the tap target is 44x44 via
+                                    // .contentShape(Rectangle()).
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 18))
                                         .foregroundColor(Color(hex: "09d4ee"))
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.borderless)
                             }
