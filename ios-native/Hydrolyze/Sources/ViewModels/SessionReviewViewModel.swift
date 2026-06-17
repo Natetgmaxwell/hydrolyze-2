@@ -187,6 +187,49 @@ final class SessionReviewViewModel: ObservableObject {
         coachConfirmedRowIds.insert(rowId)
     }
 
+    /// PHASE 2.6 v1.14: state of the smart Confirm button. The label
+    /// and tap behavior depend on which bands the rows fall into.
+    ///   - empty:           no rows (button hidden)
+    ///   - allAuto:         all rows >= 80% confidence (button: "Save session")
+    ///   - onlyLikelyCorrect: 1+ likelyCorrect, 0 likelyWrong
+    ///                      (button: "Accept N + save", bulk-accepts then saves)
+    ///   - withFlagged:     1+ likelyWrong (button: "Save N (M unconfirmed)",
+    ///                      saves with the likelyWrong rows still flagged locally)
+    enum ConfirmButtonState {
+        case empty
+        case allAuto(totalRows: Int)
+        case onlyLikelyCorrect(totalRows: Int, likelyCorrect: Int)
+        case withFlagged(totalRows: Int, likelyCorrect: Int, likelyWrong: Int)
+    }
+
+    /// PHASE 2.6 v1.14: derived state for the smart Confirm button.
+    /// The view reads this to pick the label and tap behavior.
+    var confirmButtonState: ConfirmButtonState {
+        let total = rows.count
+        if total == 0 { return .empty }
+        let likelyCorrect = rows.filter { $0.band == .likelyCorrect }.count
+        let likelyWrong = rows.filter { $0.band == .likelyWrong }.count
+        if likelyWrong > 0 {
+            return .withFlagged(totalRows: total, likelyCorrect: likelyCorrect, likelyWrong: likelyWrong)
+        }
+        if likelyCorrect > 0 {
+            return .onlyLikelyCorrect(totalRows: total, likelyCorrect: likelyCorrect)
+        }
+        return .allAuto(totalRows: total)
+    }
+
+    /// PHASE 2.6 v1.14: bulk-accept all .likelyCorrect rows. After
+    /// this runs, those rows are in `coachConfirmedRowIds` and
+    /// removed from `effectiveUnconfirmedCount`. Used by the
+    /// "Accept N + save" path so the save goes through without
+    /// the unconfirmed-rows warning.
+    func bulkAcceptLikelyCorrect() {
+        let toAccept = rows.filter { $0.band == .likelyCorrect }
+        for row in toAccept {
+            coachConfirmedRowIds.insert(row.id)
+        }
+    }
+
     func load(sessionId: String) async {
         self.sessionId = sessionId
         isLoading = true

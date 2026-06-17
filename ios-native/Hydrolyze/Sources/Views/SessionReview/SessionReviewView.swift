@@ -129,7 +129,14 @@ struct SessionReviewView: View {
                     ForEach(viewModel.filteredRows) { row in
                         ReviewRowView(
                             row: row,
-                            isAcceptedByCoach: viewModel.coachConfirmedRowIds.contains(row.id)
+                            isAcceptedByCoach: viewModel.coachConfirmedRowIds.contains(row.id),
+                            // PHASE 2.6 v1.14: wire the inline ✓ accept
+                            // button. Only meaningful for likelyCorrect
+                            // rows; the row view hides the button when
+                            // onAccept is nil.
+                            onAccept: row.band == .likelyCorrect ? {
+                                viewModel.acceptLowConfidenceRow(row.id)
+                            } : nil
                         ) {
                             viewModel.selectedRow = row
                             viewModel.showReassignSheet = true
@@ -180,26 +187,64 @@ struct SessionReviewView: View {
                     .foregroundColor(Color(hex: "4a6572"))
             }
 
-            Button {
-                Task { await viewModel.confirmAll() }
-            } label: {
-                Text(viewModel.effectiveUnconfirmedCount > 0 ? "Confirm Anyway" : "Confirm All")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    // Always enabled — the user can always proceed, the
-                    // "force" path inside confirmAll() will either succeed
-                    // immediately (no unconfirmed rows) or show the
-                    // warning alert. Previously the button was disabled
-                    // when unconfirmed > 0, which stranded the user with
-                    // no way to proceed.
-                    .background(Color(hex: "09d4ee"))
-                    .foregroundColor(Color(hex: "060e18"))
-                    .cornerRadius(12)
+            // PHASE 2.6 v1.14: smart Confirm button. Label and tap
+            // behavior depend on the row mix (see ConfirmButtonState).
+            // The "Confirm Anyway" wording is gone — the button now
+            // says what's about to happen.
+            if case .empty = viewModel.confirmButtonState {
+                EmptyView()
+            } else {
+                Button {
+                    Task { await handleConfirmTap() }
+                } label: {
+                    Text(confirmButtonLabel)
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color(hex: "09d4ee"))
+                        .foregroundColor(Color(hex: "060e18"))
+                        .cornerRadius(12)
+                }
             }
         }
         .padding(16)
         .background(Color(hex: "0d1f33"))
+    }
+
+    /// PHASE 2.6 v1.14: smart label for the Confirm button.
+    private var confirmButtonLabel: String {
+        switch viewModel.confirmButtonState {
+        case .empty:
+            return ""
+        case .allAuto:
+            return "Save session"
+        case .onlyLikelyCorrect(_, let likelyCorrect):
+            return "Accept \(likelyCorrect) + save"
+        case .withFlagged(let total, _, let likelyWrong):
+            // NOTE: the spec proposed "Save N with M flagged" but that
+            // wording implies a `needs_review: true` flag in the DB.
+            // Per the spec's "Ask first" list, adding a column to
+            // `sessions` requires a migration + sign-off. The save
+            // goes through with the unconfirmed rows in local state;
+            // the DB still gets `reviewed_at` set. A follow-up
+            // migration would surface this as a real flag.
+            return "Save \(total) (\(likelyWrong) unconfirmed)"
+        }
+    }
+
+    /// PHASE 2.6 v1.14: tap behavior for the Confirm button.
+    private func handleConfirmTap() async {
+        switch viewModel.confirmButtonState {
+        case .empty:
+            return
+        case .allAuto:
+            await viewModel.confirmAll()
+        case .onlyLikelyCorrect:
+            viewModel.bulkAcceptLikelyCorrect()
+            await viewModel.confirmAll()
+        case .withFlagged:
+            await viewModel.confirmAll(force: true)
+        }
     }
 }
 
@@ -209,6 +254,11 @@ struct ReviewRowView: View {
     let row: SessionReviewViewModel.ReviewRow
     var isAcceptedByCoach: Bool = false   // Phase 2.6 v1.1: coach explicitly accepted despite low confidence
     var onTap: () -> Void
+    /// PHASE 2.6 v1.14: callback for the inline ✓ accept button on
+    /// .likelyCorrect rows. When non-nil, a checkmark icon appears
+    /// on the right side of the subtle hint; tapping it accepts the
+    /// row without opening the reassign sheet. nil = no button.
+    var onAccept: (() -> Void)? = nil
     /// PHASE 2.6 v1.13.1: callback for the "Mark actual intensity"
     /// context menu. The view passes the chosen intensity to the
     /// view model, which writes a coach-confirmed PB.
@@ -262,12 +312,25 @@ struct ReviewRowView: View {
                     // PHASE 2.6 v1.14: SUBTLE variance hint for likelyCorrect,
                     // rendered at the bottom. Gray 11pt with info-circle icon
                     // — the row is probably right; this is a "FYI."
+                    // The inline ✓ button on the right is a single-tap accept
+                    // (added in Slice 3, per the spec's "Accept N + save" path).
                     if row.band == .likelyCorrect, let h = row.varianceHint {
                         HStack(spacing: 4) {
                             Image(systemName: "info.circle")
                                 .font(.system(size: 10))
                             Text("Pred \(String(format: "%.1f", h.predSec))s vs \(String(format: "%.1f", h.actualSec))s (\(String(format: "%.1f", h.zScore))σ)")
                                 .font(.system(size: 11))
+                            Spacer(minLength: 8)
+                            if let onAccept = onAccept {
+                                Button {
+                                    onAccept()
+                                } label: {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(Color(hex: "09d4ee"))
+                                }
+                                .buttonStyle(.borderless)
+                            }
                         }
                         .foregroundColor(Color(hex: "4a6572"))
                         .padding(.top, 2)
