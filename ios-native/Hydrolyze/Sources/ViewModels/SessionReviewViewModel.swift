@@ -365,8 +365,16 @@ final class SessionReviewViewModel: ObservableObject {
             for wa in waveAssignments {
                 let info = (wa.lane, wa.waveNumber, wa.predictedTouchMs, wa.sendOffOffsetMs)
                 swimmerWaveInfo[wa.swimmerId] = info
-                if let wid = wa.workoutSetId {
-                    waveInfoBySet[wid, default: [:]][wa.swimmerId] = info
+                // PHASE 2.6 v1.14: WaveAssignment.workoutSetId is a
+                // non-optional String (not String?). The v1.15.1
+                // multi-set fix at this site used `if let wid = ...`
+                // which is a build error: "Initializer for conditional
+                // binding must have Optional type, not 'String'."
+                // Same fix pattern as v1.15.2 below — guard on
+                // .isEmpty to avoid creating an entry under the
+                // empty-string key.
+                if !wa.workoutSetId.isEmpty {
+                    waveInfoBySet[wa.workoutSetId, default: [:]][wa.swimmerId] = info
                 }
             }
 
