@@ -19,6 +19,12 @@ final class SessionReviewViewModel: ObservableObject {
         var lane: Int?
         var wave: Int?
         var confidence: Int
+        /// PHASE 2.6 v1.13.0: the predictor's predicted time for this
+        /// swimmer + set, in wave-relative ms. Used by the row UI
+        /// to show a "variance hint" when confidence is low —
+        /// "predicted X, actual Y, Zσ off" — so the coach can see
+        /// WHY the pairing is flagged.
+        var predictedTimeMs: Int?
 
         var confidenceLevel: RowConfidence {
             if confidence >= 80 { return .green }
@@ -162,25 +168,75 @@ final class SessionReviewViewModel: ObservableObject {
                 }
             }
 
-            var swimmerWaveInfo: [String: (lane: Int, wave: Int)] = [:]
+            // PHASE 2.6 v1.15.1: BUGFIX. The v1.6 code keyed
+            // swimmerWaveInfo by swimmerId only, which OVERWROTE the
+            // entry for each swimmer as we iterated through all
+            // wave_assignments. When a workout has multiple sets
+            // (e.g., 50m @ T2 warmup + 100m @ T4 main), the last
+            // set's prediction would win, not the one the
+            // recorded_time actually belongs to. Result: the
+            // variance hint in SessionReviewView showed wildly
+            // wrong predictions (e.g., 64.5s for a 50m swim).
+            //
+            // Fix: key by (swimmerId, workoutSetId) so the
+            // recorded_time can look up its OWN set's prediction.
+            // When building the row, look up by both the swimmer
+            // AND the recorded_time's workoutSetId.
+            var swimmerWaveInfo: [String: (lane: Int, wave: Int, predicted: Int, sendOff: Int)] = [:]
+            var waveInfoBySet: [String: [String: (lane: Int, wave: Int, predicted: Int, sendOff: Int)]] = [:]
             for wa in waveAssignments {
-                swimmerWaveInfo[wa.swimmerId] = (wa.lane, wa.waveNumber)
+                let info = (wa.lane, wa.waveNumber, wa.predictedTouchMs, wa.sendOffOffsetMs)
+                swimmerWaveInfo[wa.swimmerId] = info
+                if let wid = wa.workoutSetId {
+                    waveInfoBySet[wid, default: [:]][wa.swimmerId] = info
+                }
             }
 
             rows = times.map { rt in
                 let targetId = rt.pairedSwimmerId ?? rt.swimmerId ?? ""
-                let info = swimmerWaveInfo[targetId]
                 let conf = rt.confidence ?? 0
-                
-                print("[Review] Processing row \(rt.id), swimmer \(targetId), confidence \(conf)")
-                
+
+                // PHASE 2.6 v1.15.1: BUGFIX. Look up wave_assignment by
+                // (workoutSetId, swimmerId) FIRST, fall back to
+                // swimmerId-only lookup. The swimmerId-only lookup
+                // was wrong for workouts with multiple sets (it
+                // returned the LAST set's prediction regardless of
+                // which set the recorded_time belonged to).
+                //
+                // PHASE 2.6 v1.15.2: use nested `if let` instead of
+                // comma-separated `if !setId.isEmpty, let setInfo = ...`
+                // — Swift's parser was binding `setId` (String, not
+                // Optional) instead of `setInfo`, causing a build
+                // error: "Initializer for conditional binding must
+                // have Optional type, not 'String'".
+                let setId = rt.workoutSetId ?? ""
+                let info: (lane: Int, wave: Int, predicted: Int, sendOff: Int)?
+                if !setId.isEmpty {
+                    if let setInfo = waveInfoBySet[setId]?[targetId] {
+                        info = setInfo
+                    } else {
+                        info = swimmerWaveInfo[targetId]
+                    }
+                } else {
+                    info = swimmerWaveInfo[targetId]
+                }
+                // is the absolute touch time (sendOff + swim); subtract
+                // sendOff to get the wave-relative swim time, which
+                // matches rt.timeMs (also wave-relative).
+                let predicted: Int? = info.map { i in
+                    max(0, i.predicted - i.sendOff)
+                }
+
+                print("[Review] Processing row \(rt.id), swimmer \(targetId), confidence \(conf), predicted=\(predicted ?? -1)")
+
                 return ReviewRow(
                     id: rt.id,
                     recordedTime: rt,
                     swimmerName: swimmerNames[targetId] ?? "Unknown",
                     lane: info?.lane,
                     wave: info?.wave,
-                    confidence: conf
+                    confidence: conf,
+                    predictedTimeMs: predicted
                 )
             }
 
@@ -211,9 +267,68 @@ final class SessionReviewViewModel: ObservableObject {
                 rows[idx].confidence = 100
                 rows[idx].swimmerName = toSwimmerId.uuidString
             }
-
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// PHASE 2.6 v1.13.1: coach entrypoint for "this swim was actually
+    /// at a different intensity". Per the user's principle: each
+    /// swimmer may have unofficial PB at specific combos of
+    /// (stroke, distance, intensity, gear). The coach can now
+    /// teach the engine about a new PB: when a row's confidence
+    /// is low, the coach can mark the actual intensity and the
+    /// lap time becomes a coach-confirmed PB at that intensity.
+    ///
+    /// Example: Fiona's row comes back at 0% confidence with
+    /// actual time 39.6s. The coach knows Fiona was swimming at
+    /// "easy" intensity (not "moderate" as the set said). They
+    /// mark the row as easy, and the engine writes a new PB:
+    /// Fiona 50 Free @ easy = 39.6s. The next session uses
+    /// THIS PB for Fiona's easy predictions instead of the
+    /// generic 1.20x race PB.
+    ///
+    /// This closes the data flywheel loop: the coach's manual
+    /// judgment feeds back into the predictor, which reduces
+    /// future "needs review" rows.
+    ///
+    /// For v1.13.1, the workoutSet is passed in by the caller
+    /// (the SessionReviewView loads it from the row's
+    /// workoutSetId). Hardcoded 50m Free support: this function
+    /// is built for the current 50m Free test scenario. v1.14
+    /// will generalize to arbitrary stroke/distance.
+    func markRowIntensity(
+        timeId: UUID,
+        swimmerId: String,
+        intensity: String,
+        lapTimeMs: Int,
+        gear: String?,
+        workoutSet: WorkoutSet
+    ) async {
+        do {
+            let swimmerService = SwimmerService()
+            let pb = try await swimmerService.upsertPersonalBest(
+                swimmerId: swimmerId,
+                distance: workoutSet.distance ?? 0,
+                stroke: workoutSet.stroke ?? "Free",
+                timeMs: lapTimeMs,
+                gear: gear,
+                intensity: intensity
+            )
+            print("[Review] markRowIntensity: wrote coach-confirmed PB — \(swimmerId.prefix(8))… 50 Free @ \(intensity) @ \(gear ?? "none") = \(lapTimeMs)ms (PB id=\(pb.id.prefix(8))…)")
+            // Mark the row as coach-accepted. The confidence
+            // still shows the original low value (so the coach
+            // remembers this was uncertain), but the row gets
+            // the cyan thumbs-up icon to indicate "I've reviewed this."
+            // PHASE 2.6 v1.15.2: replaced `if let idx = rows.firstIndex(...)`
+            // with a `contains` check — the `idx` was never used inside
+            // the block. Simpler and silences the "idx defined but
+            // never used" warning.
+            if rows.contains(where: { $0.id == timeId.uuidString }) {
+                coachConfirmedRowIds.insert(timeId.uuidString)
+            }
+        } catch {
+            errorMessage = "Couldn't save coach-confirmed PB: \(error.localizedDescription)"
         }
     }
 

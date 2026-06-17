@@ -27,6 +27,13 @@ final class TimingViewModel: ObservableObject {
     
     @Published var hasSavedPairedLaps: Bool = false
     @Published var isSaving: Bool = false
+    /// Phase 2.6 v1.12.1: count of wave_assignments the pairing
+    /// engine actually received for the current set (after the
+    /// workoutSetId filter). Surfaced in the COPY DEBUG INFO
+    /// button so the coach can see how many swimmers the
+    /// engine paired against. Defaults to nil until save()
+    /// runs at least once.
+    @Published var lastWaveAssignmentCount: Int?
     /// Phase 2.6 v1.2: which step the save is currently on. The .saving
     /// view shows this as live progress so the user can SEE where any
     /// hang is. Previous version of the spinner had no progress at all
@@ -535,6 +542,11 @@ final class TimingViewModel: ObservableObject {
                 let waveAssignments = allWaveAssignments.filter { wa in
                     wa.workoutSetId == currentSetId
                 }
+                // Phase 2.6 v1.12.1: publish the filtered count for
+                // the COPY DEBUG INFO button (so the coach can see
+                // how many swimmers the engine paired against
+                // after the workoutSetId filter).
+                lastWaveAssignmentCount = waveAssignments.count
                 log("filtered to \(waveAssignments.count) wave_assignments for current set \(currentSetId.prefix(8))…)")
                 guard !waveAssignments.isEmpty else {
                     log("save() FAILED: no wave_assignments for current set — session may be misconfigured")
@@ -572,37 +584,51 @@ final class TimingViewModel: ObservableObject {
 
                 let uniqueSwimmerIds = Array(Set(waveAssignments.map { $0.swimmerId }))
 
-                async let workoutSetResponseTask: PostgrestResponse<[WorkoutSet]> = supabase
+                // PHASE 2.6 v1.12.1 fix: do NOT add an explicit
+                // `PostgrestResponse<[T]>` type annotation on the
+                // `async let` declarations. The supabase SDK's
+                // `.execute()` already infers the response type from
+                // the schema, and forcing a type annotation breaks
+                // the throw propagation (Swift then complains "No
+                // calls to throwing functions occur within 'try'
+                // expression" on the tuple await + the JSONDecoder
+                // calls). The pattern below matches the working one
+                // in SessionReviewViewModel.swift line 110+.
+                async let workoutSetResponseTask = supabase
                     .from("workout_sets")
                     .select()
                     .eq("id", value: currentSetId)
                     .execute()
 
-                async let swimmersResponseTask: PostgrestResponse<[Swimmer]> = supabase
+                async let swimmersResponseTask = supabase
                     .from("swimmers")
                     .select()
                     .in("id", values: uniqueSwimmerIds)
                     .execute()
 
-                async let recordedTimesResponseTask: PostgrestResponse<[RecordedTime]> = supabase
+                async let recordedTimesResponseTask = supabase
                     .from("recorded_times")
                     .select()
                     .eq("workout_set_id", value: currentSetId)
                     .in("swimmer_id", values: uniqueSwimmerIds)
                     .execute()
 
-                async let pbsResponseTask: PostgrestResponse<[SwimmerPB]> = supabase
+                async let pbsResponseTask = supabase
                     .from("swimmer_pbs")
                     .select()
                     .in("swimmer_id", values: uniqueSwimmerIds)
                     .execute()
 
-                let (workoutSetResp, swimmersResp, recordedTimesResp, pbsResp) = try await (
-                    workoutSetResponseTask,
-                    swimmersResponseTask,
-                    recordedTimesResponseTask,
-                    pbsResponseTask
-                )
+                // The `try` on the tuple await is needed because
+                // each `async let` propagates its throw to the await
+                // point. Without it, the JSONDecoder().decode()
+                // calls below would see no throws (they're already
+                // throws — the issue is the await is what binds
+                // the throw context).
+                let workoutSetResp = try await workoutSetResponseTask
+                let swimmersResp = try await swimmersResponseTask
+                let recordedTimesResp = try await recordedTimesResponseTask
+                let pbsResp = try await pbsResponseTask
 
                 guard let workoutSet = try JSONDecoder().decode([WorkoutSet].self, from: workoutSetResp.data).first else {
                     log("save() FAILED: workout_set not found for current set id")
@@ -618,8 +644,18 @@ final class TimingViewModel: ObservableObject {
                 // Build a swimmer map for O(1) lookup
                 let swimmersById: [String: Swimmer] = Dictionary(uniqueKeysWithValues: swimmers.map { ($0.id, $0) })
 
-                // Call the predictor for each wave assignment
-                let predictor = HistoricalTimePredictor()
+                // PHASE 2.6 v1.13.0: use PBService as the SINGLE function
+                // for live predictions. Replaces the per-(swimmer, set)
+                // call to HistoricalTimePredictor. The predictor's
+                // behavior is preserved (Layer 1 recorded stats, Layer
+                // 2 PB curve with tiered fallbacks, Layer 3 population
+                // seed), but the data flow is now unified: the wave
+                // preview, the save flow, and the profile screen all
+                // call the same function. The coach can trust that
+                // what they see in the profile is what the engine uses.
+                let pbService = PBService()
+                let intensity = self.intensityLabel ?? "moderate"
+                let gear = "none"  // save flow defaults to no gear
                 var livePredictions: [String: Prediction] = [:]
                 var predictorLogs: [String] = []
                 for wa in waveAssignments {
@@ -627,29 +663,24 @@ final class TimingViewModel: ObservableObject {
                         predictorLogs.append("⚠ \(wa.swimmerId.prefix(8))…: swimmer not in DB, will fall back to coarse")
                         continue
                     }
-                    // Filter recordedTimes and pbs to this swimmer
-                    // (the predictor's API takes the full list and
-                    // filters internally by swimmerId, but doing it
-                    // here is cheaper and lets us log the count).
-                    let swimmerRTs = recordedTimes.filter { $0.swimmerId == wa.swimmerId }
-                    let swimmerPBs = pbs.filter { $0.swimmerId == wa.swimmerId }
-
-                    if let pred = predictor.predict(
+                    if let pred = pbService.fetchPrediction(
                         swimmer: swimmer,
                         set: workoutSet,
-                        recordedTimes: swimmerRTs,
-                        pbs: swimmerPBs,
-                        prefs: preferences
+                        intensity: intensity,
+                        gear: gear,
+                        prefs: preferences,
+                        recordedTimes: recordedTimes,
+                        pbs: pbs
                     ) {
                         livePredictions[wa.swimmerId] = pred
                         let algStr = preferences.predictionAlgorithm == .ema ? "EMA" : "median"
-                        predictorLogs.append("✓ \(wa.swimmerId.prefix(8))…: predicted=\(pred.timeMs)ms (σ=\(pred.sigmaMs), source=\(pred.source), maturity=\(pred.maturity), alg=\(algStr), samples=\(pred.sampleSize)")
+                        predictorLogs.append("✓ \(wa.swimmerId.prefix(8))…: predicted=\(pred.timeMs)ms (σ=\(pred.sigmaMs), source=\(pred.source), maturity=\(pred.maturity), alg=\(algStr), samples=\(pred.sampleSize))")
                     } else {
-                        predictorLogs.append("⚠ \(wa.swimmerId.prefix(8))…: predictor returned nil (IM or no data), will fall back to coarse")
+                        predictorLogs.append("⚠ \(wa.swimmerId.prefix(8))…: PBService returned nil (IM or no data), will fall back to coarse")
                     }
                 }
-                for line in predictorLogs { log("v1.12 predictor: " + line) }
-                log("v1.12: built livePredictions map for \(livePredictions.count) swimmers (predictor)")
+                for line in predictorLogs { log("v1.13 PBService: " + line) }
+                log("v1.13: built livePredictions map for \(livePredictions.count) swimmers (PBService)")
 
                 // Build a coarse per-swimmer Prediction map from the
                 // WaveAllocator's per-(swimmer, set) predictedTouchMs.

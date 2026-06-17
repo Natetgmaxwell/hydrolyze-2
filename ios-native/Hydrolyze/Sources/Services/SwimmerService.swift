@@ -131,14 +131,27 @@ final class SwimmerService {
         return try JSONDecoder().decode([SwimmerPB].self, from: response.data)
     }
 
-    /// Upsert a personal best (insert or update if already exists for distance+stroke+gear).
-    func upsertPersonalBest(swimmerId: String, distance: Int, stroke: String, timeMs: Int, gear: String?) async throws -> SwimmerPB {
+    /// Upsert a personal best (insert or update if already exists for
+    /// distance+stroke+intensity+gear).
+    /// PHASE 2.6 v1.13.0: `intensity` parameter added. The 5-way match
+    /// (swimmer, stroke, distance, intensity, gear) is the canonical
+    /// lookup key. `intensity` defaults to 'max' for callers that
+    /// haven't been updated to specify it.
+    func upsertPersonalBest(
+        swimmerId: String,
+        distance: Int,
+        stroke: String,
+        timeMs: Int,
+        gear: String?,
+        intensity: String = "max"
+    ) async throws -> SwimmerPB {
         struct UpsertPayload: Encodable {
             let swimmerId: String
             let distance: Int
             let stroke: String
             let timeMs: Int
             let gear: String?
+            let intensity: String
             let recordedAt: String
         }
         let payload = UpsertPayload(
@@ -147,6 +160,7 @@ final class SwimmerService {
             stroke: stroke,
             timeMs: timeMs,
             gear: gear,
+            intensity: intensity,
             recordedAt: ISO8601DateFormatter().string(from: Date())
         )
         let response = try await supabase.from("swimmer_pbs")
@@ -155,6 +169,29 @@ final class SwimmerService {
             .single()
             .execute()
         return try JSONDecoder().decode(SwimmerPB.self, from: response.data)
+    }
+
+    /// PHASE 2.6 v1.13.0: convenience upsert that takes a `Prediction`
+    /// (from PBService) and writes a coach-confirmed PB. Used by
+    /// SessionReviewView when the coach manually confirms a
+    /// low-confidence pairing. Writes the lap time as a `source =
+    /// coachConfirmed` PB, which the predictor can use as
+    /// highest-weight training data in v2.
+    func upsertCoachConfirmedPB(
+        swimmerId: String,
+        set: WorkoutSet,
+        gear: String?,
+        intensity: String,
+        timeMs: Int
+    ) async throws -> SwimmerPB {
+        return try await upsertPersonalBest(
+            swimmerId: swimmerId,
+            distance: set.distance ?? 0,
+            stroke: set.stroke ?? "Free",
+            timeMs: timeMs,
+            gear: gear,
+            intensity: intensity
+        )
     }
 
     /// Fetch archived swimmers for the coach.

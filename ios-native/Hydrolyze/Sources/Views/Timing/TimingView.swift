@@ -549,7 +549,7 @@ struct TimingView: View {
                     sessionId: \(sessionId ?? "(nil)")
                     errorMessage: \(viewModel.errorMessage ?? "(none)")
                     Laps captured: \(viewModel.laps.count)
-                    Wave assignments (VM-side): \(viewModel.predictionsBySwimmerBySet.count) sets
+                    Wave assignments (after filter): \(viewModel.lastWaveAssignmentCount.map(String.init) ?? "(none yet)")
                     saveLog lines: \(viewModel.saveLog.count)
 
                     === saveLog (full) ===

@@ -80,6 +80,13 @@ struct SwimmerPB: Codable, Identifiable, Sendable {
     let stroke: String
     let timeMs: Int
     let gear: String?
+    /// PHASE 2.6 v1.13.0: Added via the swimmer_pbs schema migration.
+    /// Stores the intensity the PB was set at ('max' for race PBs,
+    /// 'moderate' for training PBs, etc.). The 5-way match
+    /// (swimmer, stroke, distance, intensity, gear) is the
+    /// canonical lookup key for the predictor. PBs default to 'max'
+    /// for legacy rows that pre-date the migration.
+    let intensity: String?
     let recordedAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -89,6 +96,35 @@ struct SwimmerPB: Codable, Identifiable, Sendable {
         case stroke
         case timeMs = "time_ms"
         case gear
+        case intensity
         case recordedAt = "recorded_at"
+    }
+
+    init(id: String, swimmerId: String, distance: Int, stroke: String,
+         timeMs: Int, gear: String?, intensity: String?, recordedAt: String) {
+        self.id = id
+        self.swimmerId = swimmerId
+        self.distance = distance
+        self.stroke = stroke
+        self.timeMs = timeMs
+        self.gear = gear
+        self.intensity = intensity
+        self.recordedAt = recordedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        swimmerId = try c.decode(String.self, forKey: .swimmerId)
+        distance = try c.decode(Int.self, forKey: .distance)
+        stroke = try c.decode(String.self, forKey: .stroke)
+        timeMs = try c.decode(Int.self, forKey: .timeMs)
+        gear = try c.decodeIfPresent(String.self, forKey: .gear)
+        // PHASE 2.6 v1.13.0: tolerate missing intensity column on
+        // older row snapshots (defensive — migration backfills it
+        // server-side, but the Swift decoder should still handle
+        // the rare case where the column hasn't been read yet).
+        intensity = try c.decodeIfPresent(String.self, forKey: .intensity)
+        recordedAt = try c.decode(String.self, forKey: .recordedAt)
     }
 }

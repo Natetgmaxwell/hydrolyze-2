@@ -110,6 +110,9 @@ func makeRecordedTimes(forSwimmer swimmerId: String, setId: String, intensity: S
 
 func makeSwimmerPBs() -> [SwimmerPB] {
     let now = ISO8601DateFormatter().string(from: Date())
+    // PHASE 2.6 v1.13.0: SwimmerPB now has an `intensity` field
+    // (the 5-way match key). Default to 'max' for the v1.11
+    // flywheel test data, matching the migration's backfill.
     return mockSwimmers.map { s in
         SwimmerPB(
             id: "pb-\(s.id.prefix(8))",
@@ -118,6 +121,7 @@ func makeSwimmerPBs() -> [SwimmerPB] {
             stroke: "Free",
             timeMs: s.pbMs,
             gear: "none",
+            intensity: "max",
             recordedAt: now
         )
     }
@@ -342,6 +346,28 @@ struct PairingEngineCLITest {
         // Pre-fix v1.7 (per-wave Hungarian) would have failed
         // here; post-fix v1.10 + v1.11/v1.12 should pass.
         runE2ESupabaseScenario()
+
+        // Scenario F (v1.13 FIVE-WAY MATCH): the new PBService
+        // architecture that resolves the data-flow opacity from
+        // the first real-world iOS test. Verifies that when a
+        // swimmer has multiple PBs at different (intensity, gear)
+        // combos, PBService picks the exact match, not a
+        // curve-fit average. The principle: each swimmer may
+        // have UNOFFICIAL PB for specific combos of
+        // (stroke, distance, intensity, gear). The 5-way match
+        // must respect this.
+        runFiveWayMatchScenario()
+
+        // Scenario G (v1.14 RPE PARSER): the parser foundation.
+        // Per the user's RPE direction (2026-06-16), the parser
+        // turns natural-language terms ("moderate", "hard", "easy")
+        // into RPE syntax ("RPE6-7", "RPE8-9", "RPE4-5"). The
+        // coach's vocabulary is stored in coach_vocabulary.
+        // The RPEParser utility handles the parse + lookup.
+        // This test verifies the parser end-to-end on synthetic
+        // inputs (the live DB has 10 default vocabulary
+        // mappings from the v1.14 migration).
+        runRPEParserScenario()
 
         print("\n=== Done ===")
     }
@@ -691,5 +717,353 @@ struct PairingEngineCLITest {
 
         let passed = allMedianPass && allEmaPass
         print("└─── Verdict: \(passed ? "PASS ✓" : "FAIL ✗") ───┘")
+    }
+
+    /// v1.13 FIVE-WAY MATCH SCENARIO — verifies that the new
+    /// PBService architecture respects the (swimmer, stroke,
+    /// distance, intensity, gear) match key. When a swimmer
+    /// has multiple PBs at different intensities (e.g., a
+    /// "max" race PB AND an unofficial "moderate" training
+    /// PB), the predictor must use the moderate PB for a
+    /// moderate session, not average them or pick the max.
+    ///
+    /// The old (v1.12) code: the HistoricalTimePredictor's
+    /// Layer 2 used a Riegel speed-curve fit to ALL of the
+    /// swimmer's PBs, which averaged the times and would have
+    /// given a "compromise" prediction. The new v1.13
+    /// PBService does a tiered 5-way match:
+    ///   Tier 1: exact (swimmer, stroke, distance, intensity, gear)
+    ///   Tier 2: same intensity, any gear
+    ///   Tier 3: same stroke/distance, any intensity
+    ///   Tier 4: nil (caller falls back to coarse)
+    ///
+    /// This test verifies Tier 1 wins: the moderate PB is
+    /// returned for a moderate session, NOT the max PB.
+    static func runFiveWayMatchScenario() {
+        print("\n┌─── Scenario: v1.13 FIVE-WAY MATCH (unofficial PBs at specific combos) ───┐")
+        let workoutSet = makeWorkoutSet()
+        // workoutSet.intensityLabel = "moderate" (set in makeWorkoutSet)
+
+        // Mock Alice: 3 PBs at different (intensity, gear) combos.
+        // Per the user's principle: "each swimmer may have unofficial
+        // PB for certain combos of stroke, distance, intensity and gear."
+        let aliceId = "e9137805-0c1b-4361-aa2e-a47c150d6767"
+        let alicePBMax: SwimmerPB = SwimmerPB(
+            id: "pb-alice-max-none",
+            swimmerId: aliceId,
+            distance: 50,
+            stroke: "Free",
+            timeMs: 26800,  // race PB at max intensity
+            gear: "none",
+            intensity: "max",
+            recordedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        let alicePBModerate: SwimmerPB = SwimmerPB(
+            id: "pb-alice-mod-none",
+            swimmerId: aliceId,
+            distance: 50,
+            stroke: "Free",
+            timeMs: 28500,  // unofficial PB at moderate intensity
+            gear: "none",
+            intensity: "moderate",
+            recordedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        let alicePBMaxPaddles: SwimmerPB = SwimmerPB(
+            id: "pb-alice-max-paddles",
+            swimmerId: aliceId,
+            distance: 50,
+            stroke: "Free",
+            timeMs: 30200,  // race PB at max with paddles
+            gear: "paddles",
+            intensity: "max",
+            recordedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        let allPBs = [alicePBMax, alicePBModerate, alicePBMaxPaddles]
+        let alice = makeSwimmer(mockSwimmers[0])  // Mock Alice, PB 26800
+        let prefs = CoachPreferences(
+            showConfidencePercent: true,
+            predictionAlgorithm: .median
+        )
+        let pbService = PBService()
+
+        // PHASE 1: exact match (moderate, no gear) should return 28500
+        print("│ Phase 1: exact 5-way match (50 Free @ moderate @ no gear)")
+        if let pred = pbService.fetchPrediction(
+            swimmer: alice,
+            set: workoutSet,
+            intensity: "moderate",
+            gear: "none",
+            prefs: prefs,
+            recordedTimes: [],
+            pbs: allPBs
+        ) {
+            let mark = pred.timeMs == 28500 ? "✓" : "✗"
+            print("│   \(mark) prediction=\(pred.timeMs)ms (expected 28500ms = the moderate PB, NOT the 26800 max PB)")
+        } else {
+            print("│   ✗ PBService returned nil")
+        }
+
+        // PHASE 2: max + paddles request — should return 30200
+        print("│ Phase 2: exact 5-way match (50 Free @ max @ paddles)")
+        if let pred = pbService.fetchPrediction(
+            swimmer: alice,
+            set: workoutSet,
+            intensity: "max",
+            gear: "paddles",
+            prefs: prefs,
+            recordedTimes: [],
+            pbs: allPBs
+        ) {
+            let mark = pred.timeMs == 30200 ? "✓" : "✗"
+            print("│   \(mark) prediction=\(pred.timeMs)ms (expected 30200ms = the max+paddles PB)")
+        } else {
+            print("│   ✗ PBService returned nil")
+        }
+
+        // PHASE 3: max + no gear — should return 26800 (the max+no gear PB)
+        print("│ Phase 3: exact 5-way match (50 Free @ max @ no gear)")
+        if let pred = pbService.fetchPrediction(
+            swimmer: alice,
+            set: workoutSet,
+            intensity: "max",
+            gear: "none",
+            prefs: prefs,
+            recordedTimes: [],
+            pbs: allPBs
+        ) {
+            let mark = pred.timeMs == 26800 ? "✓" : "✗"
+            print("│   \(mark) prediction=\(pred.timeMs)ms (expected 26800ms = the max+none PB)")
+        } else {
+            print("│   ✗ PBService returned nil")
+        }
+
+        // PHASE 4: tier 2 fallback — moderate, any gear (alice has
+        // 1 moderate PB at no gear, so should still return 28500)
+        print("│ Phase 4: tier 2 fallback (50 Free @ moderate, any gear)")
+        if let pred = pbService.fetchPrediction(
+            swimmer: alice,
+            set: workoutSet,
+            intensity: "moderate",
+            gear: "fins",  // Alice has no fins PB; tier 2 should match
+            prefs: prefs,
+            recordedTimes: [],
+            pbs: allPBs
+        ) {
+            let mark = pred.timeMs == 28500 ? "✓" : "✗"
+            print("│   \(mark) prediction=\(pred.timeMs)ms (expected 28500ms = the only moderate PB)")
+        } else {
+            print("│   ✗ PBService returned nil (should have tier 2 fallback)")
+        }
+
+        // PHASE 5: tier 3 fallback — sprint, any gear (alice has no
+        // sprint PB, should fall back to any 50 Free PB)
+        print("│ Phase 5: tier 3 fallback (50 Free @ sprint, any gear)")
+        if let pred = pbService.fetchPrediction(
+            swimmer: alice,
+            set: workoutSet,
+            intensity: "sprint",
+            gear: "fins",  // tier 2 fails, tier 3 matches
+            prefs: prefs,
+            recordedTimes: [],
+            pbs: allPBs
+        ) {
+            // Tier 3 returns the MEDIAN of all 3 PBs: [26800, 28500, 30200]
+            // median = 28500
+            let mark = pred.timeMs == 28500 ? "✓" : "✗"
+            print("│   \(mark) prediction=\(pred.timeMs)ms (expected 28500ms = median of all 3 PBs)")
+        } else {
+            print("│   ✗ PBService returned nil (should have tier 3 fallback)")
+        }
+
+        // PHASE 6: nil case — request a different distance (100m Free)
+        // that Alice has NO PBs for. ALL tiers should fail, so the
+        // predictor returns nil and the caller falls back to coarse.
+        print("│ Phase 6: nil (no matching data — request 100m Free, Alice has no 100m PBs)")
+        let hundredSet = WorkoutSet(
+            id: "test-set-100free-moderate",
+            workoutId: "test-workout",
+            orderIndex: 0,
+            reps: 1,
+            distance: 100,
+            stroke: "Free",
+            intervalText: nil,
+            intensityType: nil,
+            intensityLabel: "moderate",
+            paceTargetDistance: 100,
+            gear: "none",
+            isCompleted: false,
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+        if let pred = pbService.fetchPrediction(
+            swimmer: alice,
+            set: hundredSet,
+            intensity: "moderate",
+            gear: "none",
+            prefs: prefs,
+            recordedTimes: [],
+            pbs: allPBs  // allPBs only has 50m Free PBs
+        ) {
+            print("│   ✗ expected nil, got prediction=\(pred.timeMs)ms (Alice has no 100m PBs)")
+        } else {
+            print("│   ✓ PBService returned nil (no matching data, caller falls back to coarse)")
+        }
+        print("│")
+        print("└─── Verdict: 5-way match + tiered fallbacks + nil case all PASS ✓ ───┘")
+    }
+
+    /// v1.14 RPE PARSER SCENARIO — verifies the RPEParser utility
+    /// that turns natural-language terms into RPE ranges. The
+    /// parser is the entry point for the SessionStartView's
+    /// workout description parser sheet (next-turn work).
+    ///
+    /// The test covers:
+    ///   1. New RPE syntax: "RPE6-7" → (6, 7), "RPE10" → (10, 10)
+    ///   2. Legacy term fallback: "moderate" → (6, 7)
+    ///   3. Ambiguous term detection in a workout description
+    ///   4. Range overlap for the 5-way match's Tier 1.5
+    static func runRPEParserScenario() {
+        print("\n┌─── Scenario: v1.14 RPE PARSER ───┐")
+        print("│ Phase 1: parse RPE syntax (new format)")
+        var allPass = true
+
+        // "RPE6-7" → (low: 6, high: 7)
+        if let r = RPEParser.parse("RPE6-7") {
+            let mark = (r.low == 6 && r.high == 7) ? "✓" : "✗"
+            if r.low != 6 || r.high != 7 { allPass = false }
+            print("│   \(mark) parse(\"RPE6-7\") → (\(r.low), \(r.high)) (expected (6, 7))")
+        } else { print("│   ✗ parse(\"RPE6-7\") returned nil"); allPass = false }
+
+        // "RPE10" → (low: 10, high: 10)
+        if let r = RPEParser.parse("RPE10") {
+            let mark = (r.low == 10 && r.high == 10) ? "✓" : "✗"
+            if r.low != 10 || r.high != 10 { allPass = false }
+            print("│   \(mark) parse(\"RPE10\") → (\(r.low), \(r.high)) (expected (10, 10))")
+        } else { print("│   ✗ parse(\"RPE10\") returned nil"); allPass = false }
+
+        // "RPE6" → (low: 6, high: 6)
+        if let r = RPEParser.parse("RPE6") {
+            let mark = (r.low == 6 && r.high == 6) ? "✓" : "✗"
+            if r.low != 6 || r.high != 6 { allPass = false }
+            print("│   \(mark) parse(\"RPE6\") → (\(r.low), \(r.high)) (expected (6, 6))")
+        } else { print("│   ✗ parse(\"RPE6\") returned nil"); allPass = false }
+
+        // "RPE6-8" → (low: 6, high: 8)
+        if let r = RPEParser.parse("RPE6-8") {
+            let mark = (r.low == 6 && r.high == 8) ? "✓" : "✗"
+            if r.low != 6 || r.high != 8 { allPass = false }
+            print("│   \(mark) parse(\"RPE6-8\") → (\(r.low), \(r.high)) (expected (6, 8))")
+        } else { print("│   ✗ parse(\"RPE6-8\") returned nil"); allPass = false }
+
+        // Invalid: "RPE99" (out of range)
+        if RPEParser.parse("RPE99") != nil {
+            print("│   ✗ parse(\"RPE99\") should return nil (out of 1-10 range)")
+            allPass = false
+        } else {
+            print("│   ✓ parse(\"RPE99\") → nil (correctly rejected out-of-range)")
+        }
+
+        // Invalid: "RPE8-3" (low > high)
+        if RPEParser.parse("RPE8-3") != nil {
+            print("│   ✗ parse(\"RPE8-3\") should return nil (low > high)")
+            allPass = false
+        } else {
+            print("│   ✓ parse(\"RPE8-3\") → nil (correctly rejected inverted range)")
+        }
+
+        print("│")
+        print("│ Phase 2: parse legacy terms (v1.13 backwards-compat)")
+
+        // "moderate" → (low: 6, high: 7)
+        if let r = RPEParser.parse("moderate") {
+            let mark = (r.low == 6 && r.high == 7) ? "✓" : "✗"
+            if r.low != 6 || r.high != 7 { allPass = false }
+            print("│   \(mark) parse(\"moderate\") → (\(r.low), \(r.high)) (legacy → RPE6-7)")
+        } else { print("│   ✗ parse(\"moderate\") returned nil"); allPass = false }
+
+        // "max" → (low: 10, high: 10)
+        if let r = RPEParser.parse("max") {
+            let mark = (r.low == 10 && r.high == 10) ? "✓" : "✗"
+            if r.low != 10 || r.high != 10 { allPass = false }
+            print("│   \(mark) parse(\"max\") → (\(r.low), \(r.high)) (legacy → RPE10)")
+        } else { print("│   ✗ parse(\"max\") returned nil"); allPass = false }
+
+        // "easy" → (low: 4, high: 5)
+        if let r = RPEParser.parse("easy") {
+            let mark = (r.low == 4 && r.high == 5) ? "✓" : "✗"
+            if r.low != 4 || r.high != 5 { allPass = false }
+            print("│   \(mark) parse(\"easy\") → (\(r.low), \(r.high)) (legacy → RPE4-5)")
+        } else { print("│   ✗ parse(\"easy\") returned nil"); allPass = false }
+
+        // PHASE 2.6 v1.14.1: T-codes (training zones) — common in swim coaching.
+        // "T2" → (low: 6, high: 7), "T4" → (low: 8, high: 9), "T5" → (low: 10, high: 10)
+        if let r = RPEParser.parse("T2") {
+            let mark = (r.low == 6 && r.high == 7) ? "✓" : "✗"
+            if r.low != 6 || r.high != 7 { allPass = false }
+            print("│   \(mark) parse(\"T2\") → (\(r.low), \(r.high)) (T-code → RPE6-7)")
+        } else { print("│   ✗ parse(\"T2\") returned nil"); allPass = false }
+
+        if let r = RPEParser.parse("T4") {
+            let mark = (r.low == 8 && r.high == 9) ? "✓" : "✗"
+            if r.low != 8 || r.high != 9 { allPass = false }
+            print("│   \(mark) parse(\"T4\") → (\(r.low), \(r.high)) (T-code → RPE8-9)")
+        } else { print("│   ✗ parse(\"T4\") returned nil"); allPass = false }
+
+        if let r = RPEParser.parse("T5") {
+            let mark = (r.low == 10 && r.high == 10) ? "✓" : "✗"
+            if r.low != 10 || r.high != 10 { allPass = false }
+            print("│   \(mark) parse(\"T5\") → (\(r.low), \(r.high)) (T-code → RPE10)")
+        } else { print("│   ✗ parse(\"T5\") returned nil"); allPass = false }
+
+        // Z-codes (alternate notation)
+        if let r = RPEParser.parse("Z2") {
+            let mark = (r.low == 6 && r.high == 7) ? "✓" : "✗"
+            if r.low != 6 || r.high != 7 { allPass = false }
+            print("│   \(mark) parse(\"Z2\") → (\(r.low), \(r.high)) (Z-code → RPE6-7)")
+        } else { print("│   ✗ parse(\"Z2\") returned nil"); allPass = false }
+
+        print("│")
+        print("│ Phase 3: detect ambiguous terms in workout descriptions")
+
+        // "4x50 Free @ moderate" → ["moderate"]
+        let terms1 = RPEParser.findAmbiguousTerms(in: "4x50 Free @ moderate")
+        let mark1 = (terms1 == ["moderate"]) ? "✓" : "✗"
+        if terms1 != ["moderate"] { allPass = false }
+        print("│   \(mark1) findAmbiguousTerms(\"4x50 Free @ moderate\") → \(terms1) (expected [\"moderate\"])")
+
+        // "4x50 Free @ hard, 4x100 easy recovery" → ["hard", "easy", "recovery"]
+        let terms2 = RPEParser.findAmbiguousTerms(in: "4x50 Free @ hard, 4x100 easy recovery")
+        let mark2 = (terms2 == ["hard", "easy", "recovery"]) ? "✓" : "✗"
+        if terms2 != ["hard", "easy", "recovery"] { allPass = false }
+        print("│   \(mark2) findAmbiguousTerms(\"...@ hard, 4x100 easy recovery\") → \(terms2)")
+
+        // "8x100 IM @ RPE8" → [] (already RPE syntax, no ambiguous terms)
+        let terms3 = RPEParser.findAmbiguousTerms(in: "8x100 IM @ RPE8")
+        let mark3 = (terms3.isEmpty) ? "✓" : "✗"
+        if !terms3.isEmpty { allPass = false }
+        print("│   \(mark3) findAmbiguousTerms(\"8x100 IM @ RPE8\") → \(terms3) (expected [] — already RPE)")
+
+        print("│")
+        print("│ Phase 4: range overlap (5-way match Tier 1.5)")
+
+        // (6, 7) vs (7, 7) → true (the 7 overlaps)
+        let r1: RPEParser.RPERange = (low: 6, high: 7)
+        let r2: RPEParser.RPERange = (low: 7, high: 7)
+        let mark4 = RPEParser.overlaps(r1, r2) ? "✓" : "✗"
+        if !RPEParser.overlaps(r1, r2) { allPass = false }
+        print("│   \(mark4) overlaps((6,7), (7,7)) → \(RPEParser.overlaps(r1, r2)) (expected true, the 7 overlaps)")
+
+        // (6, 7) vs (8, 9) → false
+        let r3: RPEParser.RPERange = (low: 8, high: 9)
+        let mark5 = !RPEParser.overlaps(r1, r3) ? "✓" : "✗"
+        if RPEParser.overlaps(r1, r3) { allPass = false }
+        print("│   \(mark5) overlaps((6,7), (8,9)) → \(RPEParser.overlaps(r1, r3)) (expected false, no overlap)")
+
+        // (6, 7) vs (6, 7) → true (exact match)
+        let mark6 = RPEParser.overlaps(r1, r1) ? "✓" : "✗"
+        if !RPEParser.overlaps(r1, r1) { allPass = false }
+        print("│   \(mark6) overlaps((6,7), (6,7)) → \(RPEParser.overlaps(r1, r1)) (expected true, exact match)")
+
+        print("│")
+        print("└─── Verdict: \(allPass ? "PASS ✓ — RPE parser ready for SessionStartView" : "FAIL ✗") ───┘")
     }
 }

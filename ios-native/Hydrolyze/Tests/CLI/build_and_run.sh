@@ -7,6 +7,8 @@ cd "/Users/nathanmaxwell/Documents/VS Code/Hydrolyze 2/ios-native"
 # because it has the `main` entry point.
 SOURCES=(
   "Hydrolyze/Sources/Lib/Color+Hex.swift"
+  "Hydrolyze/Sources/Lib/RPEParser.swift"
+  "Hydrolyze/Sources/Models/CoachVocabulary.swift"
   "Hydrolyze/Sources/Models/Enums.swift"
   "Hydrolyze/Sources/Models/Coach.swift"
   "Hydrolyze/Sources/Models/CoachPreferences.swift"
@@ -21,6 +23,7 @@ SOURCES=(
   "Hydrolyze/Sources/Services/HungarianMatching.swift"
   "Hydrolyze/Sources/Services/SpeedCurveFitter.swift"
   "Hydrolyze/Sources/Services/HistoricalTimePredictor.swift"
+  "Hydrolyze/Sources/Services/PBService.swift"
   "Hydrolyze/Sources/Services/PairingEngine.swift"
   "Hydrolyze/Tests/CLI/PairingEngineCLITest.swift"
 )

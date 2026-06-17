@@ -211,22 +211,35 @@ final class SessionStartViewModel: ObservableObject {
             self.allPBs = allPBsFetched
             self.recordedTimes = allTimesFetched
 
-            // 3-layer HistoricalTimePredictor (Phase 2.6): build per-swimmer
-            // predictions for each (set, swimmer) pair. Layer 1 uses the
-            // recorded_times we just fetched. Layer 2 uses the PBs.
-            // Layer 3 is the population fallback (no I/O).
-            let predictor = HistoricalTimePredictor()
+            // PHASE 2.6 v1.13.0: use PBService as the SINGLE function
+            // for "what's this swimmer's predicted time for this set +
+            // intensity + gear?" Replaces the per-(swimmer, set) call
+            // to HistoricalTimePredictor. The 4 code paths to the
+            // same data (profile screen, wave preview, save flow,
+            // coarsePredictions) all use this function now.
+            //
+            // For the wave preview, we use the set's intensityLabel
+            // (e.g., 'moderate', 'max') and the swimmer's preferredGear
+            // (defaults to 'none'). PBService does the 5-way match
+            // (swimmer, stroke, distance, intensity, gear) with
+            // tiered fallbacks: exact → any-gear-same-intensity →
+            // any-intensity-same-stroke/distance → population seed.
+            let pbService = PBService()
             var perSetPredictions: [String: [String: Prediction]] = [:]
             for set in workoutSets {
                 guard set.stroke != nil, set.distance != nil else { continue }
+                let intensity = set.intensityLabel ?? "moderate"
+                let gear = "none"  // wave preview defaults to no gear
                 var predsForSet: [String: Prediction] = [:]
                 for swimmer in selectedSwimmers {
-                    if let pred = predictor.predict(
+                    if let pred = pbService.fetchPrediction(
                         swimmer: swimmer,
                         set: set,
+                        intensity: intensity,
+                        gear: gear,
+                        prefs: coachPreferences,
                         recordedTimes: allTimesFetched,
-                        pbs: allPBsFetched,
-                        prefs: coachPreferences
+                        pbs: allPBsFetched
                     ) {
                         predsForSet[swimmer.id] = pred
                     }

@@ -265,18 +265,50 @@ struct SwimmerDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
             } else {
-                ForEach(viewModel.personalBests) { pb in
+                // PHASE 2.6 v1.14.1: sort PBs so the race PB (max
+                // intensity) is at the top of the list, followed by
+                // descending intensity. Without this, the order
+                // depended on the DB row order, which was random.
+                ForEach(viewModel.personalBests.sorted { lhs, rhs in
+                    intensitySortKey(lhs.intensity ?? "max") < intensitySortKey(rhs.intensity ?? "max")
+                }) { pb in
                     pbRow(pb)
                 }
             }
         }
     }
 
+    /// Sort key for intensity ordering (race PB first, easy last).
+    private func intensitySortKey(_ intensity: String) -> Int {
+        switch intensity.lowercased() {
+        case "max", "t5", "sprint", "all-out": return 0
+        case "threshold", "hard", "t4": return 1
+        case "tempo", "t3": return 2
+        case "moderate", "cruise", "t2": return 3
+        case "easy", "recovery", "t1": return 4
+        default: return 5
+        }
+    }
+
     private func pbRow(_ pb: SwimmerPB) -> some View {
-        HStack {
-            Text("\(pb.distance)m \(pb.stroke)")
-                .font(.system(size: 15))
-                .foregroundColor(Color(hex: "e2f4fa"))
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(pb.distance)m \(pb.stroke)")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color(hex: "e2f4fa"))
+                // PHASE 2.6 v1.14.1: show the intensity the PB was set at.
+                // Without this label, multiple PBs at the same
+                // (distance, stroke) look identical to the coach —
+                // e.g., the race PB and the moderate training PB
+                // both read as "50m Free 0:29.80" / "0:33.37".
+                // The intensity is the disambiguator.
+                HStack(spacing: 6) {
+                    intensityBadge(pb.intensity ?? "max")
+                    if let gear = pb.gear, gear != "none", !gear.isEmpty {
+                        gearBadge(gear)
+                    }
+                }
+            }
             Spacer()
             Text(formatTimeMs(pb.timeMs))
                 .font(.system(size: 16, weight: .medium, design: .monospaced))
@@ -356,6 +388,52 @@ struct SwimmerDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 24)
+    }
+
+    // PHASE 2.6 v1.14.1: small badge that disambiguates multiple PBs at
+    // the same (distance, stroke). Color-coded by intensity so the
+    // race PB is visually distinct from the training PBs.
+    @ViewBuilder
+    private func intensityBadge(_ intensity: String) -> some View {
+        Text(intensity.uppercased())
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundColor(intensityColor(intensity))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(intensityColor(intensity).opacity(0.18))
+            .cornerRadius(4)
+    }
+
+    @ViewBuilder
+    private func gearBadge(_ gear: String) -> some View {
+        Text(gear)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(Color(hex: "09d4ee"))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color(hex: "09d4ee").opacity(0.18))
+            .cornerRadius(4)
+    }
+
+    /// Map intensity → color. The race PB (max) is the canonical
+    /// reference and gets the most prominent color. T-codes and
+    /// legacy terms all map to the same palette via the RPE-equivalent
+    /// bucket.
+    private func intensityColor(_ intensity: String) -> Color {
+        switch intensity.lowercased() {
+        case "max", "t5", "sprint", "all-out":
+            return Color(hex: "ff4d6d")  // red — race effort
+        case "threshold", "hard", "t4":
+            return Color(hex: "ff8c42")  // orange — comfortably hard
+        case "tempo", "t3":
+            return Color(hex: "ffd166")  // yellow — tempo
+        case "moderate", "cruise", "t2":
+            return Color(hex: "09d4ee")  // cyan — aerobic
+        case "easy", "recovery", "t1":
+            return Color(hex: "06d6a0")  // green — easy
+        default:
+            return Color(hex: "4a6572")  // grey — unknown
+        }
     }
 
     private func formatTimeMs(_ ms: Int) -> String {

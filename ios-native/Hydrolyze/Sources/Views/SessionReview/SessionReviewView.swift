@@ -122,6 +122,36 @@ struct SessionReviewView: View {
                         ) {
                             viewModel.selectedRow = row
                             viewModel.showReassignSheet = true
+                        } onMarkIntensity: { intensity in
+                            // PHASE 2.6 v1.13.1: write a coach-confirmed
+                            // PB at the chosen intensity. The lap time
+                            // becomes a new (swimmer, intensity) PB,
+                            // used by the predictor on the next session.
+                            // For v1.13.1, hardcoded 50m Free (the
+                            // current test scenario). v1.14 will
+                            // generalize to arbitrary stroke/distance.
+                            await viewModel.markRowIntensity(
+                                timeId: UUID(uuidString: row.id) ?? UUID(),
+                                swimmerId: row.recordedTime.pairedSwimmerId ?? row.recordedTime.swimmerId ?? "",
+                                intensity: intensity,
+                                lapTimeMs: row.recordedTime.timeMs,
+                                gear: row.recordedTime.gear,
+                                workoutSet: WorkoutSet(
+                                    id: row.recordedTime.workoutSetId ?? "unknown",
+                                    workoutId: "unknown",
+                                    orderIndex: 0,
+                                    reps: 1,
+                                    distance: 50,
+                                    stroke: "Free",
+                                    intervalText: nil,
+                                    intensityType: nil,
+                                    intensityLabel: row.recordedTime.intensity,
+                                    paceTargetDistance: 50,
+                                    gear: row.recordedTime.gear,
+                                    isCompleted: false,
+                                    createdAt: ISO8601DateFormatter().string(from: Date())
+                                )
+                            )
                         }
                     }
                 }
@@ -167,7 +197,11 @@ struct SessionReviewView: View {
 struct ReviewRowView: View {
     let row: SessionReviewViewModel.ReviewRow
     var isAcceptedByCoach: Bool = false   // Phase 2.6 v1.1: coach explicitly accepted despite low confidence
-    let onTap: () -> Void
+    var onTap: () -> Void
+    /// PHASE 2.6 v1.13.1: callback for the "Mark actual intensity"
+    /// context menu. The view passes the chosen intensity to the
+    /// view model, which writes a coach-confirmed PB.
+    var onMarkIntensity: (String) async -> Void = { _ in }
 
     var body: some View {
         Button(action: onTap) {
@@ -195,6 +229,25 @@ struct ReviewRowView: View {
                         Text("\(row.confidence)%")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(row.confidenceLevel.color)
+                    }
+
+                    // PHASE 2.6 v1.13.0: variance hint. When confidence
+                    // is low (red row), show the actual vs predicted
+                    // so the coach understands WHY the pairing is
+                    // flagged. E.g., "Predicted 30.1s, actual 39.6s
+                    // (3.2σ off)" — the coach can decide whether to
+                    // confirm the pairing (real slow swim) or reassign
+                    // (pairing likely wrong). Skips when the row is
+                    // already green (no hint needed for high confidence).
+                    if row.confidence < 50, let pred = row.predictedTimeMs {
+                        let actualSec = Double(row.recordedTime.timeMs) / 1000
+                        let predSec = Double(pred) / 1000
+                        let sigma = max(Double(row.predictedTimeMs ?? pred) * 0.10, 1500)
+                        let zScore = abs(Double(row.recordedTime.timeMs) - Double(pred)) / sigma
+                        Text("Predicted \(String(format: "%.1f", predSec))s, actual \(String(format: "%.1f", actualSec))s (\(String(format: "%.1f", zScore))σ off)")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "4a6572"))
+                            .padding(.top, 2)
                     }
                 }
 
@@ -226,17 +279,34 @@ struct ReviewRowView: View {
             // Long-press to accept a low-confidence pairing without
             // opening the reassign sheet. Useful when the coach knows
             // the pairing is correct but the engine has high variance.
-            if row.confidence < 50 && !isAcceptedByCoach {
-                Button {
-                    // The view doesn't have a direct reference to the VM;
-                    // the parent owns it. We post a notification via
-                    // a callback hook — but to keep this minimal v1, we
-                    // rely on the existing onTap (reassign) flow. The
-                    // 'Confirm Anyway' path on the bottom button is
-                    // the v1 escape hatch.
-                    onTap()
+            Button {
+                onTap()
+            } label: {
+                Label("Reassign swimmer", systemImage: "person.crop.circle.badge.exclamationmark")
+            }
+
+            // PHASE 2.6 v1.13.1: "Mark actual intensity" — lets the
+            // coach teach the engine about a new unofficial PB. The
+            // selected intensity becomes a coach-confirmed PB at
+            // (swimmer, stroke, distance, intensity, gear), used by
+            // the predictor on the next session. Closes the
+            // flywheel loop. Only show this menu item for
+            // low-confidence rows (where the coach might want to
+            // override).
+            if row.confidence < 70 {
+                Divider()
+                Menu {
+                    ForEach(["max", "moderate", "threshold", "easy"], id: \.self) { intensity in
+                        Button {
+                            Task {
+                                await onMarkIntensity(intensity)
+                            }
+                        } label: {
+                            Label(intensity.capitalized, systemImage: "scope")
+                        }
+                    }
                 } label: {
-                    Label("Reassign swimmer", systemImage: "person.crop.circle.badge.exclamationmark")
+                    Label("Mark actual intensity", systemImage: "scope")
                 }
             }
         }
