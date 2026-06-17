@@ -49,20 +49,32 @@ struct SessionReviewView: View {
 
     private var filterTabs: some View {
         HStack(spacing: 0) {
-            ForEach(SessionReviewViewModel.Filter.allCases, id: \.rawValue) { f in
+            // PHASE 2.6 v1.14: iterate Filter.displayed (3 tabs) instead
+            // of Filter.allCases (which would also show the legacy
+            // .needsReview case). Each tab gets a (N) count badge.
+            ForEach(SessionReviewViewModel.Filter.displayed, id: \.rawValue) { f in
                 Button {
                     viewModel.filter = f
                 } label: {
-                    Text(f.rawValue)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(viewModel.filter == f ? Color(hex: "09d4ee") : Color(hex: "4a6572"))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            viewModel.filter == f ?
-                            Color(hex: "0d2847") : Color.clear
-                        )
-                        .cornerRadius(8)
+                    HStack(spacing: 4) {
+                        Text(f.rawValue)
+                            .font(.system(size: 14, weight: .medium))
+                        Text("(\(viewModel.count(for: f)))")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(
+                                viewModel.filter == f
+                                ? Color(hex: "09d4ee").opacity(0.75)
+                                : Color(hex: "4a6572").opacity(0.75)
+                            )
+                    }
+                    .foregroundColor(viewModel.filter == f ? Color(hex: "09d4ee") : Color(hex: "4a6572"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        viewModel.filter == f ?
+                        Color(hex: "0d2847") : Color.clear
+                    )
+                    .cornerRadius(8)
                 }
             }
         }
@@ -92,19 +104,18 @@ struct SessionReviewView: View {
                     .foregroundColor(Color.red)
                     .padding()
             } else if viewModel.filteredRows.isEmpty {
-                // Empty state — different message depending on which
-                // tab the user is on. "All" empty means the session has
-                // no laps (data issue). "Needs Review" empty means
-                // everything is green (good — coach can confirm).
+                // PHASE 2.6 v1.14: empty-state copy now lives on the
+                // Filter enum (icon, title, subtitle). The view no longer
+                // branches on filter cases; the model owns the truth.
                 VStack(spacing: 8) {
-                    Image(systemName: viewModel.filter == .needsReview ? "checkmark.seal" : "tray")
+                    Image(systemName: viewModel.filter.emptyStateIcon)
                         .font(.system(size: 32, weight: .light))
                         .foregroundColor(Color(hex: "4a6572"))
-                    Text(viewModel.filter == .needsReview ? "Nothing needs review" : "No laps recorded")
+                    Text(viewModel.filter.emptyStateTitle)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Color(hex: "4a6572"))
-                    if viewModel.filter == .needsReview {
-                        Text("All pairings are high confidence. Switch to All to see them.")
+                    if let subtitle = viewModel.filter.emptyStateSubtitle {
+                        Text(subtitle)
                             .font(.system(size: 12))
                             .foregroundColor(Color(hex: "4a6572"))
                             .multilineTextAlignment(.center)

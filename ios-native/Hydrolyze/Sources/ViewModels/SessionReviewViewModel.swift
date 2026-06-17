@@ -10,6 +10,60 @@ final class SessionReviewViewModel: ObservableObject {
     enum Filter: String, CaseIterable {
         case all = "All"
         case needsReview = "Needs Review"
+        case likelyCorrect = "Likely Correct"
+        case likelyWrong = "Likely Wrong"
+
+        /// PHASE 2.6 v1.14: the three tabs the user actually sees, in
+        /// display order. `.needsReview` is preserved in the enum (legacy)
+        /// but hidden in the UI — coaches think in terms of "all / likely
+        /// correct / likely wrong," not "all / needs review."
+        static var displayed: [Filter] {
+            [.all, .likelyCorrect, .likelyWrong]
+        }
+
+        /// PHASE 2.6 v1.14: empty-state copy for the filtered list view.
+        /// Centralised here so the view doesn't branch on filter cases.
+        var emptyStateIcon: String {
+            switch self {
+            case .all: return "tray"
+            case .needsReview, .likelyCorrect, .likelyWrong: return "checkmark.seal"
+            }
+        }
+
+        var emptyStateTitle: String {
+            switch self {
+            case .all: return "No laps recorded"
+            case .needsReview, .likelyCorrect: return "Nothing to review"
+            case .likelyWrong: return "No problematic pairings"
+            }
+        }
+
+        var emptyStateSubtitle: String? {
+            switch self {
+            case .all: return nil
+            case .needsReview, .likelyCorrect:
+                return "All pairings are high confidence. Switch to All to see them."
+            case .likelyWrong:
+                return "Pairings with confidence below 50% appear here."
+            }
+        }
+    }
+
+    /// PHASE 2.6 v1.14: semantic confidence band. Maps the engine's
+    /// confidence score to the action the coach should take.
+    ///   - auto:           80-100%, no action needed (green)
+    ///   - likelyCorrect:  50-79%,  the engine is probably right, worth a glance (amber)
+    ///   - likelyWrong:    0-49%,   the engine is probably wrong, needs review (red)
+    enum ConfidenceBand {
+        case auto
+        case likelyCorrect
+        case likelyWrong
+
+        init(from confidence: Int) {
+            if confidence >= 80 { self = .auto }
+            else if confidence >= 50 { self = .likelyCorrect }
+            else { self = .likelyWrong }
+        }
     }
 
     struct ReviewRow: Identifiable {
@@ -32,6 +86,10 @@ final class SessionReviewViewModel: ObservableObject {
             else { return .red }
         }
 
+        /// PHASE 2.6 v1.14: semantic band derived from confidence. Drives
+        /// the filter tabs, the row variant, and the confirm-button text.
+        var band: ConfidenceBand { ConfidenceBand(from: confidence) }
+
         enum RowConfidence {
             case green, amber, red
 
@@ -49,7 +107,7 @@ final class SessionReviewViewModel: ObservableObject {
         }
     }
 
-    @Published var filter: Filter = .needsReview
+    @Published var filter: Filter = .likelyWrong
     @Published var rows: [ReviewRow] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
@@ -66,6 +124,21 @@ final class SessionReviewViewModel: ObservableObject {
             return rows
         case .needsReview:
             return rows.filter { $0.confidence < 80 }
+        case .likelyCorrect:
+            return rows.filter { $0.band == .likelyCorrect }
+        case .likelyWrong:
+            return rows.filter { $0.band == .likelyWrong }
+        }
+    }
+
+    /// PHASE 2.6 v1.14: row count for each filter tab. The view uses
+    /// this to render the (N) badge next to each tab label.
+    func count(for filter: Filter) -> Int {
+        switch filter {
+        case .all: return rows.count
+        case .needsReview: return rows.filter { $0.confidence < 80 }.count
+        case .likelyCorrect: return rows.filter { $0.band == .likelyCorrect }.count
+        case .likelyWrong: return rows.filter { $0.band == .likelyWrong }.count
         }
     }
 
