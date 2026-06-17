@@ -90,6 +90,20 @@ final class SessionReviewViewModel: ObservableObject {
         /// the filter tabs, the row variant, and the confirm-button text.
         var band: ConfidenceBand { ConfidenceBand(from: confidence) }
 
+        /// PHASE 2.6 v1.14: computed variance hint. Returns the actual
+        /// time, predicted time, and z-score when both are known, or nil
+        /// when the prediction is missing (the row's hint can't be
+        /// rendered). Used by ReviewRowView to render the band-aware
+        /// variance hint without duplicating the math.
+        var varianceHint: (actualSec: Double, predSec: Double, zScore: Double)? {
+            guard let pred = predictedTimeMs else { return nil }
+            let actualSec = Double(recordedTime.timeMs) / 1000
+            let predSec = Double(pred) / 1000
+            let sigma = max(Double(pred) * 0.10, 1500)
+            let zScore = abs(Double(recordedTime.timeMs) - Double(pred)) / sigma
+            return (actualSec, predSec, zScore)
+        }
+
         enum RowConfidence {
             case green, amber, red
 

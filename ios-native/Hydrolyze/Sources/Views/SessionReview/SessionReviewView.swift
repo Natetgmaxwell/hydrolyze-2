@@ -222,6 +222,23 @@ struct ReviewRowView: View {
                     .frame(width: 10, height: 10)
 
                 VStack(alignment: .leading, spacing: 2) {
+                    // PHASE 2.6 v1.14: LOUD variance hint for likelyWrong,
+                    // rendered as the FIRST child of the row content.
+                    // Amber (#f59e0b) 13pt semibold with warning-triangle
+                    // icon — the coach understands WHY the row is flagged
+                    // in <1s.
+                    if row.band == .likelyWrong, let h = row.varianceHint {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Predicted \(String(format: "%.1f", h.predSec))s, actual \(String(format: "%.1f", h.actualSec))s (\(String(format: "%.1f", h.zScore))σ off)")
+                                .font(.system(size: 13, weight: .semibold))
+                                .lineLimit(2)
+                        }
+                        .foregroundColor(Color(hex: "f59e0b"))
+                        .padding(.bottom, 4)
+                    }
+
                     Text(row.swimmerName)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(Color(hex: "e2f4fa"))
@@ -242,23 +259,18 @@ struct ReviewRowView: View {
                             .foregroundColor(row.confidenceLevel.color)
                     }
 
-                    // PHASE 2.6 v1.13.0: variance hint. When confidence
-                    // is low (red row), show the actual vs predicted
-                    // so the coach understands WHY the pairing is
-                    // flagged. E.g., "Predicted 30.1s, actual 39.6s
-                    // (3.2σ off)" — the coach can decide whether to
-                    // confirm the pairing (real slow swim) or reassign
-                    // (pairing likely wrong). Skips when the row is
-                    // already green (no hint needed for high confidence).
-                    if row.confidence < 50, let pred = row.predictedTimeMs {
-                        let actualSec = Double(row.recordedTime.timeMs) / 1000
-                        let predSec = Double(pred) / 1000
-                        let sigma = max(Double(row.predictedTimeMs ?? pred) * 0.10, 1500)
-                        let zScore = abs(Double(row.recordedTime.timeMs) - Double(pred)) / sigma
-                        Text("Predicted \(String(format: "%.1f", predSec))s, actual \(String(format: "%.1f", actualSec))s (\(String(format: "%.1f", zScore))σ off)")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "4a6572"))
-                            .padding(.top, 2)
+                    // PHASE 2.6 v1.14: SUBTLE variance hint for likelyCorrect,
+                    // rendered at the bottom. Gray 11pt with info-circle icon
+                    // — the row is probably right; this is a "FYI."
+                    if row.band == .likelyCorrect, let h = row.varianceHint {
+                        HStack(spacing: 4) {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 10))
+                            Text("Pred \(String(format: "%.1f", h.predSec))s vs \(String(format: "%.1f", h.actualSec))s (\(String(format: "%.1f", h.zScore))σ)")
+                                .font(.system(size: 11))
+                        }
+                        .foregroundColor(Color(hex: "4a6572"))
+                        .padding(.top, 2)
                     }
                 }
 
