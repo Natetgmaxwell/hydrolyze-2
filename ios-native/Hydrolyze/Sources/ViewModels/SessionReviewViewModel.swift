@@ -230,6 +230,54 @@ final class SessionReviewViewModel: ObservableObject {
         }
     }
 
+    /// PHASE 2.6 v1.14: a row in the ReassignSheet. Carries the
+    /// predicted time so the view can sort by predicted-time
+    /// proximity and show the value as a "Pred: X.Xs" suffix.
+    struct ReassignCandidate: Identifiable, Equatable {
+        let id: String          // ReviewRow.id (matches the existing
+                                // convention in the reassign flow)
+        let name: String
+        let predictedTimeMs: Int?
+
+        /// Absolute distance between this candidate's predicted time
+        /// and the row's actual time, in ms. nil if no prediction.
+        func distance(from actualMs: Int) -> Int? {
+            guard let pred = predictedTimeMs else { return nil }
+            return abs(pred - actualMs)
+        }
+    }
+
+    /// PHASE 2.6 v1.14: ordered candidates for the ReassignSheet.
+    /// When the row is .likelyWrong, sorts by predicted-time
+    /// proximity (closest first, unknowns last). For other bands
+    /// the existing order is preserved.
+    func reassignCandidates(for row: ReviewRow) -> [ReassignCandidate] {
+        let candidates = rows.map { r in
+            ReassignCandidate(
+                id: r.id,
+                name: r.swimmerName,
+                predictedTimeMs: r.predictedTimeMs
+            )
+        }
+
+        // Only sort by proximity when the coach is genuinely choosing
+        // a replacement (the row is flagged). For other bands the
+        // sheet is a one-tap accept, not a real comparison.
+        guard row.band == .likelyWrong else { return candidates }
+
+        let actualMs = row.recordedTime.timeMs
+        return candidates.sorted { a, b in
+            let da = a.distance(from: actualMs)
+            let db = b.distance(from: actualMs)
+            switch (da, db) {
+            case (let x?, let y?): return x < y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return false
+            }
+        }
+    }
+
     func load(sessionId: String) async {
         self.sessionId = sessionId
         isLoading = true

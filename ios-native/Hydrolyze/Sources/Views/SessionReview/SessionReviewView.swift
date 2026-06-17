@@ -24,7 +24,11 @@ struct SessionReviewView: View {
                 if let row = viewModel.selectedRow {
                     ReassignSheet(
                         row: row,
-                        allSwimmerNames: viewModel.rows.map { ($0.id, $0.swimmerName) },
+                        // PHASE 2.6 v1.14: pass ordered candidates. For
+                        // .likelyWrong rows, they're sorted by
+                        // predicted-time proximity. For other bands
+                        // the existing order is preserved.
+                        candidates: viewModel.reassignCandidates(for: row),
                         onSelect: { swimmerId in
                             Task {
                                 await viewModel.reassign(timeId: UUID(uuidString: row.id) ?? UUID(), toSwimmerId: swimmerId)
@@ -403,7 +407,11 @@ struct ReviewRowView: View {
 
 struct ReassignSheet: View {
     let row: SessionReviewViewModel.ReviewRow
-    let allSwimmerNames: [(String, String)]
+    // PHASE 2.6 v1.14: replaced `allSwimmerNames: [(String, String)]`
+    // with `candidates: [ReassignCandidate]` so the predicted time
+    // rides with the candidate (used for the "Pred: X.Xs" suffix
+    // and the proximity sort in the view-model).
+    let candidates: [SessionReviewViewModel.ReassignCandidate]
     let onSelect: (UUID) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -414,17 +422,25 @@ struct ReassignSheet: View {
                 Color(hex: "060e18").ignoresSafeArea()
 
                 List {
-                    ForEach(allSwimmerNames, id: \.0) { pair in
-                        let swimmerId = UUID(uuidString: pair.0) ?? UUID()
+                    ForEach(candidates) { candidate in
+                        let swimmerId = UUID(uuidString: candidate.id) ?? UUID()
                         Button {
                             onSelect(swimmerId)
                             dismiss()
                         } label: {
-                            HStack {
-                                Text(pair.1)
+                            HStack(spacing: 8) {
+                                Text(candidate.name)
                                     .foregroundColor(Color(hex: "e2f4fa"))
                                 Spacer()
-                                if pair.0 == row.id {
+                                // PHASE 2.6 v1.14: "Pred: X.Xs" suffix
+                                // so the coach can see why this row is
+                                // where it is in the sort order.
+                                if let pred = candidate.predictedTimeMs {
+                                    Text("Pred: \(String(format: "%.1f", Double(pred) / 1000))s")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color(hex: "4a6572"))
+                                }
+                                if candidate.id == row.id {
                                     Image(systemName: "checkmark")
                                         .foregroundColor(Color(hex: "09d4ee"))
                                 }
