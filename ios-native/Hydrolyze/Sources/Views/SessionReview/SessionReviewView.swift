@@ -131,27 +131,31 @@ struct SessionReviewView: View {
             } else {
                 LazyVStack(spacing: 8) {
                     ForEach(viewModel.filteredRows) { row in
-                        // PHASE 2.6 v1.14: extract the inline ✓ accept
-                        // callback to a let binding. The inline ternary
-                        // (`row.band == .likelyCorrect ? { ... } : nil`)
-                        // in the ReviewRowView init causes Swift's parser
-                        // to misread the inner `{ ... }` as a trailing
-                        // closure to ReviewRowView(...) instead of the
-                        // ternary's then-branch, cascading into three
-                        // build errors. The let binding breaks the
-                        // ambiguity by separating the closure from the
-                        // outer call.
+                        // PHASE 2.6 v1.14: extract ALL three callbacks to
+                        // let bindings. ReviewRowView has 3 function-typed
+                        // params (onTap, onAccept, onMarkIntensity). When
+                        // we tried to use multiple trailing closures with
+                        // one of them passed as a named argument, the
+                        // Swift parser got confused and produced three
+                        // build errors at every call site (the trailing
+                        // closure rule says "first trailing closure binds
+                        // to the first function-typed param in declaration
+                        // order" — when one is named-arg'd and skipped
+                        // over, the parser loses the binding). Two
+                        // attempts at the trailing-closure form failed
+                        // (the v1.14.0 ternary trap, the v1.14.1 let-
+                        // extract trap). The robust answer: name all
+                        // three callbacks in the parameter list. No
+                        // trailing closures. Let-bindings for readability
+                        // — onMarkIntensity is 25+ lines of arg-packing.
                         let onAcceptCallback: (() -> Void)? = row.band == .likelyCorrect ? {
                             viewModel.acceptLowConfidenceRow(row.id)
                         } : nil
-                        ReviewRowView(
-                            row: row,
-                            isAcceptedByCoach: viewModel.coachConfirmedRowIds.contains(row.id),
-                            onAccept: onAcceptCallback
-                        ) {
+                        let onTapCallback: () -> Void = {
                             viewModel.selectedRow = row
                             viewModel.showReassignSheet = true
-                        } onMarkIntensity: { intensity in
+                        }
+                        let onMarkIntensityCallback: (String) async -> Void = { intensity in
                             // PHASE 2.6 v1.13.1: write a coach-confirmed
                             // PB at the chosen intensity. The lap time
                             // becomes a new (swimmer, intensity) PB,
@@ -182,6 +186,13 @@ struct SessionReviewView: View {
                                 )
                             )
                         }
+                        ReviewRowView(
+                            row: row,
+                            isAcceptedByCoach: viewModel.coachConfirmedRowIds.contains(row.id),
+                            onAccept: onAcceptCallback,
+                            onTap: onTapCallback,
+                            onMarkIntensity: onMarkIntensityCallback
+                        )
                     }
                 }
                 .padding(.horizontal, 16)
