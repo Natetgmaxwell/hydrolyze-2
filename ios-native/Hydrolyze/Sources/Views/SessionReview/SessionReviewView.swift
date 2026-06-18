@@ -189,8 +189,15 @@ struct SessionReviewView: View {
                         ReviewRowView(
                             row: row,
                             isAcceptedByCoach: viewModel.coachConfirmedRowIds.contains(row.id),
-                            onAccept: onAcceptCallback,
+                            // PHASE 2.6 v1.14: named args in struct
+                            // declaration order. The previous fix
+                            // (commit ae1c1aa) had onAccept before
+                            // onTap, but the struct declares onTap
+                            // (3rd param) before onAccept (4th).
+                            // "Argument 'onTap' must precede argument
+                            // 'onAccept'" — reorder the named args.
                             onTap: onTapCallback,
+                            onAccept: onAcceptCallback,
                             onMarkIntensity: onMarkIntensityCallback
                         )
                     }
