@@ -131,16 +131,23 @@ struct SessionReviewView: View {
             } else {
                 LazyVStack(spacing: 8) {
                     ForEach(viewModel.filteredRows) { row in
+                        // PHASE 2.6 v1.14: extract the inline ✓ accept
+                        // callback to a let binding. The inline ternary
+                        // (`row.band == .likelyCorrect ? { ... } : nil`)
+                        // in the ReviewRowView init causes Swift's parser
+                        // to misread the inner `{ ... }` as a trailing
+                        // closure to ReviewRowView(...) instead of the
+                        // ternary's then-branch, cascading into three
+                        // build errors. The let binding breaks the
+                        // ambiguity by separating the closure from the
+                        // outer call.
+                        let onAcceptCallback: (() -> Void)? = row.band == .likelyCorrect ? {
+                            viewModel.acceptLowConfidenceRow(row.id)
+                        } : nil
                         ReviewRowView(
                             row: row,
                             isAcceptedByCoach: viewModel.coachConfirmedRowIds.contains(row.id),
-                            // PHASE 2.6 v1.14: wire the inline ✓ accept
-                            // button. Only meaningful for likelyCorrect
-                            // rows; the row view hides the button when
-                            // onAccept is nil.
-                            onAccept: row.band == .likelyCorrect ? {
-                                viewModel.acceptLowConfidenceRow(row.id)
-                            } : nil
+                            onAccept: onAcceptCallback
                         ) {
                             viewModel.selectedRow = row
                             viewModel.showReassignSheet = true
