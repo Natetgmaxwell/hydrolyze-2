@@ -41,6 +41,16 @@ final class PairingEngine {
     /// Matches V10's tuned gate from iOS pairing_research/algorithms.swift.
     private let ghostTapThresholdCost: Double = 5.0
 
+    /// PHASE 2.6 v1.16.1: false-start guard. If a lap's wave-relative
+    /// time is more than 1 second BEFORE the wave's send-off, the
+    /// swimmer tapped before they were sent off — false start. The
+    /// engine still assigns the lap (to preserve the v1.9 no-ghost-
+    /// taps invariant in the realistic n=m case), but the confidence
+    /// is 0 so the coach can see it in the review UI and take an
+    /// invalidate action in v1.17 (Slice 3). The 1-second slack
+    /// accounts for clock skew and reaction time.
+    private let minWaveRelativeMs: Int = -1000
+
     /// Pair raw tap times with swimmers per-wave. Replaces
     /// `PairingService.runPairer(...)`.
     ///
@@ -170,13 +180,28 @@ final class PairingEngine {
                     let wa = waveAssignments[i]
                     let lap = laps[assignedCol]
                     let cellCost = cost[i][assignedCol]
+                    // PHASE 2.6 v1.16.1: compute wave-relative time at
+                    // the top so the false-start guard (below) and
+                    // the z-score confidence calc (further below) can
+                    // both reuse it.
+                    let waveRelativeTime = lap.elapsedMs - wa.sendOffOffsetMs
                     let confidence: Int
-                    if cellCost >= ghostTapThresholdCost {
+                    // PHASE 2.6 v1.16.1: false-start guard. Detects
+                    // wave-relative < minWaveRelativeMs and forces
+                    // confidence: 0. The existing cellCost >=
+                    // ghostTapThresholdCost check catches this too
+                    // (via the velocitySpaceCost `guard actualTimeMs > 0`
+                    // path) — this guard is the explicit, named
+                    // detection. The v1.17 "invalidate swimmer/rep"
+                    // coach action (Slice 3) will read confidence 0
+                    // rows and surface them as candidates.
+                    if waveRelativeTime < minWaveRelativeMs {
+                        confidence = 0
+                    } else if cellCost >= ghostTapThresholdCost {
                         confidence = 0
                     } else if let pred = predictions[wa.swimmerId], pred.timeMs > 0 {
                         let sigma = Double(max(pred.sigmaMs, 100))
-                        let waveRelativeTime = Double(lap.elapsedMs - wa.sendOffOffsetMs)
-                        let z = abs(waveRelativeTime - Double(pred.timeMs)) / sigma
+                        let z = abs(Double(waveRelativeTime) - Double(pred.timeMs)) / sigma
                         confidence = max(0, 99 - Int(z * 15))
                     } else {
                         confidence = 50  // no prediction = moderate default

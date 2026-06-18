@@ -415,6 +415,96 @@ func makeWaveAssignment(
     )
 }
 
+/// PHASE 2.6 v1.16.1 — false-start scenario. 1 wave 0 + 1 wave 1
+/// (n=m=2, no dummy rows). The wave 1 tap arrives at T=8s, which
+/// is BEFORE wave 1's send-off (T=10s) — wave-relative = -2s,
+/// well below the minWaveRelativeMs = -1000 guard. The guard
+/// forces confidence: 0 on the false-start assignment. n=m
+/// means no dummies, so the false-start lap IS assigned to a
+/// real swimmer (the wave 1 swimmer) — that's the case the
+/// guard protects. With n<m, the false-start would go to a
+/// dummy-swimmer and the guard wouldn't fire.
+func runFalseStartScenario() {
+    print("\n┌─── Scenario: v1.16 FALSE-START GUARD ───┐")
+    print("│ 1 wave 0 (Mock-Alice) + 1 wave 1 (Mock-Bob)")
+    print("│ 1 wave 0 tap at ~28s + 1 false-start wave 1 tap at T=8s")
+    print("│ Expected: 2 assignments, the false-start has confidence: 0")
+    print("│")
+
+    let wave0Idx = 0  // Mock-Alice
+    let wave1Idx = 1  // Mock-Bob
+
+    var waveAssignments: [WaveAssignment] = []
+    waveAssignments.append(makeWaveAssignment(
+        swimmer: mockSwimmers[wave0Idx], lane: 1,
+        wave: 0, sendOff: 0, intensity: 1.05
+    ))
+    waveAssignments.append(makeWaveAssignment(
+        swimmer: mockSwimmers[wave1Idx], lane: 1,
+        wave: 1, sendOff: sendOffIntervalMs, intensity: 1.05
+    ))
+
+    // Build the 2 laps: 1 normal wave 0 tap + 1 false-start wave 1 tap
+    let wave0Predicted = Double(mockSwimmers[wave0Idx].pbMs) * 1.05
+    let wave0ActualTime = Int(wave0Predicted + gaussianNoise() * 250.0)
+    let laps: [Lap] = [
+        Lap(
+            id: UUID().uuidString,
+            lapNumber: 1,
+            elapsedMs: wave0ActualTime,        // ~28s, wave-relative=28s
+            splitMs: wave0ActualTime
+        ),
+        Lap(
+            id: UUID().uuidString,
+            lapNumber: 2,
+            elapsedMs: 8000,                    // T=8s, wave-relative = 8-10 = -2s (FALSE START)
+            splitMs: 8000
+        )
+    ]
+
+    let predictions: [String: Prediction] = mockSwimmers.reduce(into: [:]) { acc, s in
+        acc[s.id] = Prediction(
+            timeMs: s.pbMs,
+            sigmaMs: 2000,
+            sampleSize: 0,
+            source: .curve,
+            maturity: .none
+        )
+    }
+
+    let result = PairingEngine().pair(
+        laps: laps,
+        waveAssignments: waveAssignments,
+        predictions: predictions,
+        sendOffIntervalMs: sendOffIntervalMs
+    )
+
+    print("│ Laps fed in: \(laps.count)")
+    print("│ Pairing result:")
+    print("│   assignments:        \(result.assignments.count)  \(result.assignments.count == 2 ? "✓" : "✗ EXPECTED 2")")
+    print("│   unassignedLaps:     \(result.unassignedLaps.count)  \(result.unassignedLaps.count == 0 ? "✓ (no ghost taps)" : "✗ GHOST TAPS")")
+    print("│   unassignedSwimmers: \(result.unassignedSwimmers.count)  \(result.unassignedSwimmers.count == 0 ? "✓ (no missed)" : "✗ MISSED SWIMMERS")")
+    print("│")
+
+    // Verify the false-start assignment has confidence: 0
+    let falseStartAssignment = result.assignments.first { a in
+        a.lap.elapsedMs == 8000
+    }
+    if let fs = falseStartAssignment {
+        let mark = fs.confidence == 0 ? "✓" : "✗"
+        print("│ \(mark) false-start lap (T=8s, wave-relative=-2s): confidence=\(fs.confidence) (expected 0)")
+        print("│     wave=\(fs.waveNumber), swimmer=\(fs.swimmerId.uuidString.prefix(8))…")
+    } else {
+        print("│ ✗ false-start lap not found in assignments (it's in unassignedLaps instead — guard didn't fire as designed)")
+    }
+
+    let passed = result.assignments.count == 2
+        && result.unassignedLaps.count == 0
+        && result.unassignedSwimmers.count == 0
+        && (falseStartAssignment?.confidence == 0)
+    print("└─── Verdict: \(passed ? "PASS ✓" : "FAIL ✗") ───┘")
+}
+
 // MARK: - Main
 
 @main
@@ -475,6 +565,14 @@ struct PairingEngineCLITest {
             wave1Indices: [],
             wave2Indices: []
         )
+
+        // PHASE 2.6 v1.16.1 — false-start guard. The v1.16 Slice 2
+        // detection fires when wave-relative < minWaveRelativeMs.
+        // This scenario (1 wave 0 + 1 wave 1, n=m) is the case
+        // where the false-start gets assigned to a real swimmer
+        // (not a dummy), so the guard's confidence: 0 is the
+        // actual signal the v1.17 invalidate action will read.
+        runFalseStartScenario()
 
         // Scenario D (v1.11 FLYWHEEL): the HistoricalTimePredictor
         // produces EWMA-driven predictions (not static PB-based) when
