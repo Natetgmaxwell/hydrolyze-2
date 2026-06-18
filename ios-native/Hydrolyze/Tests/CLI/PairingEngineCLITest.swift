@@ -270,6 +270,128 @@ func runScenario(
     print("└─── Verdict: \(passed ? "PASS ✓" : "FAIL ✗") ───┘")
 }
 
+// PHASE 2.6 v1.16.0 — Multi-wave scenario runner. Mirrors runScenario
+// but takes 3 wave index lists and uses per-wave sendOff:
+//   wave 0: sendOff=0
+//   wave 1: sendOff=sendOffIntervalMs (10s)
+//   wave 2: sendOff=2*sendOffIntervalMs (20s)
+// Same v1.9 invariant: every swimmer gets exactly one lap, no
+// ghost taps, no missed swimmers. The test: does the v1.10
+// single-Hungarian (wave-relative time as cost dimension) scale
+// to 3+ waves?
+func run3WaveScenario(
+    name: String,
+    wave0Indices: [Int],
+    wave1Indices: [Int],
+    wave2Indices: [Int],
+    intensityMultiplier: Double = 1.05
+) {
+    print("\n┌─── Scenario: \(name) ───┐")
+    print("│ Wave 0 (\(wave0Indices.count) swimmers, sendOff=0)")
+    for i in wave0Indices { print("│   \(mockSwimmers[i].firstName) PB=\(mockSwimmers[i].pbMs)ms") }
+    print("│ Wave 1 (\(wave1Indices.count) swimmers, sendOff=\(sendOffIntervalMs)ms)")
+    for i in wave1Indices { print("│   \(mockSwimmers[i].firstName) PB=\(mockSwimmers[i].pbMs)ms") }
+    print("│ Wave 2 (\(wave2Indices.count) swimmers, sendOff=\(2 * sendOffIntervalMs)ms)")
+    for i in wave2Indices { print("│   \(mockSwimmers[i].firstName) PB=\(mockSwimmers[i].pbMs)ms") }
+    print("│")
+
+    // Build wave assignments — 3 waves, sendOff scales with wave index
+    var waveAssignments: [WaveAssignment] = []
+    for (i, idx) in wave0Indices.enumerated() {
+        waveAssignments.append(makeWaveAssignment(
+            swimmer: mockSwimmers[idx], lane: i + 1,
+            wave: 0, sendOff: 0, intensity: intensityMultiplier
+        ))
+    }
+    for (i, idx) in wave1Indices.enumerated() {
+        waveAssignments.append(makeWaveAssignment(
+            swimmer: mockSwimmers[idx], lane: i + 1,
+            wave: 1, sendOff: sendOffIntervalMs, intensity: intensityMultiplier
+        ))
+    }
+    for (i, idx) in wave2Indices.enumerated() {
+        waveAssignments.append(makeWaveAssignment(
+            swimmer: mockSwimmers[idx], lane: i + 1,
+            wave: 2, sendOff: 2 * sendOffIntervalMs, intensity: intensityMultiplier
+        ))
+    }
+
+    // Build plausible laps — same variance pattern as the 2-wave
+    // case, but with 3 send-off groups.
+    var laps: [Lap] = []
+    var lapNumber = 1
+    let waveLists: [(wave: Int, indices: [Int])] = [
+        (0, wave0Indices),
+        (1, wave1Indices),
+        (2, wave2Indices)
+    ]
+    for (wave, indices) in waveLists {
+        for idx in indices {
+            let pb = mockSwimmers[idx].pbMs
+            let predicted = Double(pb) * intensityMultiplier
+            let actualTime = Int(predicted + gaussianNoise() * 250.0)
+            laps.append(Lap(
+                id: UUID().uuidString,
+                lapNumber: lapNumber,
+                elapsedMs: wave * sendOffIntervalMs + actualTime,
+                splitMs: actualTime
+            ))
+            lapNumber += 1
+        }
+    }
+
+    // Build predictions map (PB-based, same as 2-wave scenario)
+    let predictions: [String: Prediction] = mockSwimmers.reduce(into: [:]) { acc, s in
+        acc[s.id] = Prediction(
+            timeMs: s.pbMs,
+            sigmaMs: 2000,
+            sampleSize: 0,
+            source: .curve,
+            maturity: .none
+        )
+    }
+
+    // Run the engine — v1.10 single-Hungarian, wave-relative cost
+    let engine = PairingEngine()
+    let result = engine.pair(
+        laps: laps,
+        waveAssignments: waveAssignments,
+        predictions: predictions,
+        sendOffIntervalMs: sendOffIntervalMs
+    )
+
+    // Report — same shape as 2-wave scenario, but expected count
+    // is total swimmers across all 3 waves
+    let totalSwimmers = wave0Indices.count + wave1Indices.count + wave2Indices.count
+    print("│")
+    print("│ Laps fed in: \(laps.count)")
+    print("│ Pairing result:")
+    print("│   assignments:        \(result.assignments.count)  \(result.assignments.count == totalSwimmers ? "✓" : "✗ EXPECTED \(totalSwimmers)")")
+    print("│   unassignedLaps:     \(result.unassignedLaps.count)  \(result.unassignedLaps.count == 0 ? "✓ (no ghost taps)" : "✗ GHOST TAPS")")
+    print("│   unassignedSwimmers: \(result.unassignedSwimmers.count)  \(result.unassignedSwimmers.count == 0 ? "✓ (no missed)" : "✗ MISSED SWIMMERS")")
+    print("│")
+
+    // Per-swimmer pairing check
+    print("│ Per-swimmer pairing (did each swimmer get their own lap?):")
+    let assignedSwimmerIds = Set(result.assignments.map { $0.swimmerId })
+    var allMatched = true
+    for (_, s) in mockSwimmers.enumerated() {
+        let expectedUUID = UUID(uuidString: s.id) ?? UUID()
+        let matched = assignedSwimmerIds.contains(expectedUUID)
+        let mark = matched ? "✓" : "✗"
+        if !matched { allMatched = false }
+        print("│   \(mark) \(s.firstName.padding(toLength: 14, withPad: " ", startingAt: 0)) PB=\(s.pbMs)ms")
+    }
+    print("│")
+
+    // Verdict — same as 2-wave: every swimmer matched, no ghost, no miss
+    let passed = result.assignments.count == totalSwimmers
+        && result.unassignedLaps.count == 0
+        && result.unassignedSwimmers.count == 0
+        && allMatched
+    print("└─── Verdict: \(passed ? "PASS ✓" : "FAIL ✗") ───┘")
+}
+
 func makeWaveAssignment(
     swimmer: MockSwimmer,
     lane: Int,
@@ -322,6 +444,36 @@ struct PairingEngineCLITest {
             name: "8+0 (all wave 0)",
             wave0Indices: [0, 1, 2, 3, 4, 5, 6, 7],
             wave1Indices: []
+        )
+
+        // PHASE 2.6 v1.16.0 — 3-wave scenarios. The 2-wave coverage
+        // (6+2, 0+8, 8+0) was the v1.10 contract. The v1.16
+        // hardening adds 3-wave coverage to prove the wave-relative
+        // cost function scales to N waves. Note: the spec calls for
+        // "3+3+3 symmetric" but 8 mock swimmers = 3+3+3 is 9, so
+        // the closest symmetric distribution is 3+3+2 (8 swimmers,
+        // all 3 waves present). The line-finish case from the spec
+        // moves to v1.17 Slice 3 (it needs a line-finish DETECTOR,
+        // not a pairing test — 8 swimmers / 8 unique laps means the
+        // Hungarian is a 1:1 mapping and confidence is a function
+        // of (actual, prediction) per row, not inter-lap proximity).
+        run3WaveScenario(
+            name: "4+2+2 (3-wave asymmetric)",
+            wave0Indices: [0, 1, 2, 3],   // Mock-Alice..Mock-Diana
+            wave1Indices: [4, 5],         // Mock-Ethan, Mock-Fiona
+            wave2Indices: [6, 7]          // Mock-George, Mock-Hannah
+        )
+        run3WaveScenario(
+            name: "3+3+2 (3-wave asymmetric — closest symmetric with 8 swimmers)",
+            wave0Indices: [0, 1, 2],       // Mock-Alice..Mock-Charlie
+            wave1Indices: [3, 4, 5],      // Mock-Diana..Mock-Fiona
+            wave2Indices: [6, 7]          // Mock-George, Mock-Hannah
+        )
+        run3WaveScenario(
+            name: "8+0+0 (3-wave degenerate — only wave 0 has swimmers)",
+            wave0Indices: [0, 1, 2, 3, 4, 5, 6, 7],
+            wave1Indices: [],
+            wave2Indices: []
         )
 
         // Scenario D (v1.11 FLYWHEEL): the HistoricalTimePredictor
