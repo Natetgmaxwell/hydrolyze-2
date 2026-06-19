@@ -19,6 +19,16 @@ final class TimingService {
             let pace_distance: Int?
             let workout_set_id: String?
             let confidence: Int?
+            /// PHASE 2.6 v1.17.0 (S5): write the engine's raw
+            /// pairing probability alongside the bucketed
+            /// confidence. The single-swimmer path hardcodes
+            /// confidence: 100 (a single swimmer with no
+            /// Hungarian ambiguity is, by definition, a 100%
+            /// confident pairing), so the matching Gaussian is
+            /// exp(0) = 1.0. Future work could derive this from
+            /// the actual lap vs PB z-score, but for v1.17.0
+            /// the single-swimmer path stays a clean 1.0.
+            let assignment_confidence: Double?
         }
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let rows = session.laps.map { lap in
@@ -33,7 +43,8 @@ final class TimingService {
                 stroke: session.stroke,
                 pace_distance: session.distance,
                 workout_set_id: session.workoutSetId,
-                confidence: 100
+                confidence: 100,
+                assignment_confidence: 1.0
             )
         }
         try await supabase.from("recorded_times")
@@ -62,6 +73,15 @@ final class TimingService {
             let pace_distance: Int?
             let created_at: String
             let confidence: Int
+            /// PHASE 2.6 v1.17.0 (S5): the engine's Gaussian
+            /// pairing probability (exp(-z²/2) where z is the
+            /// velocity-space z-score). The S4 cost function
+            /// emits this on every LapAssignment; we forward it
+            /// to the DB so the iOS review flow can read it
+            /// back. The DB column recorded_times.assignment_confidence
+            /// was already in the schema (double precision,
+            /// nullable); v1.17's RecordedTime model decodes it.
+            let assignment_confidence: Double
             let lap_order: Int
             let wave_number: Int
         }
@@ -80,11 +100,12 @@ final class TimingService {
                 pace_distance: distance,
                 created_at: timestamp,
                 confidence: assignment.confidence,
+                assignment_confidence: assignment.assignmentConfidence,
                 lap_order: assignment.lap.lapNumber,
                 wave_number: assignment.waveNumber
             )
         }
-        
+
         guard !rows.isEmpty else { return }
         try await supabase.from("recorded_times")
             .insert(rows)
