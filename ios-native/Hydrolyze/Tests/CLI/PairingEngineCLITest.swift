@@ -103,7 +103,14 @@ func makeRecordedTimes(forSwimmer swimmerId: String, setId: String, intensity: S
             createdAt: baseDate,
             lapOrder: i,
             pairedSwimmerId: swimmerId,
-            confidence: 95
+            confidence: 95,
+            // PHASE 2.6 v1.17.0: see the e2e RecordedTime literal
+            // for the rationale. Same pattern: synthetic values
+            // that mirror what the live DB's recorded_times has
+            // for these swimmers.
+            source: "auto",
+            assignmentConfidence: 0.95,
+            stroke: "Free"
         )
     }
 }
@@ -140,7 +147,6 @@ func makeWorkoutSet() -> WorkoutSet {
         intensityLabel: "moderate",
         paceTargetDistance: 50,
         gear: "none",
-        isCompleted: false,
         createdAt: ISO8601DateFormatter().string(from: Date())
     )
 }
@@ -842,7 +848,16 @@ struct PairingEngineCLITest {
                     createdAt: isoFormatter.string(from: createdAt),
                     lapOrder: i,
                     pairedSwimmerId: swimmerId,
-                    confidence: 95
+                    confidence: 95,
+                    // PHASE 2.6 v1.17.0: the live DB's recorded_times
+                    // has these columns. The seed script that
+                    // populated liveTimes backfilled them; mirror
+                    // the live pattern here so the test matches
+                    // production data. The iOS model now decodes
+                    // them via the v1.17 model upgrade.
+                    source: "auto",
+                    assignmentConfidence: 0.95,
+                    stroke: "Free"
                 ))
             }
         }
@@ -1141,7 +1156,6 @@ struct PairingEngineCLITest {
             intensityLabel: "moderate",
             paceTargetDistance: 100,
             gear: "none",
-            isCompleted: false,
             createdAt: ISO8601DateFormatter().string(from: Date())
         )
         if let pred = pbService.fetchPrediction(

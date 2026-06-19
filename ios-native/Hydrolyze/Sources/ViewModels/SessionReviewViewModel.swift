@@ -491,30 +491,37 @@ final class SessionReviewViewModel: ObservableObject {
     /// judgment feeds back into the predictor, which reduces
     /// future "needs review" rows.
     ///
-    /// For v1.13.1, the workoutSet is passed in by the caller
-    /// (the SessionReviewView loads it from the row's
-    /// workoutSetId). Hardcoded 50m Free support: this function
-    /// is built for the current 50m Free test scenario. v1.14
-    /// will generalize to arbitrary stroke/distance.
+    /// PHASE 2.6 v1.17.0: distance and stroke now come from the
+    /// recordedTime row (pace_distance and stroke, after the
+    /// v1.17 model upgrade) rather than a placeholder WorkoutSet
+    /// constructed at the call site. The placeholder was
+    /// hardcoded 50m Free, which made v1.13.1 unusable for any
+    /// other stroke/distance. The fallback values (50 / "Free")
+    /// are still applied if the recordedTime has NULL for either
+    /// field (e.g., very old data before the v1.17 migration
+    /// backfilled them).
     func markRowIntensity(
         timeId: UUID,
         swimmerId: String,
         intensity: String,
         lapTimeMs: Int,
         gear: String?,
-        workoutSet: WorkoutSet
+        distance: Int?,
+        stroke: String?
     ) async {
         do {
+            let resolvedDistance = distance ?? 50
+            let resolvedStroke = stroke ?? "Free"
             let swimmerService = SwimmerService()
             let pb = try await swimmerService.upsertPersonalBest(
                 swimmerId: swimmerId,
-                distance: workoutSet.distance ?? 0,
-                stroke: workoutSet.stroke ?? "Free",
+                distance: resolvedDistance,
+                stroke: resolvedStroke,
                 timeMs: lapTimeMs,
                 gear: gear,
                 intensity: intensity
             )
-            print("[Review] markRowIntensity: wrote coach-confirmed PB — \(swimmerId.prefix(8))… 50 Free @ \(intensity) @ \(gear ?? "none") = \(lapTimeMs)ms (PB id=\(pb.id.prefix(8))…)")
+            print("[Review] markRowIntensity: wrote coach-confirmed PB — \(swimmerId.prefix(8))… \(resolvedDistance)m \(resolvedStroke) @ \(intensity) @ \(gear ?? "none") = \(lapTimeMs)ms (PB id=\(pb.id.prefix(8))…)")
             // Mark the row as coach-accepted. The confidence
             // still shows the original low value (so the coach
             // remembers this was uncertain), but the row gets

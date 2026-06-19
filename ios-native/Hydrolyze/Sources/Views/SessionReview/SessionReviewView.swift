@@ -160,29 +160,21 @@ struct SessionReviewView: View {
                             // PB at the chosen intensity. The lap time
                             // becomes a new (swimmer, intensity) PB,
                             // used by the predictor on the next session.
-                            // For v1.13.1, hardcoded 50m Free (the
-                            // current test scenario). v1.14 will
-                            // generalize to arbitrary stroke/distance.
+                            //
+                            // PHASE 2.6 v1.17.0: pass real distance and
+                            // stroke from the recordedTime row (after
+                            // the model upgrade). The v1.13.1 placeholder
+                            // WorkoutSet is gone; the function takes
+                            // Int? / String? directly and falls back to
+                            // 50m / "Free" if missing.
                             await viewModel.markRowIntensity(
                                 timeId: UUID(uuidString: row.id) ?? UUID(),
                                 swimmerId: row.recordedTime.pairedSwimmerId ?? row.recordedTime.swimmerId ?? "",
                                 intensity: intensity,
                                 lapTimeMs: row.recordedTime.timeMs,
                                 gear: row.recordedTime.gear,
-                                workoutSet: WorkoutSet(
-                                    id: row.recordedTime.workoutSetId ?? "unknown",
-                                    workoutId: "unknown",
-                                    orderIndex: 0,
-                                    reps: 1,
-                                    distance: 50,
-                                    stroke: "Free",
-                                    intervalText: nil,
-                                    intensityType: nil,
-                                    intensityLabel: row.recordedTime.intensity,
-                                    paceTargetDistance: 50,
-                                    gear: row.recordedTime.gear,
-                                    createdAt: ISO8601DateFormatter().string(from: Date())
-                                )
+                                distance: row.recordedTime.paceDistance,
+                                stroke: row.recordedTime.stroke
                             )
                         }
                         ReviewRowView(
