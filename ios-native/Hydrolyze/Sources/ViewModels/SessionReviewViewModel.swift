@@ -443,13 +443,25 @@ final class SessionReviewViewModel: ObservableObject {
             // to 1 — a real 1% confidence, not the 100% the local
             // override set. Switching to Int matches the column type
             // and the local override value.
+            //
+            // PHASE 2.6 v1.17.0 (S5.5): the engine's Gaussian
+            // assignmentConfidence rides alongside. A coach
+            // reassign is, by definition, a 100%-confident
+            // pairing (the coach says "this is the right
+            // swimmer"), so the matching Gaussian is 1.0
+            // (exp(0²/2) = 1.0). Without this write, a reassigned
+            // row has confidence=100 and assignment_confidence=
+            // NULL — the engine→DB→iOS loop from S5 has a hole
+            // for the reassign path. 1-line fix, closes it.
             struct Update: Encodable {
                 let pairedSwimmerId: String
                 let confidence: Int
+                let assignmentConfidence: Double
             }
             let payload = Update(
                 pairedSwimmerId: toSwimmerId.uuidString,
-                confidence: 100
+                confidence: 100,
+                assignmentConfidence: 1.0
             )
 
             try await supabase.from("recorded_times")
