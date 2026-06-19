@@ -529,16 +529,40 @@ final class SessionReviewViewModel: ObservableObject {
         }
         guard let sessionId = sessionId else { return }
 
-        do {
-            struct SessionUpdate: Encodable {
-                let reviewedAt: String
+        struct SessionUpdate: Encodable {
+            let reviewedAt: String
+        }
+
+        // PHASE 2.6 v1.14 hotfix: client-side retry on PostgREST
+        // schema-cache miss. Hosted Supabase PostgREST has 4
+        // backend connections but only 1 LISTENs on the 'pgrst'
+        // channel. The pg_cron 'reload-pgrst-schema' job fires
+        // every 5 minutes, but a request can land on a non-LISTEN
+        // worker with stale cache. The error message has
+        // "schema cache" in it (PostgREST PGRST205). Retry up
+        // to 3 times with 2s sleep between, so the user never
+        // sees the transient error. After 3 attempts
+        // errorMessage is set with the final error as before.
+        // Other error types (network, RLS, etc.) fail fast —
+        // no retry, the user gets the error immediately.
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            do {
+                try await supabase.from("sessions")
+                    .update(SessionUpdate(reviewedAt: ISO8601DateFormatter().string(from: Date())))
+                    .eq("id", value: sessionId)
+                    .execute()
+                return  // success
+            } catch {
+                let msg = error.localizedDescription
+                let isSchemaCacheError = msg.contains("schema cache")
+                if attempt < maxAttempts && isSchemaCacheError {
+                    try? await Task.sleep(for: .seconds(2))
+                    continue
+                }
+                errorMessage = msg
+                return
             }
-            try await supabase.from("sessions")
-                .update(SessionUpdate(reviewedAt: ISO8601DateFormatter().string(from: Date())))
-                .eq("id", value: sessionId)
-                .execute()
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 }
