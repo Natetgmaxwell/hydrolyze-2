@@ -500,14 +500,42 @@ func runFalseStartScenario() {
         let mark = fs.confidence == 0 ? "✓" : "✗"
         print("│ \(mark) false-start lap (T=8s, wave-relative=-2s): confidence=\(fs.confidence) (expected 0)")
         print("│     wave=\(fs.waveNumber), swimmer=\(fs.swimmerId.uuidString.prefix(8))…")
+        // PHASE 2.6 v1.17.0 (S4): verify the Gaussian
+        // assignmentConfidence is 0 in the failure case. The
+        // false-start triggers the wave-relative < minWaveRelativeMs
+        // guard before the z-score is even computed, so the engine
+        // leaves assignmentConfidence at its 0.0 default. This
+        // is the failure-case half of the S4 contract.
+        let acMark = fs.assignmentConfidence == 0.0 ? "✓" : "✗"
+        print("│ \(acMark) false-start assignmentConfidence=\(String(format: "%.4f", fs.assignmentConfidence)) (expected 0.0)")
     } else {
         print("│ ✗ false-start lap not found in assignments (it's in unassignedLaps instead — guard didn't fire as designed)")
+    }
+
+    // PHASE 2.6 v1.17.0 (S4): also verify the SUCCESS-case
+    // assignmentConfidence. The wave 0 tap is ~28s (PB-derived
+    // prediction ~28s). The z-score should be small (well under
+    // 1.0), so the Gaussian should be > 0.6 (exp(-1²/2) = 0.61).
+    // The exact value depends on the Gaussian noise call, but
+    // anything in (0.0, 1.0) with a z < ~1.5 is the success case.
+    let wave0Assignment = result.assignments.first { a in
+        a.lap.elapsedMs == wave0ActualTime
+    }
+    if let w0 = wave0Assignment {
+        let ac = w0.assignmentConfidence
+        let inRange = ac > 0.0 && ac <= 1.0
+        let mark = inRange ? "✓" : "✗"
+        print("│ \(mark) wave 0 tap (T≈\(wave0ActualTime)ms) assignmentConfidence=\(String(format: "%.4f", ac)) (expected in (0.0, 1.0])")
+    } else {
+        print("│ ✗ wave 0 tap not found in assignments (test setup error)")
     }
 
     let passed = result.assignments.count == 2
         && result.unassignedLaps.count == 0
         && result.unassignedSwimmers.count == 0
         && (falseStartAssignment?.confidence == 0)
+        && (falseStartAssignment?.assignmentConfidence == 0.0)
+        && (wave0Assignment.map { $0.assignmentConfidence > 0.0 && $0.assignmentConfidence <= 1.0 } ?? false)
     print("└─── Verdict: \(passed ? "PASS ✓" : "FAIL ✗") ───┘")
 }
 

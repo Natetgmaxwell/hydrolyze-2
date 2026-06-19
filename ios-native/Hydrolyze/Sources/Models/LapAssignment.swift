@@ -34,6 +34,26 @@ struct LapAssignment: Identifiable, Hashable {
     let lap: Lap
     var swimmerId: UUID
     var confidence: Int
+    /// PHASE 2.6 v1.17.0 (S4): the raw pairing probability as a
+    /// Double in [0.0, 1.0], derived from the z-score via the
+    /// standard Gaussian: `exp(-z²/2)`. Finer precision than the
+    /// existing `confidence: Int` (which is bucketed 0-99 via
+    /// `99 - z*15` and underlies the v1.14 review UI's 80/50
+    /// thresholds).
+    ///
+    /// The two values are different views of the same z-score:
+    ///   - confidence: Int       — bucketed, used by the review UI
+    ///                            (the 80/50 auto/likelyCorrect/likelyWrong
+    ///                            bands). Stable contract.
+    ///   - assignmentConfidence: Double — Gaussian, for future
+    ///                            work: analytics, calibration, or
+    ///                            a future v1.18+ review UI that
+    ///                            wants finer-grained bands.
+    ///
+    /// The Hungarian cost matrix is unchanged. The engine still
+    /// picks the same assignments; we just emit a more precise
+    /// confidence alongside the integer for downstream consumers.
+    var assignmentConfidence: Double
     var confidenceLevel: ConfidenceLevel
     var workoutSetId: String?
     var waveNumber: Int
@@ -54,14 +74,28 @@ struct LapAssignment: Identifiable, Hashable {
         }
     }
 
-    init(id: String, lap: Lap, swimmerId: UUID, confidence: Int, workoutSetId: String?, waveNumber: Int) {
+    init(id: String, lap: Lap, swimmerId: UUID, confidence: Int,
+         assignmentConfidence: Double, workoutSetId: String?, waveNumber: Int) {
         self.id = id
         self.lap = lap
         self.swimmerId = swimmerId
         self.confidence = confidence
+        self.assignmentConfidence = assignmentConfidence
         self.confidenceLevel = ConfidenceLevel(from: confidence)
         self.workoutSetId = workoutSetId
         self.waveNumber = waveNumber
+    }
+
+    /// PHASE 2.6 v1.17.0 (S4): backward-compat init for callers
+    /// that don't yet supply assignmentConfidence. Defaults to 0.0
+    /// (the most conservative Gaussian value). The engine itself
+    /// always supplies the computed Gaussian; this init exists
+    /// for the missed-tap imputation path and any test code.
+    init(id: String, lap: Lap, swimmerId: UUID, confidence: Int,
+         workoutSetId: String?, waveNumber: Int) {
+        self.init(id: id, lap: lap, swimmerId: swimmerId,
+                  confidence: confidence, assignmentConfidence: 0.0,
+                  workoutSetId: workoutSetId, waveNumber: waveNumber)
     }
 
     func hash(into hasher: inout Hasher) {

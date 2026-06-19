@@ -186,6 +186,19 @@ final class PairingEngine {
                     // both reuse it.
                     let waveRelativeTime = lap.elapsedMs - wa.sendOffOffsetMs
                     let confidence: Int
+                    // PHASE 2.6 v1.17.0 (S4): the Gaussian pairing
+                    // probability. Computed alongside the integer
+                    // confidence; same z-score, different formula.
+                    // exp(-z²/2) is the standard statistical
+                    // probability that an observation is drawn from
+                    // the predicted distribution. Finer precision
+                    // than the bucketed 0-99 integer. The review UI
+                    // still uses the integer (and its 80/50
+                    // thresholds); this Gaussian is for future
+                    // analytics and a possible future fine-grained
+                    // band system. Set to 0.0 in the failure cases
+                    // (false-start, ghost-tap) where z is undefined.
+                    var assignmentConfidence: Double = 0.0
                     // PHASE 2.6 v1.16.1: false-start guard. Detects
                     // wave-relative < minWaveRelativeMs and forces
                     // confidence: 0. The existing cellCost >=
@@ -203,8 +216,14 @@ final class PairingEngine {
                         let sigma = Double(max(pred.sigmaMs, 100))
                         let z = abs(Double(waveRelativeTime) - Double(pred.timeMs)) / sigma
                         confidence = max(0, 99 - Int(z * 15))
+                        assignmentConfidence = exp(-z * z / 2)
                     } else {
                         confidence = 50  // no prediction = moderate default
+                        // 50/100 on the integer scale ≈ 0.5 on the
+                        // Gaussian scale (a coin flip for the
+                        // prediction-less case). Matches the spirit
+                        // of the existing default.
+                        assignmentConfidence = 0.5
                     }
                     let swimmerUUID = UUID(uuidString: wa.swimmerId) ?? UUID()
                     allAssignments.append(LapAssignment(
@@ -212,6 +231,7 @@ final class PairingEngine {
                         lap: lap,
                         swimmerId: swimmerUUID,
                         confidence: confidence,
+                        assignmentConfidence: assignmentConfidence,
                         workoutSetId: wa.workoutSetId,
                         waveNumber: wa.waveNumber
                     ))
@@ -233,6 +253,13 @@ final class PairingEngine {
                         lap: imputedLap,
                         swimmerId: swimmerUUID,
                         confidence: 0,
+                        // Imputed misses have no real pairing to
+                        // measure Gaussian against; 0.0 is the
+                        // conservative default. The existing
+                        // backward-compat init accepts the
+                        // assignmentConfidence: 0.0 default
+                        // automatically — using it here keeps the
+                        // imputed-miss path unchanged.
                         workoutSetId: wa.workoutSetId,
                         waveNumber: wa.waveNumber
                     ))
