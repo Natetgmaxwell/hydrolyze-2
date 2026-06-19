@@ -49,7 +49,6 @@ struct WorkoutSet: Codable, Identifiable, Sendable {
     var intensityLabel: String?
     var paceTargetDistance: Int?
     var gear: String?
-    var isCompleted: Bool = false
     var createdAt: String
 
     enum CodingKeys: String, CodingKey {

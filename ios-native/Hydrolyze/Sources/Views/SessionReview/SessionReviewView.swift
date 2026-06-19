@@ -181,7 +181,6 @@ struct SessionReviewView: View {
                                     intensityLabel: row.recordedTime.intensity,
                                     paceTargetDistance: 50,
                                     gear: row.recordedTime.gear,
-                                    isCompleted: false,
                                     createdAt: ISO8601DateFormatter().string(from: Date())
                                 )
                             )

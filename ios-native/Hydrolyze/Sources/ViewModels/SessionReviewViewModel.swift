@@ -131,6 +131,11 @@ final class SessionReviewViewModel: ObservableObject {
 
     private let supabase = SupabaseService.shared.client
     private var sessionId: String?
+    /// PHASE 2.6 v1.16.1: cached swimmer name lookup from the load()
+    /// pass. Used by reassign() to set the row's swimmerName after the
+    /// DB write (previously set to the UUID string, which displayed
+    /// the UUID to the coach — see the F1 finding in plans/).
+    private var swimmerNames: [String: String] = [:]
 
     var filteredRows: [ReviewRow] {
         switch filter {
@@ -154,14 +159,6 @@ final class SessionReviewViewModel: ObservableObject {
         case .likelyCorrect: return rows.filter { $0.band == .likelyCorrect }.count
         case .likelyWrong: return rows.filter { $0.band == .likelyWrong }.count
         }
-    }
-
-    var unconfirmedCount: Int {
-        rows.filter { $0.confidence < 50 }.count
-    }
-
-    var canConfirmAll: Bool {
-        unconfirmedCount == 0
     }
 
     /// Track rows the coach has explicitly accepted despite low confidence.
@@ -378,6 +375,13 @@ final class SessionReviewViewModel: ObservableObject {
                 }
             }
 
+            // PHASE 2.6 v1.16.1 hotfix: cache the swimmer name lookup
+            // table so reassign() can resolve the new swimmer's name
+            // from the toSwimmerId (UUID). Without this, reassign()
+            // fell back to the UUID string, which displayed the UUID
+            // to the coach in the row (F1 finding).
+            self.swimmerNames = swimmerNames
+
             rows = times.map { rt in
                 let targetId = rt.pairedSwimmerId ?? rt.swimmerId ?? ""
                 let conf = rt.confidence ?? 0
@@ -413,8 +417,6 @@ final class SessionReviewViewModel: ObservableObject {
                     max(0, i.predicted - i.sendOff)
                 }
 
-                print("[Review] Processing row \(rt.id), swimmer \(targetId), confidence \(conf), predicted=\(predicted ?? -1)")
-
                 return ReviewRow(
                     id: rt.id,
                     recordedTime: rt,
@@ -435,13 +437,19 @@ final class SessionReviewViewModel: ObservableObject {
 
     func reassign(timeId: UUID, toSwimmerId: UUID) async {
         do {
+            // PHASE 2.6 v1.16.1 hotfix: confidence is smallint in the
+            // DB (recorded_times.confidence), not double. The previous
+            // shape used `Double` and sent 1.0, which the DB coerced
+            // to 1 — a real 1% confidence, not the 100% the local
+            // override set. Switching to Int matches the column type
+            // and the local override value.
             struct Update: Encodable {
                 let pairedSwimmerId: String
-                let confidence: Double
+                let confidence: Int
             }
             let payload = Update(
                 pairedSwimmerId: toSwimmerId.uuidString,
-                confidence: 1.0
+                confidence: 100
             )
 
             try await supabase.from("recorded_times")
@@ -451,7 +459,12 @@ final class SessionReviewViewModel: ObservableObject {
 
             if let idx = rows.firstIndex(where: { $0.id == timeId.uuidString }) {
                 rows[idx].confidence = 100
-                rows[idx].swimmerName = toSwimmerId.uuidString
+                // F1 hotfix: look up the new swimmer's name from the
+                // cached swimmerNames dict. Previously set to
+                // toSwimmerId.uuidString, which displayed the UUID to
+                // the coach. Use the resolved name; fall back to the
+                // UUID only if the name isn't cached (defensive).
+                rows[idx].swimmerName = swimmerNames[toSwimmerId.uuidString] ?? toSwimmerId.uuidString
             }
         } catch {
             errorMessage = error.localizedDescription
