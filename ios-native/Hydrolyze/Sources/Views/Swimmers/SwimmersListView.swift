@@ -33,6 +33,7 @@ struct SwimmersListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        Haptics.action()
                         showAddSheet = true
                     } label: {
                         Image(systemName: "plus")
@@ -81,6 +82,9 @@ struct SwimmersListView: View {
             .refreshable {
                 await viewModel.loadSwimmers(coachId: coachId)
             }
+            // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion
+            // change. Cyan-tinted pull-to-refresh indicator.
+            .tint(Color(hex: "09d4ee"))
         }
     }
 
@@ -89,9 +93,12 @@ struct SwimmersListView: View {
         HStack(spacing: 8) {
             ForEach(SwimmerFilter.allCases, id: \.self) { filter in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        viewModel.selectedFilter = filter
-                    }
+                    // Micro-interaction: selection haptic on filter
+                    // change. Pairs with the .animation on the
+                    // pill's foreground/background so the swap
+                    // has a consistent tactile + visual feel.
+                    Haptics.selection()
+                    viewModel.selectedFilter = filter
                     Task { await viewModel.loadSwimmers(coachId: coachId) }
                 } label: {
                     Text(filter.rawValue)
@@ -109,7 +116,13 @@ struct SwimmersListView: View {
                             : Color(hex: "1a2d42")
                         )
                         .cornerRadius(20)
+                        // Animate the foreground + background swap
+                        // when the selected filter changes, so the
+                        // pill "morphs" into the selected state
+                        // instead of jumping.
+                        .animation(Animations.snap, value: viewModel.selectedFilter)
                 }
+                .buttonStyle(PressFeedbackStyle(scale: 0.95, dim: 0.85))
             }
             Spacer()
         }
@@ -163,6 +176,7 @@ struct SwimmersListView: View {
         .buttonStyle(.plain)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
+                Haptics.heavy()
                 swimmerToArchive = swimmer
                 showArchiveAlert = true
             } label: {
@@ -170,8 +184,10 @@ struct SwimmersListView: View {
             }
             .tint(Color(hex: "f59e0b"))
         }
-        // Long-press = delete
+        // Long-press = delete. Haptics.heavy() for destructive
+        // symmetry with the swipe action.
         .onLongPressGesture {
+            Haptics.heavy()
             swimmerToDelete = swimmer
             showDeleteAlert = true
         }
@@ -204,12 +220,26 @@ struct SwimmersListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
+            // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion change.
+            // The person.fill icon breathes (gentle scale 1.0 → 1.06
+            // → 1.0 on a 1.6s cycle) — same pattern as the house icon
+            // in EmptyStateView. "Alive but patient, waiting for you."
+            // The text stays clinical ("No swimmers yet.") per the
+            // warmth-through-motion direction — the breathing is the
+            // warmth, not the copy. See [[concepts/warmth-through-motion]].
             Image(systemName: "person.fill")
                 .font(.system(size: 48))
                 .foregroundColor(Color(hex: "4a6572"))
+                .phaseAnimator([1.0, 1.06, 1.0]) { content, scale in
+                    content.scaleEffect(scale)
+                } animation: { _ in
+                    .easeInOut(duration: 1.6)
+                }
+
             Text("No swimmers yet.")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundColor(Color(hex: "7a9bb0"))
+
             Text("Tap + Add to add your first swimmer")
                 .font(.system(size: 14))
                 .foregroundColor(Color(hex: "4a6572"))

@@ -2,6 +2,12 @@ import SwiftUI
 
 /// WorkoutCard — shows a single scheduled workout with AM/PM badge, title, set summary,
 /// swimmer/set counts, and a "Start Session" CTA button.
+///
+/// Micro-interactions: the AM/PM amber badge has a soft breathing
+/// glow so the card reads as "live, scheduled for today" rather
+/// than "static metadata." The card itself is not tappable —
+/// the explicit Start Session button is the action surface (no
+/// tap ambiguity).
 struct WorkoutCard: View {
     let workout: Workout
     let setCount: Int
@@ -19,6 +25,13 @@ struct WorkoutCard: View {
                         .padding(.vertical, 3)
                         .background(Color(hex: "f59e0b").opacity(0.15))
                         .cornerRadius(4)
+                        // Soft breathing on the amber chip — the
+                        // card "feels scheduled" not "filed."
+                        .phaseAnimator([0.15, 0.25], trigger: true) { content, opacity in
+                            content.background(Color(hex: "f59e0b").opacity(opacity))
+                        } animation: { _ in
+                            .easeInOut(duration: 1.8)
+                        }
 
                     Text(workout.title ?? "Workout")
                         .font(.system(size: 18, weight: .semibold))

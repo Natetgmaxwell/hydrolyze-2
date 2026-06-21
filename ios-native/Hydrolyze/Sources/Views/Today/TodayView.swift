@@ -54,6 +54,11 @@ struct TodayView: View {
                 }
                 .redacted(reason: viewModel.isLoading && viewModel.todayWorkout == nil ? .placeholder : [])
                 .refreshable { await viewModel.loadTodayWorkout(coachId: authManager.coachId) }
+                // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion
+                // change. The pull-to-refresh indicator picks up the
+                // cyan tint automatically — small detail that makes
+                // the surface feel brand-consistent.
+                .tint(Color(hex: "09d4ee"))
             }
             .navigationTitle("TODAY")
             .navigationBarTitleDisplayMode(.inline)

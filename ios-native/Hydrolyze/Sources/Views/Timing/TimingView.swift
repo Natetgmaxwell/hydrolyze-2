@@ -67,21 +67,47 @@ struct TimingView: View {
     /// so the direct-render branch above can use it as a fallback.
     private var timingBody: some View {
         ZStack {
-            Color(hex: "060e18").ignoresSafeArea()
-
+            // PHASE 2.6 v1.17.0: emotional-design Slice 1 — state
+            // transitions are now smooth crossfades (each state's
+            // view carries a .transition modifier, and the ZStack
+            // carries .animation(Animations.springSoft, value:
+            // viewModel.state)). The .setup → .ready → .running
+            // → .saving → .finished sequence feels like the app is
+            // responding, not jumping.
             switch viewModel.state {
             case .setup:
                 setupView
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity
+                    ))
             case .ready:
                 readyView
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity
+                    ))
             case .running:
                 runningView
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity
+                    ))
             case .saving:
                 savingView
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity
+                    ))
             case .finished:
                 finishedView
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity
+                    ))
             }
         }
+        .animation(Animations.springSoft, value: viewModel.state)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // Cancel is shown in .setup and .ready only. During .running, the only
@@ -101,6 +127,12 @@ struct TimingView: View {
         // direct-render branch above is the primary path now.
         .onChange(of: viewModel.hasSavedPairedLaps) { _, saved in
             if saved {
+                // Success haptic when the save completes and we're
+                // about to navigate to SessionReviewView. Pairs
+                // with the cyan flash + the SPAV navigate. The
+                // "ding-ding-rise" pattern signals "your session
+                // is on disk and ready to review."
+                Haptics.success()
                 showReview = true
             }
         }
@@ -137,6 +169,7 @@ struct TimingView: View {
                     .foregroundColor(Color(hex: "4a6572"))
 
                 Button {
+                    Haptics.selection()
                     showSwimmerPicker = true
                 } label: {
                     HStack {
@@ -150,6 +183,8 @@ struct TimingView: View {
                         Spacer()
                         Image(systemName: "chevron.down")
                             .foregroundColor(Color(hex: "4a6572"))
+                            .rotationEffect(.degrees(showSwimmerPicker ? 180 : 0))
+                            .animation(Animations.snap, value: showSwimmerPicker)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
@@ -197,6 +232,7 @@ struct TimingView: View {
             // Confirm button
             Button {
                 if let swimmerId = viewModel.selectedSwimmerId {
+                    Haptics.action()
                     let stroke = prefill?.stroke ?? viewModel.stroke
                     let distance = prefill?.distance ?? viewModel.distance
                     viewModel.confirmSetup(swimmerId: swimmerId, swimmerName: viewModel.selectedSwimmerName ?? "", stroke: stroke, distance: distance)
@@ -254,7 +290,10 @@ struct TimingView: View {
     }
 
     private func strokeChip(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
             Text(label)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(selected ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
@@ -263,6 +302,10 @@ struct TimingView: View {
                 .background(selected ? Color(hex: "09d4ee") : Color(hex: "111d2b"))
                 .cornerRadius(20)
         }
+        // Subtle scale on press for the chip — these are tappable
+        // pills and the scale sells the press without making the
+        // chip "bounce."
+        .buttonStyle(PressFeedbackStyle(scale: 0.94, dim: 0.85))
     }
 
     // MARK: - Ready (Phase 2.5-c: B&W + 20% cyan stopwatch aesthetic)
@@ -299,8 +342,22 @@ struct TimingView: View {
 
             Spacer()
 
-            // Big cyan START button — the 20% splash
+            // Big cyan START button — the 20% splash.
+            //
+            // Micro-interactions:
+            // - Haptics.action() on tap — the loudest "I did the
+            //   thing" signal in the app.
+            // - StrongPressFeedbackStyle — the button compresses
+            //   visibly on press (0.92 scale + dim) so the user
+            //   gets immediate confirmation their tap registered
+            //   before the time actually starts running.
+            // - phaseAnimator breathing — gentle 1.0 → 1.04 → 1.0
+            //   scale on a 1.4s cycle. The button "invites" the
+            //   tap. The animation only runs while the button is
+            //   visible (i.e., in .ready state), so the
+            //   `.running` state isn't visually noisy.
             Button {
+                Haptics.action()
                 viewModel.start()
             } label: {
                 Text("START")
@@ -309,6 +366,24 @@ struct TimingView: View {
                     .frame(width: 200, height: 200)
                     .background(Color(hex: "09d4ee"))
                     .clipShape(Circle())
+                    // Soft outer glow that intensifies with the
+                    // breathing pulse — the button radiates
+                    // energy when it wants to be tapped.
+                    .shadow(
+                        color: Color(hex: "09d4ee").opacity(0.35),
+                        radius: 24, x: 0, y: 0
+                    )
+            }
+            .buttonStyle(StrongPressFeedbackStyle(scale: 0.92))
+            .phaseAnimator([1.0, 1.04, 1.0]) { content, scale in
+                content
+                    .scaleEffect(scale)
+                    .shadow(
+                        color: Color(hex: "09d4ee").opacity(scale == 1.0 ? 0.35 : 0.55),
+                        radius: scale == 1.0 ? 24 : 32, x: 0, y: 0
+                    )
+            } animation: { _ in
+                .easeInOut(duration: 1.4)
             }
 
             Spacer()
@@ -350,8 +425,24 @@ struct TimingView: View {
 
                 Spacer()
 
-                // Big cyan LAP button — the 20% splash
+                // Big cyan LAP button — the 20% splash.
+                //
+                // Micro-interactions:
+                // - Haptics.action() on tap. The LAP tap is the
+                //   coach's PRIMARY action — they press it dozens
+                //   of times per session. The medium impact is
+                //   strong enough to feel through pool-deck noise
+                //   (echoes, splashes, swimmer chatter) without
+                //   being intrusive.
+                // - StrongPressFeedbackStyle — visible press
+                //   compression (0.92 scale + dim) so the tap is
+                //   obviously registered.
+                // - Cyan flash overlay — see `lapFlashOpacity`
+                //   below. Spring-animated (not easeOut) for a
+                //   more "punchy" feel that matches the medium
+                //   haptic.
                 Button {
+                    Haptics.action()
                     viewModel.lap()
                 } label: {
                     Text("LAP")
@@ -361,10 +452,18 @@ struct TimingView: View {
                         .background(Color(hex: "09d4ee"))
                         .clipShape(Circle())
                 }
+                .buttonStyle(StrongPressFeedbackStyle(scale: 0.90))
                 .padding(.bottom, 16)
 
-                // STOP — on-screen only, intentionally subtle (white 0.4)
+                // STOP — on-screen only, intentionally subtle (white 0.4).
+                // Micro-interaction: Haptics.heavy() on tap. The
+                // heavy impact (versus the medium LAP impact) is a
+                // tactile "are you sure?" — STOP is destructive in
+                // the sense that it ends the running state and
+                // moves to the .finished view. A heavier buzz
+                // signals "this is a different kind of action."
                 Button {
+                    Haptics.heavy()
                     viewModel.stop()
                 } label: {
                     Text("STOP")
@@ -373,19 +472,36 @@ struct TimingView: View {
                         .tracking(3)
                         .padding(.bottom, 32)
                 }
+                .buttonStyle(PressFeedbackStyle(scale: 0.96, dim: 0.7))
             }
 
-            // Cyan flash overlay — pulses on each lap for haptic-visual confirmation
+            // Cyan flash overlay — pulses on each lap for
+            // haptic-visual confirmation. Spring-animated (not
+            // easeOut) for a more "punchy" feel that matches the
+            // medium LAP haptic.
             Color(hex: "09d4ee")
                 .opacity(lapFlashOpacity)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
-                .animation(.easeOut(duration: 0.3), value: lapFlashOpacity)
+                .animation(Animations.springSnappy, value: lapFlashOpacity)
         }
         .onChange(of: viewModel.lapFlashTrigger) { _, _ in
-            // Slightly more visible than before — this is the only "loud" color moment
-            lapFlashOpacity = 0.35
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            // Pulse the cyan flash to 0.4 (was 0.35 — slightly
+            // more visible to match the stronger spring) and
+            // decay back via spring. .task(id:) below handles
+            // the decay; this onChange handles the up-spike
+            // synchronously so the flash feels instant on tap.
+            lapFlashOpacity = 0.4
+        }
+        .task(id: viewModel.lapFlashTrigger) {
+            // Wait briefly so the up-spike is visible, then
+            // decay back to 0 with a soft spring. Replaces the
+            // original DispatchQueue.main.asyncAfter approach,
+            // which was brittle (could miss the timing if a
+            // re-render preempted the closure).
+            guard viewModel.lapFlashTrigger > 0 else { return }
+            try? await Task.sleep(for: .milliseconds(120))
+            withAnimation(Animations.springSoft) {
                 lapFlashOpacity = 0
             }
         }
@@ -439,27 +555,22 @@ struct TimingView: View {
         VStack(spacing: 20) {
             Spacer()
 
-            ProgressView()
-                .progressViewStyle(.circular)
-                .controlSize(.large)
-                .tint(Color(hex: "09d4ee"))
-
-            Text("SAVING")
-                .font(.jetBrainsMono(size: 16, weight: .bold))
-                .foregroundColor(.white.opacity(0.7))
-                .tracking(4)
-
-            // Live progress — shows the current save step. The user
-            // can now see WHERE the save is (fetching / pairing /
-            // saving) instead of staring at a generic spinner.
-            if !viewModel.currentSaveStep.rawValue.isEmpty
-                && viewModel.currentSaveStep != .complete {
-                Text(viewModel.currentSaveStep.rawValue)
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
+            // PHASE 2.6 v1.17.0: emotional-design Slice 3 — the
+            // saving state now uses the new PhasedProgressView
+            // component (1-5 dots, active dot pulses cyan). Replaces
+            // the generic ProgressView + rawValue text with a phased
+            // indicator that shows WHERE the save is (fetching /
+            // predicting / pairing / saving / done) instead of a
+            // generic spinner. See plans/emotional-design-coverage-
+            // matrix.md §"Slice 3: phased loading + saving state".
+            // The saveLog tail stays — it's the diagnostic for a
+            // silent hang, not a "what's happening" UI element.
+            PhasedProgressView(
+                phaseCount: 5,
+                currentPhase: savePhaseIndex,
+                phaseLabels: ["FETCHING", "PREDICTING", "PAIRING", "SAVING", "DONE"],
+                currentDescription: viewModel.saveLog.last
+            )
 
             // Live diagnostic log tail (Phase 2.6 v1.5). Shows the
             // last 6 lines of the saveLog so the user can see WHERE
@@ -578,6 +689,22 @@ struct TimingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // PHASE 2.6 v1.17.0: emotional-design Slice 3 helper. Maps the
+    // TimingViewModel's `currentSaveStep` enum (idle / fetching /
+    // predicting / pairing / saving / complete) to a 0-4 phase
+    // index for the PhasedProgressView. The `.idle` state collapses
+    // into phase 0 (FETCHING) — the progress indicator shows what
+    // the save IS doing, not what it hasn't started yet.
+    private var savePhaseIndex: Int {
+        switch viewModel.currentSaveStep {
+        case .idle, .fetching: return 0
+        case .predicting: return 1
+        case .pairing: return 2
+        case .saving: return 3
+        case .complete: return 4
+        }
+    }
+
     // MARK: - Finished (Phase 2.5-c: B&W + 20% cyan stopwatch aesthetic)
 
     private var finishedView: some View {
@@ -611,8 +738,12 @@ struct TimingView: View {
             }
 
             HStack(spacing: 16) {
-                // DISCARD — subtle, no cyan (it's a destructive action, deliberately quieter)
+                // DISCARD — subtle, no cyan (it's a destructive action, deliberately quieter).
+                // Micro-interaction: Haptics.heavy() on tap. The
+                // heavy impact signals "this destroys data" so the
+                // coach is sure before they confirm in the alert.
                 Button {
+                    Haptics.heavy()
                     viewModel.discard()
                 } label: {
                     Text("DISCARD")
@@ -623,9 +754,15 @@ struct TimingView: View {
                         .background(Color.white.opacity(0.1))
                         .cornerRadius(12)
                 }
+                .buttonStyle(PressFeedbackStyle(scale: 0.97, dim: 0.85))
 
-                // SAVE — cyan, the positive action
+                // SAVE — cyan, the positive action.
+                // Micro-interaction: Haptics.action() on tap.
+                // The success haptic (ding-ding-rise) fires when
+                // the save completes and we're about to navigate
+                // to SessionReviewView — see the .onChange below.
                 Button {
+                    Haptics.action()
                     Task {
                         // v1.12: pass live AuthManager.coachPreferences so
                         // the HistoricalTimePredictor uses the coach's
@@ -653,6 +790,7 @@ struct TimingView: View {
                             .cornerRadius(12)
                     }
                 }
+                .buttonStyle(PressFeedbackStyle(scale: 0.97, dim: 0.92))
                 .disabled(viewModel.isSaving)
             }
             .padding(.horizontal, 24)
@@ -684,6 +822,7 @@ struct SwimmerPickerSheet: View {
                         LazyVStack(spacing: 2) {
                             ForEach(viewModel.filteredSwimmers) { swimmer in
                                 Button {
+                                    Haptics.action()
                                     selectedId = swimmer.id
                                     selectedName = swimmer.fullName
                                     dismiss()

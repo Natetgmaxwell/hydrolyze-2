@@ -152,6 +152,13 @@ final class TimingViewModel: ObservableObject {
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     private let timingService = TimingService()
     private let volumeService = VolumeButtonService()
+    /// PHASE 1 (T3.5, 2026-06-20): the per-(swimmer, X, distance, stroke)
+    /// calibration factors. Populated in `save()` from a parallel
+    /// fetch against `swimmer_suits` and `swimmer_starts`. Optional
+    /// because it's set after the async fetch completes; the predictor
+    /// handles a nil calibration as "no calibration applied" (multiplier
+    /// of 1.0), so a missing calibration is safe.
+    private var calibration: CalibrationFactors?
 
     // MARK: - Computed
 
@@ -619,6 +626,17 @@ final class TimingViewModel: ObservableObject {
                     .in("swimmer_id", values: uniqueSwimmerIds)
                     .execute()
 
+                // PHASE 1 (T3.5, 2026-06-20): the 5th parallel fetch.
+                // Calibration factors (suit + start) for these
+                // swimmers. Empty calibration (no `swimmer_suits` /
+                // `swimmer_starts` rows yet) is fine — the predictor
+                // falls back to a multiplier of 1.0 (no adjustment)
+                // when the helper returns nil.
+                let calibration = CalibrationFactors()
+                async let calibrationFetchTask = calibration.prefetch(
+                    forSwimmerIds: uniqueSwimmerIds
+                )
+
                 // The `try` on the tuple await is needed because
                 // each `async let` propagates its throw to the await
                 // point. Without it, the JSONDecoder().decode()
@@ -629,6 +647,8 @@ final class TimingViewModel: ObservableObject {
                 let swimmersResp = try await swimmersResponseTask
                 let recordedTimesResp = try await recordedTimesResponseTask
                 let pbsResp = try await pbsResponseTask
+                _ = try await calibrationFetchTask
+                self.calibration = calibration
 
                 guard let workoutSet = try JSONDecoder().decode([WorkoutSet].self, from: workoutSetResp.data).first else {
                     log("save() FAILED: workout_set not found for current set id")
@@ -656,6 +676,11 @@ final class TimingViewModel: ObservableObject {
                 let pbService = PBService()
                 let intensity = self.intensityLabel ?? "moderate"
                 let gear = "none"  // save flow defaults to no gear
+                // PHASE 1 (T3.5, 2026-06-20): use the calibration
+                // populated by the parallel fetch above. It's in scope
+                // as a local and was awaited, so the cache is ready.
+                // The `self.calibration` field mirrors this for any
+                // future caller that needs the same instance.
                 var livePredictions: [String: Prediction] = [:]
                 var predictorLogs: [String] = []
                 for wa in waveAssignments {
@@ -670,7 +695,8 @@ final class TimingViewModel: ObservableObject {
                         gear: gear,
                         prefs: preferences,
                         recordedTimes: recordedTimes,
-                        pbs: pbs
+                        pbs: pbs,
+                        calibration: calibration
                     ) {
                         livePredictions[wa.swimmerId] = pred
                         let algStr = preferences.predictionAlgorithm == .ema ? "EMA" : "median"
