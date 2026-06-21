@@ -89,3 +89,6 @@ logs/
 # (Xcode calls it "<dirname> 2.xcodeproj" if the dir name has a space).
 # The canonical project is the xcodegen-generated one without a space.
 Hydrolyze 2.xcodeproj/
+
+# Supabase CLI temp cache
+supabase/.temp/
