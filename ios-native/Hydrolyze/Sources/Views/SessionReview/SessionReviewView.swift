@@ -5,7 +5,18 @@ import SwiftUI
 /// Tap a row → bottom sheet to reassign. "Needs Review" tab is default.
 struct SessionReviewView: View {
     @StateObject private var viewModel = SessionReviewViewModel()
+    @Environment(\.dismiss) private var dismiss
     let sessionId: String
+
+    // PHASE 2.6 v1.17.0: Slice 2 of the emotional design plan. The
+    // celebration moment fires after the coach approves all pairing
+    // engine matches (a data-integrity milestone, NOT a state
+    // transition like STOP). Triggered from both the non-alert confirm
+    // path (handleConfirmTap) and the "Confirm Anyway" alert path.
+    // Auto-dismisses back to TodayView after the 1.7s tick-mark
+    // animation completes. See
+    // [[concepts/tick-mark-celebration-pattern]] for the design.
+    @State private var showCelebration = false
 
     var body: some View {
         NavigationStack {
@@ -38,12 +49,36 @@ struct SessionReviewView: View {
                 }
             }
             .alert("Unconfirmed Rows", isPresented: $viewModel.showConfirmWarning) {
-                Button("Cancel", role: .cancel) {}
+                Button("Cancel", role: .cancel) {
+                    Haptics.selection()
+                }
                 Button("Confirm Anyway", role: .destructive) {
-                    Task { await viewModel.confirmAll(force: true) }
+                    Haptics.success()
+                    Task { 
+                        await viewModel.confirmAll(force: true)
+                        // PHASE 2.6 v1.17.0: trigger celebration from
+                        // the alert path too. The handleConfirmTap
+                        // function doesn't run in this branch (the
+                        // alert dismisses and the confirm runs from
+                        // here directly), so we trigger the
+                        // celebration explicitly.
+                        triggerCelebration()
+                    }
                 }
             } message: {
                 Text("\(viewModel.effectiveUnconfirmedCount) row(s) have low confidence. Confirm anyway, or tap individual rows to reassign.")
+            }
+        }
+        // PHASE 2.6 v1.17.0: celebration overlay. Sits on top of
+        // everything including the navigation bar so the tick mark
+        // animation reads as full-screen. .allowsHitTesting(false)
+        // on the celebration component itself keeps the overlay
+        // from blocking any post-celebration taps during the fade.
+        .overlay {
+            if showCelebration {
+                TickMarkCelebrationView()
+                    .transition(.opacity)
+                    .zIndex(1000)
             }
         }
         .task {
@@ -58,7 +93,17 @@ struct SessionReviewView: View {
             // .needsReview case). Each tab gets a (N) count badge.
             ForEach(SessionReviewViewModel.Filter.displayed, id: \.rawValue) { f in
                 Button {
-                    viewModel.filter = f
+                    // Micro-interaction: selection haptic on tab
+                    // change. The .animation on the background
+                    // and foreground below makes the swap
+                    // visually smooth (cyan background slides
+                    // into the selected tab). Together the
+                    // haptic + the background morph = the user
+                    // feels the filter change in two ways.
+                    Haptics.selection()
+                    withAnimation(Animations.snap) {
+                        viewModel.filter = f
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Text(f.rawValue)
@@ -79,6 +124,11 @@ struct SessionReviewView: View {
                         Color(hex: "0d2847") : Color.clear
                     )
                     .cornerRadius(8)
+                    // Animate the (N) count badge color too —
+                    // when the user switches tabs and the count
+                    // values swap, the badges cross-fade into
+                    // the new values.
+                    .animation(Animations.snap, value: viewModel.filter)
                 }
             }
         }
@@ -90,12 +140,20 @@ struct SessionReviewView: View {
     private var rowsList: some View {
         ScrollView {
             if viewModel.isLoading && viewModel.rows.isEmpty {
-                // Loading state — visible feedback so the user knows the
-                // page is fetching, not stuck.
+                // PHASE 2.6 v1.17.0: emotional-design Slice 3 — the
+                // loading state uses the PhasedProgressView (single
+                // pulsing dot) instead of a generic ProgressView.
+                // The coach sees "we're fetching your session" rather
+                // than a generic spinner. The label stays clinical
+                // ("Loading review…") per the warmth-through-motion
+                // direction.
                 VStack(spacing: 12) {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(Color(hex: "09d4ee"))
+                    PhasedProgressView(
+                        phaseCount: 1,
+                        currentPhase: 0,
+                        phaseLabels: [],
+                        currentDescription: nil
+                    )
                     Text("Loading review…")
                         .font(.system(size: 13))
                         .foregroundColor(Color(hex: "4a6572"))
@@ -149,9 +207,11 @@ struct SessionReviewView: View {
                         // trailing closures. Let-bindings for readability
                         // — onMarkIntensity is 25+ lines of arg-packing.
                         let onAcceptCallback: (() -> Void)? = row.band == .likelyCorrect ? {
+                            Haptics.success()
                             viewModel.acceptLowConfidenceRow(row.id)
                         } : nil
                         let onTapCallback: () -> Void = {
+                            Haptics.tap()
                             viewModel.selectedRow = row
                             viewModel.showReassignSheet = true
                         }
@@ -176,6 +236,7 @@ struct SessionReviewView: View {
                                 distance: row.recordedTime.paceDistance,
                                 stroke: row.recordedTime.stroke
                             )
+                            Haptics.success()
                         }
                         ReviewRowView(
                             row: row,
@@ -191,10 +252,19 @@ struct SessionReviewView: View {
                             onAccept: onAcceptCallback,
                             onMarkIntensity: onMarkIntensityCallback
                         )
+                        // PHASE 2.6 v1.14: row enter/exit transition.
+                        // When the user bulk-accepts rows or switches
+                        // filters, rows fade + slide into their new
+                        // positions instead of just appearing.
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal: .opacity.combined(with: .scale(scale: 0.95))
+                        ))
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 80)
+                .animation(Animations.springSoft, value: viewModel.filteredRows)
             }
         }
     }
@@ -211,10 +281,33 @@ struct SessionReviewView: View {
             // behavior depend on the row mix (see ConfirmButtonState).
             // The "Confirm Anyway" wording is gone — the button now
             // says what's about to happen.
+            //
+            // Micro-interactions:
+            // - Haptics.warning() when the button is in the
+            //   .withFlagged state (you're about to save with
+            //   unconfirmed rows). Tactile "are you sure?"
+            // - Haptics.success() on .allAuto (clean save).
+            // - Haptics.tap() on the button press itself.
+            // - StrongPressFeedbackStyle — the button compresses
+            //   visibly on press.
             if case .empty = viewModel.confirmButtonState {
                 EmptyView()
             } else {
                 Button {
+                    let state = viewModel.confirmButtonState
+                    switch state {
+                    case .empty:
+                        return
+                    case .allAuto:
+                        Haptics.tap()
+                    case .onlyLikelyCorrect:
+                        Haptics.tap()
+                    case .withFlagged:
+                        // Tactile "are you sure?" before the alert
+                        // re-confirms. Pairs with the destructive
+                        // "Confirm Anyway" alert button.
+                        Haptics.warning()
+                    }
                     Task { await handleConfirmTap() }
                 } label: {
                     Text(confirmButtonLabel)
@@ -224,7 +317,18 @@ struct SessionReviewView: View {
                         .background(Color(hex: "09d4ee"))
                         .foregroundColor(Color(hex: "060e18"))
                         .cornerRadius(12)
+                        // Animate the label change — when the
+                        // row mix changes (e.g., a row moves
+                        // from .likelyWrong to .likelyCorrect),
+                        // the button label cross-fades into the
+                        // new state. The .id() below forces a
+                        // re-mount so the transition fires.
+                        // The label is a unique-per-state String,
+                        // so the id is unique-per-state too.
+                        .id("confirm-button-\(confirmButtonLabel)")
+                        .transition(.opacity)
                 }
+                .buttonStyle(StrongPressFeedbackStyle(scale: 0.97))
             }
         }
         .padding(16)
@@ -264,6 +368,35 @@ struct SessionReviewView: View {
             await viewModel.confirmAll()
         case .withFlagged:
             await viewModel.confirmAll(force: true)
+        }
+        // PHASE 2.6 v1.17.0: trigger celebration after the confirm
+        // resolves. The TickMarkCelebrationView plays for 1.7s, then
+        // dismisses the SessionReviewView back to TodayView. This
+        // is the data-integrity milestone (per emotional design plan
+        // Slice 2) — the coach has approved all pairing matches, the
+        // session is on disk, the work is done.
+        triggerCelebration()
+    }
+
+    /// PHASE 2.6 v1.17.0: centralized celebration trigger. Called
+    /// from both the non-alert confirm path (handleConfirmTap above)
+    /// and the "Confirm Anyway" alert path. Sets showCelebration,
+    /// then auto-dismisses after the 1.7s animation completes.
+    /// The dismiss action walks up the view hierarchy — SessionReviewView
+    /// is rendered as a child of TimingView's body, which is itself
+    /// presented as a fullScreenCover from TodayView, so dismiss()
+    /// pops back to TodayView.
+    private func triggerCelebration() {
+        showCelebration = true
+        Task {
+            try? await Task.sleep(for: .milliseconds(1700))
+            // Only dismiss if the celebration is still showing (it
+            // could have been dismissed early by the user via swipe-back
+            // gesture or similar).
+            if showCelebration {
+                showCelebration = false
+                dismiss()
+            }
         }
     }
 }
@@ -362,6 +495,32 @@ struct ReviewRowView: View {
                         .foregroundColor(Color(hex: "4a6572"))
                         .padding(.top, 2)
                     }
+
+                    // PHASE 1 (T8, 2026-06-20): calibration hint. Shown
+                    // when the suit or start calibration adjusted the
+                    // prediction. The format is "X% off due to suit
+                    // calibration" / "Y% off due to start calibration"
+                    // (per the v3 plan T8 acceptance criteria). The
+                    // hint is hidden when both deltas are nil or zero.
+                    if let c = row.calibrationHint {
+                        HStack(spacing: 6) {
+                            Image(systemName: "ruler")
+                                .font(.system(size: 10))
+                            if c.suitPct != 0 {
+                                Text(String(format: "%.1f%% off due to suit calibration", abs(c.suitPct)))
+                                    .font(.system(size: 11))
+                            }
+                            if c.suitPct != 0 && c.startPct != 0 {
+                                Text("·").font(.system(size: 11)).foregroundColor(Color(hex: "4a6572"))
+                            }
+                            if c.startPct != 0 {
+                                Text(String(format: "%.1f%% off due to start calibration", abs(c.startPct)))
+                                    .font(.system(size: 11))
+                            }
+                        }
+                        .foregroundColor(Color(hex: "4a6572"))
+                        .padding(.top, 2)
+                    }
                 }
 
                 Spacer()
@@ -448,6 +607,7 @@ struct ReassignSheet: View {
                     ForEach(candidates) { candidate in
                         let swimmerId = UUID(uuidString: candidate.id) ?? UUID()
                         Button {
+                            Haptics.action()
                             onSelect(swimmerId)
                             dismiss()
                         } label: {
@@ -478,8 +638,11 @@ struct ReassignSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(Color(hex: "09d4ee"))
+                    Button("Done") {
+                        Haptics.tap()
+                        dismiss()
+                    }
+                    .foregroundColor(Color(hex: "09d4ee"))
                 }
             }
         }

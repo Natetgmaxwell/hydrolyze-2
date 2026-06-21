@@ -42,6 +42,13 @@ final class SessionStartViewModel: ObservableObject {
     /// `lockRoster` and passed to the HistoricalTimePredictor per call.
     /// Kept around so the view layer can introspect maturity per chip.
     private(set) var recordedTimes: [RecordedTime] = []
+    /// PHASE 1 (T3.5, 2026-06-20): the per-(swimmer, X, distance, stroke)
+    /// calibration factors. Populated in `lockRoster` from a parallel
+    /// fetch against `swimmer_suits` and `swimmer_starts`. Optional
+    /// because it's set after the async fetch completes; the predictor
+    /// handles a nil calibration as "no calibration applied" (multiplier
+    /// of 1.0), so a missing calibration is safe.
+    private(set) var calibration: CalibrationFactors?
 
     /// All swimmer_pbs for the selected swimmers, fetched once during
     /// `lockRoster` and passed to the HistoricalTimePredictor (Layer 2 fallback).
@@ -225,6 +232,37 @@ final class SessionStartViewModel: ObservableObject {
             // tiered fallbacks: exact → any-gear-same-intensity →
             // any-intensity-same-stroke/distance → population seed.
             let pbService = PBService()
+            // PHASE 1 (T3.5, 2026-06-20): the calibration factors are
+            // fetched in parallel with the other inputs (the existing
+            // async lets above). Empty calibration (no `swimmer_suits`
+            // / `swimmer_starts` rows yet for these swimmers) is fine —
+            // the predictor falls back to a multiplier of 1.0 (no
+            // adjustment) when the helper returns nil. So this
+            // prefetch is non-blocking in the sense that the
+            // prediction flow works whether or not the data exists.
+            let calibration = CalibrationFactors()
+            async let calibrationFetch = calibration.prefetch(
+                forSwimmerIds: selectedSwimmerIds
+            )
+            // Await calibration (in parallel with the other
+            // continuations below; calibrationFetch is the 5th parallel
+            // read alongside sessionInsert / rosterInsert / pbsFetch
+            // / timesFetch above).
+            _ = try await calibrationFetch
+            self.calibration = calibration
+
+            // PHASE 2.6 v1.13.0: use PBService as the SINGLE function
+            // for "what's this swimmer's predicted time for this set +
+            // intensity + gear?" Replaces the per-(swimmer, set) call
+            // to HistoricalTimePredictor. The 4 code paths to the
+            // same data (profile screen, wave preview, save flow,
+            // coarsePredictions) all use this function now.
+            //
+            // For the wave preview, we use the set's intensityLabel
+            // (e.g., 'moderate', 'max') and the swimmer's preferredGear
+            // (defaults to 'none'). PBService delegates to
+            // HistoricalTimePredictor which applies the suit +
+            // start calibration from the `calibration` cache.
             var perSetPredictions: [String: [String: Prediction]] = [:]
             for set in workoutSets {
                 guard set.stroke != nil, set.distance != nil else { continue }
@@ -239,7 +277,8 @@ final class SessionStartViewModel: ObservableObject {
                         gear: gear,
                         prefs: coachPreferences,
                         recordedTimes: allTimesFetched,
-                        pbs: allPBsFetched
+                        pbs: allPBsFetched,
+                        calibration: calibration
                     ) {
                         predsForSet[swimmer.id] = pred
                     }

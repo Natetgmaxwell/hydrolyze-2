@@ -80,6 +80,20 @@ final class SessionReviewViewModel: ObservableObject {
         /// WHY the pairing is flagged.
         var predictedTimeMs: Int?
 
+        /// PHASE 1 (T8, 2026-06-20): the time delta (ms) applied by
+        /// the suit calibration. nil if the helper returned nil
+        /// (no calibration data for this swimmer at this
+        /// (distance, stroke)). Negative = the prediction is faster
+        /// than the raw PB (suit saved time); positive = slower.
+        /// Surfaced in the SessionReviewView as a small "X% off
+        /// due to suit calibration" line when non-nil and non-zero.
+        var suitDeltaMs: Int?
+
+        /// PHASE 1 (T8, 2026-06-20): same shape as `suitDeltaMs`,
+        /// but for the start_type calibration (dive / backstroke_start
+        /// vs the in_water reference).
+        var startDeltaMs: Int?
+
         var confidenceLevel: RowConfidence {
             if confidence >= 80 { return .green }
             else if confidence >= 50 { return .amber }
@@ -102,6 +116,32 @@ final class SessionReviewViewModel: ObservableObject {
             let sigma = max(Double(pred) * 0.10, 1500)
             let zScore = abs(Double(recordedTime.timeMs) - Double(pred)) / sigma
             return (actualSec, predSec, zScore)
+        }
+
+        /// PHASE 1 (T8, 2026-06-20): computed calibration hint.
+        /// Returns the raw predicted time (pre-calibration) and the
+        /// suit + start percentage deltas, when both are non-nil
+        /// and non-zero. The raw time is the calibrated time minus
+        /// both deltas (inverse of the engine's
+        /// `timeMsRaw + suitDelta + startDelta = timeMs`).
+        /// Used by ReviewRowView to render the "X% off due to suit/start
+        /// calibration" hint.
+        var calibrationHint: (rawMs: Int, suitPct: Double, startPct: Double)? {
+            guard let pred = predictedTimeMs,
+                  let suit = suitDeltaMs, suit != 0
+                    || (startDeltaMs ?? 0) != 0
+            else { return nil }
+            let suitDelta = suitDeltaMs ?? 0
+            let startDelta = startDeltaMs ?? 0
+            // Inverse: timeMs = raw + suit + start, so raw = timeMs - suit - start.
+            // For the percentage, use the raw (un-calibrated) as the
+            // denominator so the percentage represents "how much the
+            // calibration shifted the prediction away from the raw."
+            let rawMs = pred - suitDelta - startDelta
+            guard rawMs > 0 else { return nil }
+            let suitPct = Double(suitDelta) / Double(rawMs) * 100.0
+            let startPct = Double(startDelta) / Double(rawMs) * 100.0
+            return (rawMs, suitPct, startPct)
         }
 
         enum RowConfidence {
@@ -131,6 +171,19 @@ final class SessionReviewViewModel: ObservableObject {
 
     private let supabase = SupabaseService.shared.client
     private var sessionId: String?
+    /// PHASE 1 (T8.5, 2026-06-20): the per-(swimmer, X, distance, stroke)
+    /// calibration factors. Populated in `load()` from a parallel
+    /// fetch against `swimmer_suits` and `swimmer_starts`. Used by
+    /// the row builder to compute the suit/start deltas for the
+    /// calibration hint in SessionReviewView (T8).
+    private var calibration: CalibrationFactors?
+    /// PHASE 1 (T8.5, 2026-06-20): lookup of the workout_set by its
+    /// id. Populated in `load()` from a parallel fetch against
+    /// `workout_sets`. The row builder needs the set's `suit` and
+    /// `startType` to call the calibration helpers (the helpers are
+    /// direction-aware: `suitMultiplier(... setSuit: true)` returns
+    /// the multiplier in the suit=true direction).
+    private var workoutSetsById: [String: WorkoutSet] = [:]
     /// PHASE 2.6 v1.16.1: cached swimmer name lookup from the load()
     /// pass. Used by reassign() to set the row's swimmerName after the
     /// DB write (previously set to the UUID string, which displayed
@@ -302,6 +355,16 @@ final class SessionReviewViewModel: ObservableObject {
                 .eq("session_id", value: sessionId)
                 .execute()
 
+            // PHASE 1 (T8.5, 2026-06-20): fetch the workout_sets
+            // (for suit + startType) and the calibration factors
+            // (suit + start multipliers) in parallel with the
+            // existing recorded_times + wave_assignments fetches.
+            // The set ids come from the recorded_times (each rt
+            // has workoutSetId); the calibration cache is keyed
+            // by swimmer id (paired_swimmer_id with fallback to
+            // swimmer_id). Both are needed for the row builder to
+            // compute the suit/start deltas in T8.
+
             let timesResponse = try await timesResponseTask
             let waveResponse = try await waveResponseTask
             let rawTimes = try JSONDecoder().decode([RecordedTime].self, from: timesResponse.data)
@@ -319,6 +382,17 @@ final class SessionReviewViewModel: ObservableObject {
             let waveAssignments = try JSONDecoder().decode([WaveAssignment].self, from: waveResponse.data)
 
             let swimmerIds = Array(Set(times.compactMap { $0.pairedSwimmerId ?? $0.swimmerId }))
+            let setIds = Array(Set(times.compactMap { $0.workoutSetId }))
+
+            // PHASE 1 (T8.5, 2026-06-20): the calibration prefetch
+            // runs in parallel with the swimmers + workout_sets
+            // fetches below. The calibration cache is keyed by
+            // swimmer id; the prefetch populates it with the rows
+            // for each swimmer's (suit, distance, stroke) and
+            // (start_type, distance, stroke) buckets.
+            let calibration = CalibrationFactors()
+            async let calibrationFetchTask = calibration.prefetch(forSwimmerIds: swimmerIds)
+
             var swimmerNames: [String: String] = [:]
             if !swimmerIds.isEmpty {
                 let swimmersResponse = try await supabase.from("swimmers")
@@ -342,6 +416,30 @@ final class SessionReviewViewModel: ObservableObject {
                     swimmerNames[sr.id] = full
                 }
             }
+            // PHASE 1 (T8.5, 2026-06-20): fetch the workout_sets for
+            // the recorded_times in this session. The set's
+            // `suit` and `startType` are needed to call the
+            // calibration helpers (which are direction-aware).
+            // Conditional on setIds being non-empty because Supabase's
+            // `.in(...)` with an empty values array generates an
+            // invalid SQL `IN ()` query.
+            if !setIds.isEmpty {
+                let setsResponse = try await supabase.from("workout_sets")
+                    .select()
+                    .in("id", values: setIds)
+                    .execute()
+                let setsList = try JSONDecoder().decode([WorkoutSet].self, from: setsResponse.data)
+                for s in setsList {
+                    workoutSetsById[s.id] = s
+                }
+            }
+            // PHASE 1 (T8.5, 2026-06-20): await the calibration
+            // prefetch. The sets + swimmers fetches above are
+            // already awaited (sequential after the first round).
+            // Storing the calibration on the view model makes it
+            // available to the row builder (T8 hint).
+            _ = try await calibrationFetchTask
+            self.calibration = calibration
 
             // PHASE 2.6 v1.15.1: BUGFIX. The v1.6 code keyed
             // swimmerWaveInfo by swimmerId only, which OVERWROTE the
@@ -417,6 +515,57 @@ final class SessionReviewViewModel: ObservableObject {
                     max(0, i.predicted - i.sendOff)
                 }
 
+                // PHASE 1 (T8.5, 2026-06-20): compute the calibration
+                // deltas for the row's `calibrationHint`. The deltas
+                // are the time shift in ms caused by the suit and
+                // start calibrations, computed from the calibration
+                // multipliers and the raw predicted time. The math
+                // matches the engine's `applyCalibration`:
+                //
+                //   raw = calibrated / (suitMult * startMult)
+                //   suitDelta = raw * (suitMult - 1.0)
+                //   startDelta = raw * (startMult - 1.0)
+                //
+                // Both deltas come out nil if there's no calibration
+                // data for this (swimmer, distance, stroke) — the
+                // helpers return nil for the multiplier, and the
+                // computed delta is nil too. The row's
+                // `calibrationHint` (from T8) hides the hint when
+                // both are nil.
+                var suitDelta: Int? = nil
+                var startDelta: Int? = nil
+                if let cal = self.calibration,
+                   let set = rt.workoutSetId.flatMap({ workoutSetsById[$0] }),
+                   let distance = rt.paceDistance,
+                   let stroke = rt.stroke,
+                   let pred = predicted,
+                   pred > 0
+                {
+                    let setSuit = set.suit ?? false
+                    let setStart = set.startType ?? "in_water"
+                    let suitMult = cal.suitMultiplier(
+                        swimmerId: targetId,
+                        distance: distance,
+                        stroke: stroke,
+                        setSuit: setSuit
+                    )
+                    let startMult = cal.startMultiplier(
+                        swimmerId: targetId,
+                        distance: distance,
+                        stroke: stroke,
+                        setStartType: setStart
+                    )
+                    // Both must be non-nil to compute meaningful deltas;
+                    // a partial calibration (only one side) is treated
+                    // as "no calibration" to avoid misleading the coach.
+                    if let sm = suitMult, let stm = startMult, sm > 0, stm > 0 {
+                        let combined = sm * stm
+                        let raw = Double(pred) / combined
+                        suitDelta = Int((raw * (sm - 1.0)).rounded())
+                        startDelta = Int((raw * (stm - 1.0)).rounded())
+                    }
+                }
+
                 return ReviewRow(
                     id: rt.id,
                     recordedTime: rt,
@@ -424,7 +573,14 @@ final class SessionReviewViewModel: ObservableObject {
                     lane: info?.lane,
                     wave: info?.wave,
                     confidence: conf,
-                    predictedTimeMs: predicted
+                    predictedTimeMs: predicted,
+                    // PHASE 1 (T8.5, 2026-06-20): the calibration
+                    // deltas are now computed from the row builder.
+                    // nil when there's no calibration data for this
+                    // (swimmer, distance, stroke) — the row's
+                    // calibrationHint hides the line in that case.
+                    suitDeltaMs: suitDelta,
+                    startDeltaMs: startDelta
                 )
             }
 

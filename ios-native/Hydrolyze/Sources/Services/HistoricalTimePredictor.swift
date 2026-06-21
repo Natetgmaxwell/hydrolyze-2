@@ -41,11 +41,20 @@ final class HistoricalTimePredictor {
     /// Predicted the mean and stddev for a swimmer + set combo.
     /// Returns nil for IM (always manual per v2 design) or if the
     /// swimmer has no data and no fallback could produce a value.
+    ///
+    /// Phase 1 (T3 + T4, 2026-06-20): the `calibration` parameter
+    /// supplies the per-(swimmer, X, distance, stroke) suit and
+    /// start calibration factors (read from `swimmer_suits` and
+    /// `swimmer_starts` via `CalibrationFactors`). The predicted
+    /// time is multiplied by the calibration multipliers; the
+    /// deltas are stored on the returned `Prediction` as
+    /// `suitDeltaMs` and `startDeltaMs` for UI display.
     func predict(
         swimmer: Swimmer,
         set: WorkoutSet,
         recordedTimes: [RecordedTime],   // Layer 1 input (filtered externally)
         pbs: [SwimmerPB],                // Layer 2 input
+        calibration: CalibrationFactors, // T3/T4: per-swimmer suit + start calibration
         prefs: CoachPreferences
     ) -> Prediction? {
         // IM is always manual per v2 DESIGN.md
@@ -112,12 +121,24 @@ final class HistoricalTimePredictor {
 
             let sigma = max(Self.sampleStdDev(times), Self.sigmaFloorMs)
 
+            let cal = Self.applyCalibration(
+                timeMsRaw: meanMs,
+                setSuit: set.suit ?? false,
+                setStartType: set.startType ?? "in_water",
+                distance: distance,
+                stroke: stroke,
+                swimmerId: swimmer.id,
+                calibration: calibration
+            )
+
             return Prediction(
-                timeMs: meanMs,
+                timeMs: cal.timeMs,
                 sigmaMs: sigma,
                 sampleSize: sorted.count,
                 source: .historical,
-                maturity: Self.tierFor(sampleCount: sorted.count)
+                maturity: Self.tierFor(sampleCount: sorted.count),
+                suitDeltaMs: cal.suitDeltaMs,
+                startDeltaMs: cal.startDeltaMs
             )
         }
 
@@ -134,15 +155,28 @@ final class HistoricalTimePredictor {
            let racePace = SpeedCurveFitter.predictRacePace(curve: curve, distance: distance) {
             let intMult = Self.intensityMultiplier(set.intensityLabel ?? "race")
             let gearMult = Self.gearMultiplier(set.gear)
-            let timeMs = Int((Double(racePace) * intMult * gearMult).rounded())
+            let timeMsRaw = Int((Double(racePace) * intMult * gearMult).rounded())
             let sigmaFrac = Self.stddevFraction(for: distance)
-            let sigma = max(Int((Double(timeMs) * sigmaFrac).rounded()), 100)
+            let sigma = max(Int((Double(timeMsRaw) * sigmaFrac).rounded()), 100)
+
+            let cal = Self.applyCalibration(
+                timeMsRaw: timeMsRaw,
+                setSuit: set.suit ?? false,
+                setStartType: set.startType ?? "in_water",
+                distance: distance,
+                stroke: stroke,
+                swimmerId: swimmer.id,
+                calibration: calibration
+            )
+
             return Prediction(
-                timeMs: timeMs,
+                timeMs: cal.timeMs,
                 sigmaMs: sigma,
                 sampleSize: strokePBs.count,
                 source: .curve,
-                maturity: .none   // PB-based, not "real" data
+                maturity: .none,   // PB-based, not "real" data
+                suitDeltaMs: cal.suitDeltaMs,
+                startDeltaMs: cal.startDeltaMs
             )
         }
 
@@ -151,15 +185,67 @@ final class HistoricalTimePredictor {
         let racePaceMs = (Double(distance) / speedMps) * 1000
         let intMult = Self.intensityMultiplier(set.intensityLabel ?? "race")
         let gearMult = Self.gearMultiplier(set.gear)
-        let timeMs = Int((racePaceMs * intMult * gearMult).rounded())
-        let sigma = max(Int((Double(timeMs) * 0.10).rounded()), 200)
+        let timeMsRaw = Int((racePaceMs * intMult * gearMult).rounded())
+        let sigma = max(Int((Double(timeMsRaw) * 0.10).rounded()), 200)
+
+        let cal = Self.applyCalibration(
+            timeMsRaw: timeMsRaw,
+            setSuit: set.suit ?? false,
+            setStartType: set.startType ?? "in_water",
+            distance: distance,
+            stroke: stroke,
+            swimmerId: swimmer.id,
+            calibration: calibration
+        )
+
         return Prediction(
-            timeMs: timeMs,
+            timeMs: cal.timeMs,
             sigmaMs: sigma,
             sampleSize: 0,
             source: .seed,
-            maturity: .none
+            maturity: .none,
+            suitDeltaMs: cal.suitDeltaMs,
+            startDeltaMs: cal.startDeltaMs
         )
+    }
+
+    // MARK: - Calibration application (T3 + T4)
+
+    /// Apply the per-(swimmer, X, distance, stroke) suit and start
+    /// calibration factors to a raw predicted time. Returns the
+    /// calibrated time and the individual deltas (nil when the
+    /// corresponding factor was not available).
+    ///
+    /// The helper picks the direction: `suitMultiplier` returns the
+    /// ratio that converts a no-suit time to a suit time (or vice
+    /// versa) based on `setSuit`; `startMultiplier` returns the
+    /// ratio that converts any source to `setStartType` (with
+    /// 'in_water' as the reference). The engine just multiplies.
+    static func applyCalibration(
+        timeMsRaw: Int,
+        setSuit: Bool,
+        setStartType: String,
+        distance: Int,
+        stroke: String,
+        swimmerId: String,
+        calibration: CalibrationFactors
+    ) -> (timeMs: Int, suitDeltaMs: Int?, startDeltaMs: Int?) {
+        let suitMult = calibration.suitMultiplier(swimmerId: swimmerId, distance: distance, stroke: stroke, setSuit: setSuit)
+        let startMult = calibration.startMultiplier(swimmerId: swimmerId, distance: distance, stroke: stroke, setStartType: setStartType)
+        let suitEffective = suitMult ?? 1.0
+        let startEffective = startMult ?? 1.0
+        let calMult = suitEffective * startEffective
+        let calibratedTimeMs = Int((Double(timeMsRaw) * calMult).rounded())
+        // The delta is the change vs the raw. Negative = faster,
+        // positive = slower. nil if the calibration wasn't available
+        // (multiplier returned nil).
+        let suitDeltaMs: Int? = suitMult.map { mult in
+            Int((Double(timeMsRaw) * (mult - 1.0)).rounded())
+        }
+        let startDeltaMs: Int? = startMult.map { mult in
+            Int((Double(timeMsRaw) * (mult - 1.0)).rounded())
+        }
+        return (calibratedTimeMs, suitDeltaMs, startDeltaMs)
     }
 
     // MARK: - Algorithm primitives

@@ -28,6 +28,20 @@ struct Prediction: Equatable, Sendable {
     /// 0 = none (PB or seed layer).
     let maturity: Maturity
 
+    /// Time delta (ms) applied by the suit calibration. `nil` if
+    /// there was no calibration data for this swimmer at this
+    /// (distance, stroke). A negative value means the prediction is
+    /// faster than the raw PB (suit saved time); a positive value
+    /// means slower (suit was slower for this swimmer). Surfaced
+    /// in the SessionReviewView as "X% off due to suit calibration"
+    /// when non-nil and non-zero. T3, 2026-06-20.
+    let suitDeltaMs: Int?
+
+    /// Time delta (ms) applied by the start calibration. `nil` if
+    /// there was no calibration data. Same convention as
+    /// `suitDeltaMs`. T4, 2026-06-20.
+    let startDeltaMs: Int?
+
     /// Where the prediction came from. Drives UI badge text + color.
     enum Source: String, Codable, Sendable, Equatable {
         /// Layer 1: 5+ recorded_times for the exact (swimmer, stroke,

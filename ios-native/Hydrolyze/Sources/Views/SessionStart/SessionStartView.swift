@@ -415,6 +415,14 @@ struct WavePreviewView: View {
                             // per-cell, to avoid redundant lookups.
                             predictionsForSet: predictionsForSet,
                             hasTightGap: hasTightGap(inLane: lane + 1),
+                            // PHASE 1 (T9.5, 2026-06-20): the current set
+                            // + the calibration are threaded down to the
+                            // chip for the calibration badge. The set is
+                            // the one at `previewSetIndex`; the calibration
+                            // is the SessionStartViewModel's instance
+                            // (populated by `lockRoster` via T3.5).
+                            set: workoutSets[safe: viewModel.previewSetIndex],
+                            calibration: viewModel.calibration,
                             onMove: { fromId, toLane, toPos in
                                 if let from = visibleAssignments.first(where: { $0.id == fromId }) {
                                     viewModel.moveSwimmer(from: from, toLane: toLane, toPosition: toPos)
@@ -625,6 +633,13 @@ struct LaneColumn: View {
     let predictionsForSet: [String: Prediction]   // Phase 2.6: per-swimmer maturity lookup
     let hasTightGap: Bool
     let onMove: (String, Int, Int) -> Void
+    /// PHASE 1 (T9.5, 2026-06-20): the current set (for distance
+    /// + stroke) and the calibration factors. Threaded down to
+    /// PositionCell so the SwimmerChip can render the calibration
+    /// badge. Both are optional; the chip hides the badge when
+    /// either is nil.
+    let set: WorkoutSet?
+    let calibration: CalibrationFactors?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -664,6 +679,13 @@ struct LaneColumn: View {
                             // viewModel). See the 237427d fix in
                             // SessionStartViewModel for the matching change.
                             prediction: predictionsForSet[assignment.swimmerId],
+                            // PHASE 1 (T9.5, 2026-06-20): the set +
+                            // calibration are threaded through for the
+                            // SwimmerChip's calibration badge. Both are
+                            // optional; the chip hides the badge when
+                            // either is nil.
+                            set: set,
+                            calibration: calibration,
                             onDrop: { chipId in
                                 onMove(chipId, lane, assignment.positionInLane)
                             }
@@ -692,13 +714,25 @@ struct PositionCell: View {
     let assignment: WaveAssignment
     let swimmerNames: [UUID: String]
     let prediction: Prediction?
+    /// PHASE 1 (T9.5, 2026-06-20): the current set and the
+    /// calibration factors. Used to compute the SwimmerChip's
+    /// calibration state (calibrating / calibrated). Both are
+    /// optional; the state is nil (no badge) when either is nil.
+    let set: WorkoutSet?
+    let calibration: CalibrationFactors?
     let onDrop: (String) -> Void
 
     var body: some View {
         SwimmerChip(
             waveAssignment: assignment,
             swimmerNames: swimmerNames,
-            prediction: prediction
+            prediction: prediction,
+            // PHASE 1 (T9.5, 2026-06-20): compute the calibration
+            // state for this (swimmer, distance, stroke) bucket.
+            // The helper returns nil for the multiplier if the
+            // table has 0 or 1 rows (no pair → "calibrating");
+            // non-nil if the table has ≥ 2 rows ("calibrated").
+            calibrationState: computeCalibrationState()
         )
             .draggable(WaveChipTransferable(id: assignment.id))
             .dropDestination(for: WaveChipTransferable.self) { items, _ in
@@ -706,6 +740,31 @@ struct PositionCell: View {
                 onDrop(item.id)
                 return true
             }
+    }
+
+    /// PHASE 1 (T9.5, 2026-06-20): the calibration state for the
+    /// chip. nil if either the set or the calibration is missing.
+    /// Otherwise: `.calibrated` if the suit helper returns a
+    /// multiplier (i.e. ≥ 2 rows for the (swimmer, distance, stroke)
+    /// key under different suit values); `.calibrating` if the
+    /// helper returns nil (0 or 1 rows).
+    private func computeCalibrationState() -> SwimmerChip.CalibrationState? {
+        guard let set = set,
+              let cal = calibration,
+              let distance = set.distance,
+              let stroke = set.stroke
+        else { return nil }
+        // The suitMultiplier helper returns nil for "no pair" and
+        // a value for "pair exists." This is the canonical "is the
+        // calibration calibrated?" check.
+        let swimmerId = assignment.swimmerId
+        let suitMult = cal.suitMultiplier(
+            swimmerId: swimmerId,
+            distance: distance,
+            stroke: stroke,
+            setSuit: true
+        )
+        return suitMult == nil ? .calibrating : .calibrated
     }
 }
 
@@ -738,6 +797,48 @@ struct SwimmerChip: View {
     let waveAssignment: WaveAssignment
     let swimmerNames: [UUID: String]
     let prediction: Prediction?
+    /// PHASE 1 (T9, 2026-06-20): the calibration state for this
+    /// swimmer at this set's (distance, stroke). nil = no badge
+    /// (no calibration data, or the caller hasn't computed the
+    /// state yet). The state is computed by the caller (the parent
+    /// view) from the calibration table; the chip just renders
+    /// the badge.
+    let calibrationState: CalibrationState?
+
+    /// PHASE 1 (T9, 2026-06-20): calibration state for the
+    /// swimmer-at-(distance, stroke) calibration bucket. Driven by
+    /// whether the calibration table has ≥ 2 rows for the
+    /// (swimmer, X, distance, stroke) key under different X values
+    /// (i.e. enough data to compute a meaningful pair-wise ratio).
+    enum CalibrationState {
+        /// Insufficient data for a meaningful calibration (table has
+        /// 0 or 1 rows for the key). Show a "calibrating" badge so
+        /// the coach knows the calibration is in-progress but not
+        /// yet trustworthy.
+        case calibrating
+        /// Sufficient data (≥ 2 rows). The calibration is being
+        /// applied to the prediction (see T8). Show a "calibrated"
+        /// badge to signal trust.
+        case calibrated
+
+        /// Short human-readable label for the calibration pill.
+        var badgeText: String {
+            switch self {
+            case .calibrating: return "calibrating"
+            case .calibrated:  return "calibrated"
+            }
+        }
+
+        /// Pill color. Yellow (amber) for calibrating, green for
+        /// calibrated. Matches the existing maturity badge color
+        /// convention in `badgeColor` below.
+        var badgeColor: Color {
+            switch self {
+            case .calibrating: return Color(hex: "f59e0b")
+            case .calibrated:  return Color(hex: "10b981")
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -761,6 +862,21 @@ struct SwimmerChip: View {
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(badgeColor.opacity(0.15))
+                    .cornerRadius(3)
+            }
+
+            // PHASE 1 (T9, 2026-06-20): calibration badge. Small pill
+            // next to the maturity badge, same visual style. Hidden
+            // when `calibrationState` is nil (no calibration data
+            // computed yet — the caller passes nil today; wiring
+            // the actual lookup is a follow-up).
+            if let state = calibrationState {
+                Text(state.badgeText)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(state.badgeColor)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(state.badgeColor.opacity(0.15))
                     .cornerRadius(3)
             }
         }
