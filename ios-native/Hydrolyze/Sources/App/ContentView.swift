@@ -41,6 +41,11 @@ struct ContentView: View {
                     Label("Swimmers", systemImage: "person.2.fill")
                 }
 
+            AnalyticsTabView()
+                .tabItem {
+                    Label("Analytics", systemImage: "chart.line.uptrend.xyaxis")
+                }
+
             WorkoutsListView()
                 .tabItem {
                     Label("Workouts", systemImage: "calendar")
