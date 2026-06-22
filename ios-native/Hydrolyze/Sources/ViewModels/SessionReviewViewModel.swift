@@ -66,7 +66,7 @@ final class SessionReviewViewModel: ObservableObject {
         }
     }
 
-    struct ReviewRow: Identifiable {
+    struct ReviewRow: Identifiable, Equatable {
         let id: String
         let recordedTime: RecordedTime
         var swimmerName: String

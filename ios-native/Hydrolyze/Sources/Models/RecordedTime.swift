@@ -2,7 +2,7 @@ import Foundation
 
 /// RecordedTime — mirrors recorded_times table in Postgres.
 /// Each row = one swimmer's time for one rep of one set.
-struct RecordedTime: Codable, Identifiable, Sendable {
+struct RecordedTime: Codable, Identifiable, Sendable, Hashable {
     let id: String
     let sessionId: String?
     let swimmerId: String?
