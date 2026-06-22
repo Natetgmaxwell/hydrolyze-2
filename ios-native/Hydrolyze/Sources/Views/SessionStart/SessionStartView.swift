@@ -415,19 +415,31 @@ struct WavePreviewView: View {
                             // per-cell, to avoid redundant lookups.
                             predictionsForSet: predictionsForSet,
                             hasTightGap: hasTightGap(inLane: lane + 1),
+                            onMove: { fromId, toLane, toPos in
+                                if let from = visibleAssignments.first(where: { $0.id == fromId }) {
+                                    viewModel.moveSwimmer(from: from, toLane: toLane, toPosition: toPos)
+                                }
+                            },
                             // PHASE 1 (T9.5, 2026-06-20): the current set
                             // + the calibration are threaded down to the
                             // chip for the calibration badge. The set is
                             // the one at `previewSetIndex`; the calibration
                             // is the SessionStartViewModel's instance
                             // (populated by `lockRoster` via T3.5).
+                            // PHASE 1 (T9.5.1, 2026-06-22): these two
+                            // arguments must come AFTER `onMove:` to match
+                            // the LaneColumn struct's parameter order.
+                            // The struct's stored-property order is
+                            // hasTightGap → onMove → set → calibration;
+                            // Swift requires memberwise-initializer
+                            // calls to use that order. Reordering here
+                            // because the T9.5 wiring originally
+                            // placed these between hasTightGap and
+                            // onMove, which compiles only when the
+                            // call uses explicit argument labels (it
+                            // does, but Swift still enforces order).
                             set: workoutSets[safe: viewModel.previewSetIndex],
-                            calibration: viewModel.calibration,
-                            onMove: { fromId, toLane, toPos in
-                                if let from = visibleAssignments.first(where: { $0.id == fromId }) {
-                                    viewModel.moveSwimmer(from: from, toLane: toLane, toPosition: toPos)
-                                }
-                            }
+                            calibration: viewModel.calibration
                         )
                     }
                 }
