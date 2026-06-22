@@ -124,7 +124,7 @@ final class HistoricalTimePredictor {
             let cal = Self.applyCalibration(
                 timeMsRaw: meanMs,
                 setSuit: set.suit ?? false,
-                startType: set.startType ?? "in_water",
+                setStartType: set.startType ?? "in_water",
                 distance: distance,
                 stroke: stroke,
                 swimmerId: swimmer.id,
@@ -162,7 +162,7 @@ final class HistoricalTimePredictor {
             let cal = Self.applyCalibration(
                 timeMsRaw: timeMsRaw,
                 setSuit: set.suit ?? false,
-                startType: set.startType ?? "in_water",
+                setStartType: set.startType ?? "in_water",
                 distance: distance,
                 stroke: stroke,
                 swimmerId: swimmer.id,
@@ -191,7 +191,7 @@ final class HistoricalTimePredictor {
         let cal = Self.applyCalibration(
             timeMsRaw: timeMsRaw,
             setSuit: set.suit ?? false,
-            startType: set.startType ?? "in_water",
+            setStartType: set.startType ?? "in_water",
             distance: distance,
             stroke: stroke,
             swimmerId: swimmer.id,
