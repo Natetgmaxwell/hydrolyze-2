@@ -499,7 +499,13 @@ struct TimingView: View {
             // original DispatchQueue.main.asyncAfter approach,
             // which was brittle (could miss the timing if a
             // re-render preempted the closure).
-            guard viewModel.lapFlashTrigger > 0 else { return }
+            // PHASE 1 (T8.5, 2026-06-20): lapFlashTrigger changed
+            // from Int counter to UUID? in TimingViewModel (each
+            // lap save produces a fresh UUID; the .task(id:) modifier
+            // re-runs the body when the value changes). The "is the
+            // trigger active?" check is therefore nil vs non-nil,
+            // not > 0. UUID? comparison with Int doesn't compile.
+            guard viewModel.lapFlashTrigger != nil else { return }
             try? await Task.sleep(for: .milliseconds(120))
             withAnimation(Animations.springSoft) {
                 lapFlashOpacity = 0

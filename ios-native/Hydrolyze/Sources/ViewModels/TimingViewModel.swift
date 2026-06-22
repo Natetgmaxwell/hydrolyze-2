@@ -734,7 +734,15 @@ final class TimingViewModel: ObservableObject {
                             sigmaMs: 2000,   // default v1 sigma for the pairing cost
                             sampleSize: 0,
                             source: .curve,  // not "real" recorded data — it's PB-based
-                            maturity: .none
+                            maturity: .none,
+                            // PHASE 1 (T8.5, 2026-06-20): the coarse
+                            // fallback has no calibration data available
+                            // (the waveAssignments are a quick preview,
+                            // not the calibrated prediction path). nil
+                            // for both deltas — the SessionReview row
+                            // will hide the calibrationHint in that case.
+                            suitDeltaMs: nil,
+                            startDeltaMs: nil
                         )
                     }
                 }
