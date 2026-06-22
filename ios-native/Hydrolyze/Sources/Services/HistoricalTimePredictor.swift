@@ -124,7 +124,7 @@ final class HistoricalTimePredictor {
             let cal = Self.applyCalibration(
                 timeMsRaw: meanMs,
                 setSuit: set.suit ?? false,
-                setStartType: set.startType ?? "in_water",
+                startType: set.startType ?? "in_water",
                 distance: distance,
                 stroke: stroke,
                 swimmerId: swimmer.id,
@@ -162,7 +162,7 @@ final class HistoricalTimePredictor {
             let cal = Self.applyCalibration(
                 timeMsRaw: timeMsRaw,
                 setSuit: set.suit ?? false,
-                setStartType: set.startType ?? "in_water",
+                startType: set.startType ?? "in_water",
                 distance: distance,
                 stroke: stroke,
                 swimmerId: swimmer.id,
@@ -191,7 +191,7 @@ final class HistoricalTimePredictor {
         let cal = Self.applyCalibration(
             timeMsRaw: timeMsRaw,
             setSuit: set.suit ?? false,
-            setStartType: set.startType ?? "in_water",
+            startType: set.startType ?? "in_water",
             distance: distance,
             stroke: stroke,
             swimmerId: swimmer.id,
@@ -231,7 +231,7 @@ final class HistoricalTimePredictor {
         calibration: CalibrationFactors
     ) -> (timeMs: Int, suitDeltaMs: Int?, startDeltaMs: Int?) {
         let suitMult = calibration.suitMultiplier(swimmerId: swimmerId, distance: distance, stroke: stroke, setSuit: setSuit)
-        let startMult = calibration.startMultiplier(swimmerId: swimmerId, distance: distance, stroke: stroke, setStartType: setStartType)
+        let startMult = calibration.startMultiplier(swimmerId: swimmerId, distance: distance, stroke: stroke, startType: setStartType)
         let suitEffective = suitMult ?? 1.0
         let startEffective = startMult ?? 1.0
         let calMult = suitEffective * startEffective

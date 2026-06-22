@@ -553,7 +553,7 @@ final class SessionReviewViewModel: ObservableObject {
                         swimmerId: targetId,
                         distance: distance,
                         stroke: stroke,
-                        setStartType: setStart
+                        startType: setStart
                     )
                     // Both must be non-nil to compute meaningful deltas;
                     // a partial calibration (only one side) is treated
