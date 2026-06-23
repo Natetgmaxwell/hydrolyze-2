@@ -187,12 +187,19 @@ final class SwimmerAnalyticsViewModel: ObservableObject {
     /// Last 5 times: most recent across all events, with a short
     /// label. The label format is "<distance> <stroke> · <N> days ago"
     /// — readable at a glance without being verbose.
+    ///
+    /// PHASE 2 (Analytics): RecordedTime.timeMs is non-optional
+    /// (`let timeMs: Int` per the model), so the guard is only
+    /// on the parsed date. A row with an unparseable createdAt
+    /// falls out (can't compute "Xd ago"); a row with no timeMs
+    /// can't happen.
     private func computeLastFive(from history: [RecordedTime]) -> [LastFiveEntry] {
         let formatter = ISO8601DateFormatter()
         let sortedDesc = history.sorted { ($0.createdAt) > ($1.createdAt) }
         let top5 = Array(sortedDesc.prefix(5))
         return top5.compactMap { rt in
-            guard let timeMs = rt.timeMs, let date = formatter.date(from: rt.createdAt) else { return nil }
+            guard let date = formatter.date(from: rt.createdAt) else { return nil }
+            let timeMs = rt.timeMs
             let dist = rt.paceDistance.map { "\($0)m" } ?? "?"
             let stroke = rt.stroke ?? "?"
             let daysAgo = max(0, Int(Date().timeIntervalSince(date) / 86400))
