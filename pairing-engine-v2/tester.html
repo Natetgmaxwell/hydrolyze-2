@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pairing Engine v2</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1117; color: #e6edf3; min-height: 100vh; padding: 20px 16px 60px;
+    }
+    .container { max-width: 680px; margin: 0 auto; }
+
+    /* Header */
+    header { margin-bottom: 24px; }
+    header h1 { font-size: 1.3rem; font-weight: 600; margin-bottom: 2px; }
+    header p { color: #8b949e; font-size: 0.8rem; }
+
+    /* Section labels */
+    .label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.07em; color: #6e7681; margin-bottom: 8px; }
+
+    /* Chips row */
+    .chip-row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 20px; }
+    .chip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 13px; border-radius: 20px; font-size: 0.85rem;
+      background: #161b22; border: 1px solid #30363d; cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .chip:hover { border-color: #58a6ff; }
+    .chip.on { border-color: #58a6ff; background: #0d2040; }
+    .chip input { accent-color: #58a6ff; cursor: pointer; }
+    .chip-name { font-weight: 500; }
+    .chip-expected { font-size: 0.72rem; color: #8b949e; }
+
+    /* Context controls */
+    .controls {
+      display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px;
+      margin-bottom: 20px;
+    }
+    .ctrl { display: flex; flex-direction: column; gap: 4px; }
+    .ctrl label { font-size: 0.72rem; color: #6e7681; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .ctrl input, .ctrl select {
+      padding: 7px 9px; background: #161b22; border: 1px solid #30363d;
+      border-radius: 6px; color: #e6edf3; font-size: 0.88rem; outline: none; width: 100%;
+    }
+    .ctrl input:focus, .ctrl select:focus { border-color: #58a6ff; }
+
+    /* Lap inputs */
+    .lap-block { margin-bottom: 20px; }
+    .lap-row { display: grid; grid-template-columns: 60px 1fr; gap: 8px; align-items: center; margin-bottom: 7px; }
+    .lap-row label { font-size: 0.78rem; color: #6e7681; font-variant-numeric: tabular-nums; }
+    .lap-row input {
+      padding: 9px 12px; background: #161b22; border: 1px solid #30363d;
+      border-radius: 6px; color: #e6edf3; font-size: 1rem;
+      font-variant-numeric: tabular-nums; width: 100%;
+    }
+    .lap-row input:focus { border-color: #58a6ff; outline: none; }
+    .lap-row input::placeholder { color: #484f58; }
+    .lap-row input:empty { border-color: #d29922; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 18px; border-radius: 7px; font-size: 0.85rem; font-weight: 500;
+      cursor: pointer; border: none; transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.82; }
+    .btn-green { background: #2ea043; color: #fff; }
+    .btn-gray { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+
+    /* ── Results ─────────────────────────────────────────────────────── */
+
+    .results { margin-top: 28px; }
+
+    .lap-card {
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 10px; overflow: hidden; margin-bottom: 14px;
+    }
+
+    /* Card header */
+    .lap-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; background: #1c2128;
+      border-bottom: 1px solid #21262d;
+    }
+    .lap-num { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.07em; color: #6e7681; }
+    .lap-time {
+      font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums;
+      color: #e6edf3;
+    }
+    .lap-time.hint { font-size: 0.85rem; color: #8b949e; font-weight: 400; }
+
+    /* Alert bar */
+    .alert-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; font-size: 0.78rem; font-weight: 600;
+    }
+    .alert-bar.ok { background: rgba(46,160,67,0.12); color: #3fb950; }
+    .alert-bar.warn { background: #2d2000; color: #d29922; border-top: 1px solid #d2992240; }
+    .alert-bar.bad { background: #2d1515; color: #f85149; border-top: 1px solid #f8514940; }
+
+    /* Swimmers list */
+    .swim-list { padding: 4px 0; }
+    .swim-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; border-bottom: 1px solid #21262d;
+    }
+    .swim-row:last-child { border-bottom: none; }
+    .swim-row.top { background: rgba(46,160,67,0.07); }
+
+    .rank-badge {
+      width: 26px; height: 26px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.72rem; font-weight: 700;
+      background: #21262d; color: #6e7681; flex-shrink: 0;
+    }
+    .swim-row.top .rank-badge { background: #2ea043; color: #fff; }
+
+    .swim-name { font-size: 0.92rem; font-weight: 600; min-width: 72px; }
+    .swim-row.top .swim-name { color: #3fb950; }
+
+    .swim-expected { font-size: 0.75rem; color: #6e7681; margin-left: 2px; }
+
+    .swim-gap {
+      font-size: 0.82rem; font-weight: 700; margin-left: auto; font-variant-numeric: tabular-nums;
+    }
+    .swim-row.top .swim-gap { color: #3fb950; }
+    .gap-green { color: #3fb950; }
+    .gap-yellow { color: #d29922; }
+    .gap-red { color: #f85149; }
+
+    .swim-data { font-size: 0.68rem; color: #484f58; margin-left: 10px; }
+
+    /* Best guess banner */
+    .best-guess {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; background: #0d202a;
+      font-size: 0.88rem;
+    }
+    .best-guess-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.07em; color: #2ea043; }
+    .best-guess-name { font-weight: 700; color: #3fb950; }
+    .best-guess-gap { font-size: 0.8rem; color: #8b949e; margin-left: 4px; }
+    .best-guess-note { font-size: 0.75rem; color: #6e7681; margin-left: auto; }
+    .best-guess-note.warn { color: #d29922; }
+
+    /* ── How it works ─────────────────────────────────────────────── */
+    .how { margin-top: 36px; padding: 16px; background: #161b22; border: 1px solid #21262d; border-radius: 10px; }
+    .how-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #6e7681; margin-bottom: 10px; }
+    .how ul { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+    .how li { font-size: 0.8rem; color: #8b949e; line-height: 1.5; display: flex; align-items: flex-start; gap: 8px; }
+    .how li::before { content: '·'; color: #3fb950; font-weight: 700; flex-shrink: 0; }
+    .how strong { color: #e6edf3; }
+
+    /* Source legend */
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .leg { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: #6e7681; }
+    .leg-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .leg-dot.recorded { background: #1158c7; }
+    .leg-dot.curve { background: #6e40c9; }
+    .leg-dot.seed { background: #30363d; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Pairing Engine</h1>
+    <p>Coach taps LAP. Engine shows which swimmer likely swam each time.</p>
+  </header>
+
+  <!-- Swimmers in this set -->
+  <div class="label">Who's in the pool?</div>
+  <div class="chip-row" id="swimmerChips"></div>
+
+  <!-- Set details -->
+  <div class="label">Set details</div>
+  <div class="controls">
+    <div class="ctrl"><label>Distance</label>
+      <input type="number" id="dist" value="50" /></div>
+    <div class="ctrl"><label>Stroke</label>
+      <select id="stroke">
+        <option value="Free" selected>Free</option>
+        <option value="Back">Back</option>
+        <option value="Breast">Breast</option>
+        <option value="Fly">Fly</option>
+        <option value="IM">IM — manual</option>
+      </select>
+    </div>
+    <div class="ctrl"><label>Intensity</label>
+      <select id="intens">
+        <option value="race">Race</option>
+        <option value="hard">Hard</option>
+        <option value="moderate" selected>Moderate</option>
+        <option value="easy">Easy</option>
+      </select>
+    </div>
+    <div class="ctrl"><label>Gear</label>
+      <select id="gear">
+        <option value="">None</option>
+        <option value="paddles">Paddles</option>
+        <option value="pull_buoy">Pull buoy</option>
+        <option value="fins">Fins</option>
+        <option value="kickboard">Kickboard</option>
+        <option value="dragSuit">Drag suit</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Lap times -->
+  <div class="label">Tap times (ms) — enter the raw times from your stopwatch</div>
+  <div class="lap-block" id="lapBlock"></div>
+  <button class="btn btn-gray" id="autoBtn">Fill with expected times</button>
+
+  <!-- Run -->
+  <button class="btn btn-green" id="runBtn" style="margin-top:14px;width:100%">
+    Show rankings
+  </button>
+
+  <!-- Results -->
+  <div class="results" id="results"></div>
+
+  <!-- How it works -->
+  <div class="how">
+    <div class="how-title">How it works</div>
+    <ul>
+      <li>For each swimmer, the engine knows their <strong>expected time</strong> for this set (based on their training data, or their PBs, or a population average as fallback)</li>
+      <li>For each tap, it finds the swimmer with the <strong>smallest gap</strong> between tap time and expected time</li>
+      <li><strong>⚠ Flag</strong>: if the best gap is more than 4 seconds, the engine flags it — something might be off</li>
+      <li><strong>? Flag</strong>: if the top two swimmers are within 2× of each other, the engine can't decide — coach resolves manually</li>
+      <li>Swimmer names come from Supabase (real data). You can override expected times below.</li>
+    </ul>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot recorded"></div>recorded (your real data)</div>
+      <div class="leg"><div class="leg-dot curve"></div>curve (from PBs)</div>
+      <div class="leg"><div class="leg-dot seed"></div>population average</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── Swimmers (real seeded data) ────────────────────────────────────────────
+
+const SWIMMERS = [
+  { id: 'marcus', name: 'Marcus', expected: 26800, std: 280 },
+  { id: 'jake',   name: 'Jake',   expected: 27800, std: 300 },
+  { id: 'sofia',  name: 'Sofia',  expected: 30200, std: 280 },
+  { id: 'emma',   name: 'Emma',   expected: 31600, std: 450 },
+  { id: 'lily',   name: 'Lily',   expected: 32500, std: 700 },
+  { id: 'ryan',   name: 'Ryan',   expected: 25400, std: 150 },
+]
+
+// Override map: swimmerId → expected (ms)
+const overrides = {}
+
+const statsStore = {}
+for (const s of SWIMMERS) {
+  statsStore[`${s.id}:Free:50:moderate:bare`] = { meanTimeMs: s.expected, stddevMs: s.std, sampleCount: 10 }
+}
+
+// ─── Constants ─────────────────────────────────────────────────────────────
+
+const GEAR = { paddles: 1.05, pull_buoy: 1.03, fins: 0.88, kickboard: 1.04, dragSuit: 1.10 }
+const INT = { easy: 1.25, moderate: 1.10, hard: 1.03, race: 1.00 }
+const POP = { Free: 1.45, Back: 1.35, Breast: 1.30, Fly: 1.38, IM: 1.35 }
+const SDFRAC = { 25: 0.03, 50: 0.05, 100: 0.06, 200: 0.08, 400: 0.10, 800: 0.12, 1500: 0.15 }
+
+// ─── Predict ─────────────────────────────────────────────────────────────────
+
+function predict(swimmerId, stroke, distance, intensity, gear) {
+  // Check override first
+  const override = overrides[swimmerId]
+  if (override !== undefined) {
+    const gm = GEAR[gear] ?? 1.0
+    return { source: 'recorded', expectedTimeMs: override * gm, stddevMs: 500 }
+  }
+  const key = `${swimmerId}:${stroke}:${distance}:${intensity}:${gear ?? 'bare'}`
+  const rec = statsStore[key]
+  if (rec) {
+    const gm = GEAR[gear] ?? 1.0
+    return { source: 'recorded', expectedTimeMs: rec.meanTimeMs * gm, stddevMs: Math.max(rec.stddevMs * gm, 100) }
+  }
+  const speedMps = POP[stroke] ?? 1.35
+  const racePace = (distance / speedMps) * 1000
+  const intMult = INT[intensity] ?? 1.10
+  const gm = GEAR[gear] ?? 1.0
+  const sdFrac = SDFRAC[distance] ?? 0.10
+  return { source: 'seed', expectedTimeMs: Math.round(racePace * intMult * gm), stddevMs: Math.max(racePace * sdFrac, 200) }
+}
+
+// ─── Rank ─────────────────────────────────────────────────────────────────────
+
+function rankLap(lapMs, swimmers, stroke, distance, intensity, gear, thresholdMs = 4000) {
+  if (stroke === 'IM') return []
+  const withR = swimmers.map(sw => {
+    const pred = predict(sw.id, stroke, distance, intensity, gear)
+    const stddev = pred.stddevMs > 0 ? pred.stddevMs : Math.max(pred.expectedTimeMs * 0.1, 100)
+    const errorMs = Math.abs(lapMs - pred.expectedTimeMs)
+    return { swimmerId: sw.id, name: sw.name, errorMs, zScore: errorMs / stddev, expectedTimeMs: pred.expectedTimeMs, stddevMs: pred.stddevMs, source: pred.source }
+  })
+  withR.sort((a, b) => a.errorMs - b.errorMs)
+  const best = withR[0]?.errorMs ?? Infinity
+  const suspicious = best > thresholdMs
+  return withR.map((item, i) => ({
+    ...item,
+    suspicious,
+    marginRatio: i < withR.length - 1 ? withR[i + 1].errorMs / item.errorMs : null,
+  }))
+}
+
+// ─── Formatting ─────────────────────────────────────────────────────────────
+
+function fmt(ms) {
+  if (!ms || !isFinite(ms)) return '—'
+  if (ms >= 60000) return `${Math.floor(ms/60000)}m ${Math.round(ms%60000/1000)}s`
+  if (ms >= 1000) return `${(ms/1000).toFixed(ms%1000===0?0:1)}s`
+  return `${ms}ms`
+}
+function fmtShort(ms) {
+  if (!ms || !isFinite(ms)) return '—'
+  return ms >= 1000 ? `${(ms/1000).toFixed(1)}s` : `${ms}ms`
+}
+function fmtGap(ms) {
+  if (!ms || !isFinite(ms) || ms === 0) return 'exact'
+  if (ms >= 1000) return `${(ms/1000).toFixed(1)}s off`
+  return `${ms}ms off`
+}
+function gapClass(ms) {
+  if (!ms || ms === 0) return 'gap-green'
+  if (ms > 5000) return 'gap-red'
+  if (ms > 2000) return 'gap-yellow'
+  return 'gap-green'
+}
+
+// ─── Build swimmer chips ─────────────────────────────────────────────────────
+
+const chipRow = document.getElementById('swimmerChips')
+const chips = {}
+for (const s of SWIMMERS) {
+  const label = document.createElement('label')
+  label.className = 'chip on'
+  label.innerHTML = `
+    <input type="checkbox" value="${s.id}" checked />
+    <span class="chip-name">${s.name}</span>
+    <span class="chip-expected">${fmtShort(s.expected)}</span>
+  `
+  const cb = label.querySelector('input')
+  cb.addEventListener('change', () => {
+    label.classList.toggle('on', cb.checked)
+    buildLapInputs()
+  })
+  chips[s.id] = label
+  chipRow.appendChild(label)
+}
+
+// ─── Lap inputs ──────────────────────────────────────────────────────────────
+
+function buildLapInputs() {
+  const active = [...chipRow.querySelectorAll('input:checked')]
+  const block = document.getElementById('lapBlock')
+  block.innerHTML = ''
+  active.forEach((cb, i) => {
+    const sw = SWIMMERS.find(s => s.id === cb.value)
+    const row = document.createElement('div')
+    row.className = 'lap-row'
+    row.innerHTML = `
+      <label>Tap ${i + 1}</label>
+      <input type="number" id="tap${i}" placeholder="${sw ? fmtShort(sw.expected) : 'ms'}" data-swimmer="${sw?.id}" />
+    `
+    block.appendChild(row)
+  })
+}
+
+document.getElementById('autoBtn').addEventListener('click', () => {
+  const active = [...chipRow.querySelectorAll('input:checked')]
+  active.forEach((cb, i) => {
+    const sw = SWIMMERS.find(s => s.id === cb.value)
+    const inp = document.getElementById(`tap${i}`)
+    if (inp && sw) inp.value = sw.expected
+  })
+})
+
+buildLapInputs()
+
+// ─── Run ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('runBtn').addEventListener('click', () => {
+  const stroke = document.getElementById('stroke').value
+  if (stroke === 'IM') {
+    document.getElementById('results').innerHTML = '<p style="color:#8b949e;font-size:0.85rem;margin-top:16px">IM sets are always manual — engine can\'t predict.</p>'
+    return
+  }
+  const distance = +document.getElementById('dist').value
+  const intensity = document.getElementById('intens').value
+  const gear = document.getElementById('gear').value || null
+
+  const active = [...chipRow.querySelectorAll('input:checked')].map(cb => SWIMMERS.find(s => s.id === cb.value)).filter(Boolean)
+
+  const tapInputs = [...document.getElementById('lapBlock').querySelectorAll('input')]
+  const tapTimes = tapInputs.map(inp => inp.value ? +inp.value : null)
+
+  if (tapTimes.some(v => v === null)) {
+    document.getElementById('results').innerHTML = '<p style="color:#d29922;font-size:0.85rem;margin-top:16px">Fill in all tap times.</p>'
+    return
+  }
+  if (active.length < 2) {
+    document.getElementById('results').innerHTML = '<p style="color:#8b949e;font-size:0.85rem;margin-top:16px">Need at least 2 swimmers in the pool.</p>'
+    return
+  }
+
+  const all = tapTimes.map((t, i) => ({ tap: t, ranked: rankLap(t, active, stroke, distance, intensity, gear) }))
+
+  let html = ''
+  all.forEach(({ tap, ranked }, i) => {
+    const top = ranked[0]
+    const second = ranked[1]
+    const suspicious = top.suspicious
+    const ambiguous = top.marginRatio !== null && top.marginRatio < 2
+
+    // Alert type
+    let alertClass = 'ok', alertText = '✓ Clear — confident pick'
+    if (suspicious) { alertClass = 'bad'; alertText = '⚠ Every swimmer is 4+ seconds off. Check the set.' }
+    else if (ambiguous) { alertClass = 'warn'; alertText = '? Too close to call — coach decides' }
+
+    // Best guess note
+    let note = '', noteClass = ''
+    if (suspicious) { note = 'Unusual time — verify manually'; noteClass = 'warn' }
+    else if (ambiguous) { note = `${second.name} is close too`; noteClass = 'warn' }
+
+    const sourceLabel = { recorded: 'real data', curve: 'from PBs', seed: 'population' }[top.source] ?? top.source
+
+    html += `
+      <div class="lap-card">
+        <div class="lap-header">
+          <span class="lap-num">Tap ${i + 1}</span>
+          <span class="lap-time">${fmt(tap)}</span>
+        </div>
+
+        <div class="alert-bar ${alertClass}">
+          ${alertText}
+        </div>
+
+        <div class="best-guess">
+          <span class="best-guess-label">Best guess</span>
+          <span class="best-guess-name">${top.name}</span>
+          <span class="best-guess-gap">(${fmtGap(top.errorMs)})</span>
+          ${note ? `<span class="best-guess-note ${noteClass}">${note}</span>` : `<span class="best-guess-note">${sourceLabel}</span>`}
+        </div>
+
+        <div class="swim-list">
+          ${ranked.map((r, ri) => {
+            const src = { recorded: 'real', curve: 'PBs', seed: 'pop' }[r.source] ?? r.source
+            return `
+              <div class="swim-row ${ri === 0 ? 'top' : ''}">
+                <span class="rank-badge">${ri + 1}</span>
+                <span class="swim-name">${r.name}</span>
+                <span class="swim-expected">expected ${fmtShort(r.expectedTimeMs)}</span>
+                <span class="swim-gap ${gapClass(r.errorMs)}">${fmtGap(r.errorMs)}</span>
+                <span class="swim-data">${src}</span>
+              </div>
+            `
+          }).join('')}
+        </div>
+      </div>
+    `
+  })
+
+  document.getElementById('results').innerHTML = html
+})
+</script>
+</body>
+</html>

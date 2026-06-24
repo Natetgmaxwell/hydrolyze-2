@@ -1,0 +1,274 @@
+import Foundation
+import Supabase
+
+/// WorkoutService — query layer for workouts, workout_sets, recorded_times.
+final class WorkoutService {
+    private let supabase = SupabaseService.shared.client
+
+    /// Fetch today's scheduled workout (nearest future scheduled, or null if none).
+    func fetchTodayWorkout(coachId: String) async throws -> Workout? {
+        let todayStr = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
+        let response = try await supabase.from("workouts")
+            .select("id, coach_id, title, description, scheduled_at, am_pm, completed_at, status, created_at, updated_at")
+            .eq("coach_id", value: coachId)
+            .eq("status", value: "scheduled")
+            .gte("scheduled_at", value: todayStr)
+            .order("scheduled_at", ascending: true)
+            .limit(1)
+            .execute()
+        let workouts = try JSONDecoder().decode([Workout].self, from: response.data)
+        return workouts.first
+    }
+
+    /// Fetch all workouts for a coach, most recent first.
+    func fetchWorkouts(coachId: String) async throws -> [Workout] {
+        let response = try await supabase.from("workouts")
+            .select()
+            .eq("coach_id", value: coachId)
+            .order("created_at", ascending: false)
+            .execute()
+        return try JSONDecoder().decode([Workout].self, from: response.data)
+    }
+
+    /// Fetch a single workout with its sets.
+    func fetchWorkout(workoutId: String) async throws -> Workout {
+        let response = try await supabase.from("workouts")
+            .select()
+            .eq("id", value: workoutId)
+            .single()
+            .execute()
+        return try JSONDecoder().decode(Workout.self, from: response.data)
+    }
+
+    /// Fetch all sets for a workout.
+    func fetchWorkoutSets(workoutId: String) async throws -> [WorkoutSet] {
+        let response = try await supabase.from("workout_sets")
+            .select()
+            .eq("workout_id", value: workoutId)
+            .order("order_index", ascending: true)
+            .execute()
+        return try JSONDecoder().decode([WorkoutSet].self, from: response.data)
+    }
+
+    /// Create a new workout with optional sets.
+    func createWorkout(coachId: String, title: String?, description: String?, scheduledAt: String? = nil, workoutText: String? = nil) async throws -> Workout {
+        struct CreatePayload: Encodable {
+            let coachId: String
+            let title: String?
+            let description: String?
+            let scheduledAt: String?
+            let status: String
+            let workoutText: String?
+
+            enum CodingKeys: String, CodingKey {
+                case coachId = "coach_id"
+                case title
+                case description
+                case scheduledAt = "scheduled_at"
+                case status
+                case workoutText = "workout_text"
+            }
+        }
+        let payload = CreatePayload(
+            coachId: coachId,
+            title: title,
+            description: description,
+            scheduledAt: scheduledAt,
+            status: "draft",
+            workoutText: workoutText
+        )
+        let response = try await supabase.from("workouts")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+        return try JSONDecoder().decode(Workout.self, from: response.data)
+    }
+
+    /// Call the parse-workout Edge Function to parse workout text.
+    func parseWorkout(text: String) async throws -> ParsedWorkout {
+        struct ParseRequest: Encodable { let workoutText: String }
+        let body = try JSONEncoder().encode(ParseRequest(workoutText: text))
+        var request = URLRequest(url: URL(string: "https://flidjtldfvrrntzwtnsq.supabase.co/functions/v1/parse-workout")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsaWRqdGxkZnZycm50end0bnNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MjcyODMsImV4cCI6MjA3NzEwMzI4M30.kRhOyhPLVmVww6W03wMrlZnX0yeD6F73_cUpaOaRldE", forHTTPHeaderField: "Authorization")
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "ParseWorkout", code: (response as? HTTPURLResponse)?.statusCode ?? 500)
+        }
+        return try JSONDecoder().decode(ParsedWorkout.self, from: data)
+    }
+
+    /// Create a single set on a workout.
+    func createWorkoutSet(workoutId: String, setData: [String: String]) async throws -> WorkoutSet {
+        var combined: [String: String] = ["workout_id": workoutId]
+        setData.forEach { combined[$0.key] = $0.value }
+
+        let response = try await supabase.from("workout_sets")
+            .insert(combined)
+            .select()
+            .single()
+            .execute()
+        return try JSONDecoder().decode(WorkoutSet.self, from: response.data)
+    }
+
+    /// Update a workout (status, title, etc.).
+    func updateWorkout(workoutId: String, updates: [String: String]) async throws -> Workout {
+        var combined: [String: String] = updates
+        combined["id"] = workoutId
+
+        let response = try await supabase.from("workouts")
+            .update(combined)
+            .eq("id", value: workoutId)
+            .select()
+            .single()
+            .execute()
+        return try JSONDecoder().decode(Workout.self, from: response.data)
+    }
+
+    /// Update a workout set (mark complete, update fields).
+    func updateWorkoutSet(setId: String, updates: [String: String]) async throws -> WorkoutSet {
+        var combined: [String: String] = updates
+        combined["id"] = setId
+
+        let response = try await supabase.from("workout_sets")
+            .update(combined)
+            .eq("id", value: setId)
+            .select()
+            .single()
+            .execute()
+        return try JSONDecoder().decode(WorkoutSet.self, from: response.data)
+    }
+
+    /// Delete a workout and all its sets.
+    func deleteWorkout(workoutId: String) async throws {
+        try await supabase.from("workouts")
+            .delete()
+            .eq("id", value: workoutId)
+            .execute()
+    }
+
+    /// Record a time for a swimmer on a set (or standalone workout).
+    func recordTime(
+        swimmerId: String,
+        timeMs: Int,
+        repIndex: Int,
+        intensity: String,
+        workoutSetId: String? = nil,
+        workoutId: String? = nil,
+        gear: String? = nil,
+        waveNumber: Int = 1,
+        paceDistance: Int? = nil
+    ) async throws -> RecordedTime {
+        struct RecordPayload: Encodable {
+            let swimmerId: String
+            let timeMs: Int
+            let repIndex: Int
+            let intensity: String
+            let workoutSetId: String?
+            let workoutId: String?
+            let gear: String?
+            let waveNumber: Int
+            let paceDistance: Int?
+        }
+        let payload = RecordPayload(
+            swimmerId: swimmerId,
+            timeMs: timeMs,
+            repIndex: repIndex,
+            intensity: intensity,
+            workoutSetId: workoutSetId,
+            workoutId: workoutId,
+            gear: gear,
+            waveNumber: waveNumber,
+            paceDistance: paceDistance
+        )
+        let response = try await supabase.from("recorded_times")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+        return try JSONDecoder().decode(RecordedTime.self, from: response.data)
+    }
+
+    /// Fetch recorded times for a swimmer within a time window (for progression chart).
+    func fetchRecordedTimes(swimmerId: String, since: Date) async throws -> [RecordedTime] {
+        let formatter = ISO8601DateFormatter()
+        let sinceStr = formatter.string(from: since)
+        let response = try await supabase.from("recorded_times")
+            .select()
+            .eq("swimmer_id", value: swimmerId)
+            .gte("created_at", value: sinceStr)
+            .order("created_at", ascending: true)
+            .execute()
+        return try JSONDecoder().decode([RecordedTime].self, from: response.data)
+    }
+
+    /// Fetch recorded times for a specific workout set.
+    func fetchTimesForSet(workoutSetId: String) async throws -> [RecordedTime] {
+        let response = try await supabase.from("recorded_times")
+            .select()
+            .eq("workout_set_id", value: workoutSetId)
+            .order("rep_index", ascending: true)
+            .execute()
+        return try JSONDecoder().decode([RecordedTime].self, from: response.data)
+    }
+
+    /// Insert structured sets from a parsed workout into workout_sets.
+    func createSetsForWorkout(workoutId: String, from parsed: ParsedWorkout) async throws {
+        struct SetRow: Encodable {
+            let workout_id: String
+            let reps: Int?
+            let distance: Int?
+            let stroke: String?
+            let interval_text: String?
+            let intensity_type: String?
+            let intensity_label: String?
+            let gear: String?
+            let order_index: Int
+
+            enum CodingKeys: String, CodingKey {
+                case workout_id, reps, distance, stroke
+                case interval_text, intensity_type, intensity_label
+                case gear, order_index
+            }
+        }
+
+        var sortOrder = 0
+        for section in parsed.sections {
+            for namedSet in section.namedSets {
+                for group in namedSet.repGroups {
+                    guard let distance = group.distance else {
+                        print("⚠️ Skipping set insert: distance is nil for workout \(workoutId)")
+                        continue
+                    }
+                    let row = SetRow(
+                        workout_id: workoutId,
+                        reps: group.reps ?? 1,
+                        distance: distance,
+                        stroke: group.stroke,
+                        interval_text: group.interval,
+                        intensity_type: group.intensity?.type.rawValue,
+                        intensity_label: group.intensity?.label,
+                        gear: group.gear?.first,
+                        order_index: sortOrder
+                    )
+                    sortOrder += 1
+                    _ = try await supabase.from("workout_sets")
+                        .insert(row)
+                        .execute()
+                }
+            }
+        }
+    }
+
+    /// Replace all sets for a workout — delete then re-insert.
+    func replaceSetsForWorkout(workoutId: String, parsed: ParsedWorkout) async throws {
+        try await supabase.from("workout_sets")
+            .delete()
+            .eq("workout_id", value: workoutId)
+            .execute()
+        try await createSetsForWorkout(workoutId: workoutId, from: parsed)
+    }
+}
