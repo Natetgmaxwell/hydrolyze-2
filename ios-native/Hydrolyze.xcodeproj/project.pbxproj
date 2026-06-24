@@ -72,6 +72,7 @@
 		C08F93CFAECF744819114968 /* PairingEngineTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D00051440D265F8E6664B38 /* PairingEngineTest.swift */; };
 		C14911E1B73327CF3A829827 /* SpeedCurveChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B560C80F4FA1D136883DDAB /* SpeedCurveChart.swift */; };
 		C1B4401CFE251CE36B73C025 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81339FFDB779F57DEC36E332 /* TodayView.swift */; };
+		C281252C2FB2D5FE6F462ACC /* SwimmerHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A75A9B833BA692D9F61C24 /* SwimmerHomeView.swift */; };
 		C6B2D23B2DCA3E9DEA4B8720 /* Animations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 291B01D1EB4AEAE4AE470F11 /* Animations.swift */; };
 		C9A148F47D4D67AE7CEEAD41 /* PBAddSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B8CB893521F12CBAC32325 /* PBAddSheet.swift */; };
 		CC1A2C5C3CA7A4F243193EB7 /* ProgressionChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BBBDF10F7EEB172AEDE6E21 /* ProgressionChart.swift */; };
@@ -90,6 +91,7 @@
 		EB9A7B5E535E0B22F94BB591 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FAE9A0EE7E5C00413B6F831 /* FlowLayout.swift */; };
 		F0550B6C9285B3D9568A129E /* SpeedCurveFitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35DF81249E9FDCF5337E8489 /* SpeedCurveFitter.swift */; };
 		F372E237F69B857FEE3AB422 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 24A6766EB2A726378E3EA074 /* README.md */; };
+		F4A6B071989514A86B2AF2A2 /* SwimmerHomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ED58B38E311216828F53455 /* SwimmerHomeViewModel.swift */; };
 		F782783A579553B3278B9EFB /* PressFeedbackStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A6BAA55BEC6817427B2B574 /* PressFeedbackStyle.swift */; };
 		FA91467231FEDE548780E34F /* WaveAllocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CDEE0BE641DA59BB7648129 /* WaveAllocator.swift */; };
 /* End PBXBuildFile section */
@@ -164,12 +166,14 @@
 		8F3B0E1EAB016A69A8583CC2 /* WaveAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveAssignment.swift; sourceTree = "<group>"; };
 		9108E7DFD14A0CC8F3D48ADC /* SwimmerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerDetailView.swift; sourceTree = "<group>"; };
 		91F992C337F1E63DF1765344 /* Swimmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Swimmer.swift; sourceTree = "<group>"; };
+		93A75A9B833BA692D9F61C24 /* SwimmerHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerHomeView.swift; sourceTree = "<group>"; };
 		946F09F1BB6D858EE01E66E2 /* SwimmersListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmersListViewModel.swift; sourceTree = "<group>"; };
 		94C2B4BB6760D96E677F11A2 /* SquadAnalyticsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquadAnalyticsViewModel.swift; sourceTree = "<group>"; };
 		953FDAF57842AEC0AF43B76F /* SessionStartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStartViewModel.swift; sourceTree = "<group>"; };
 		9769C6AF2FC9D2292E64C103 /* SwimmerAnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerAnalyticsView.swift; sourceTree = "<group>"; };
 		9B560C80F4FA1D136883DDAB /* SpeedCurveChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedCurveChart.swift; sourceTree = "<group>"; };
 		9BCC2E5E797656F432A0858C /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
+		9ED58B38E311216828F53455 /* SwimmerHomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerHomeViewModel.swift; sourceTree = "<group>"; };
 		A9B8CB893521F12CBAC32325 /* PBAddSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PBAddSheet.swift; sourceTree = "<group>"; };
 		AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerSheetViewModel.swift; sourceTree = "<group>"; };
 		B0102BBE0B7283BBAEB2212A /* LapAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LapAssignment.swift; sourceTree = "<group>"; };
@@ -241,6 +245,7 @@
 				0A5E71D227B4916EE183E5F3 /* Profile */,
 				FB8B97AD8101090DFA8E05E8 /* SessionReview */,
 				5214195FEFEE4AC1EA4B6542 /* SessionStart */,
+				60C627FB0AF40BCCE04D01E0 /* Swimmer */,
 				20154A884EACCE3C7F13A436 /* Swimmers */,
 				0A80606C4E82F11B27A6C32C /* Timing */,
 				DE26F36CCD29DD39A7053D4B /* Today */,
@@ -294,6 +299,7 @@
 				D353FF572767DA374F6433AF /* SessionReviewViewModel.swift */,
 				953FDAF57842AEC0AF43B76F /* SessionStartViewModel.swift */,
 				5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */,
+				9ED58B38E311216828F53455 /* SwimmerHomeViewModel.swift */,
 				AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */,
 				946F09F1BB6D858EE01E66E2 /* SwimmersListViewModel.swift */,
 				065431091672032E31212808 /* TimingViewModel.swift */,
@@ -376,6 +382,14 @@
 				CB94379C0848BBB6494DB42D /* WorkoutService.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		60C627FB0AF40BCCE04D01E0 /* Swimmer */ = {
+			isa = PBXGroup;
+			children = (
+				93A75A9B833BA692D9F61C24 /* SwimmerHomeView.swift */,
+			);
+			path = Swimmer;
 			sourceTree = "<group>";
 		};
 		6B7AEA0B6AA3ED43CE3B70E4 /* Components */ = {
@@ -701,6 +715,8 @@
 				AE95ECADBA2F3754F7785556 /* SwimmerAnalyticsViewModel.swift in Sources */,
 				7855878CDCEFE64FD8F75904 /* SwimmerDetailView.swift in Sources */,
 				64D0C23101DC7F509AF5840D /* SwimmerDetailViewModel.swift in Sources */,
+				C281252C2FB2D5FE6F462ACC /* SwimmerHomeView.swift in Sources */,
+				F4A6B071989514A86B2AF2A2 /* SwimmerHomeViewModel.swift in Sources */,
 				D300AD6D7658B42054A8B292 /* SwimmerRow.swift in Sources */,
 				1BA25E29296FAFF24DCF3F78 /* SwimmerService.swift in Sources */,
 				99AD90FE201FD3C970D8F60F /* SwimmerSheetView.swift in Sources */,

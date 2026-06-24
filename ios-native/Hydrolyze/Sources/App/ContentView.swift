@@ -1,18 +1,33 @@
 import SwiftUI
 
-/// ContentView — app root with TabView. Routes to LoginView when unauthenticated,
-/// tab bar when authenticated.
+/// ContentView — app root with three-way routing based on the
+/// signed-in user's role:
+/// - .unauthenticated → LoginView
+/// - .swimmer → SwimmerHomeView (My Swims / My PBs / My Coach / Profile)
+/// - .coach → CoachHomeView (Today / Swimmers / Workouts / Profile)
+///
+/// The role signal comes from AuthManager.role (Phase 2.2).
+/// Per VISION.md "coach is the authority," the coach is the
+/// primary surface. Swimmers see their own data; the coach sees
+/// the squad.
 struct ContentView: View {
     @Environment(AuthManager.self) private var authManager
 
     var body: some View {
         Group {
-            if authManager.currentUser == nil && !authManager.isLoading {
-                LoginView()
-            } else if authManager.currentUser == nil {
+            if authManager.isLoading {
                 loadingView
+            } else if authManager.currentUser == nil {
+                LoginView()
             } else {
-                tabView
+                switch authManager.role {
+                case .unauthenticated:
+                    LoginView()
+                case .swimmer:
+                    SwimmerHomeView()
+                case .coach:
+                    coachTabView
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -29,7 +44,11 @@ struct ContentView: View {
         }
     }
 
-    private var tabView: some View {
+    /// PHASE 2.6: The coach's tab bar. Extracted into a private
+    /// computed view so the three-way routing in `body` stays
+    /// readable. The 5 tabs match the prior ContentView —
+    /// Analytics is still here for v1, will be demoted in Phase 4.
+    private var coachTabView: some View {
         TabView {
             TodayView()
                 .tabItem {

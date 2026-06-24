@@ -1,22 +1,97 @@
 import SwiftUI
 
-enum AuthMode {
-    case signIn
-    case signUp
-    case reset
+/// PHASE 2.4: AuthRoleTab — the entry-point chooser at the top of
+/// the login screen. The user picks "Coach" or "Swimmer" before
+/// seeing the form. The Coach flow is the existing 3-mode flow
+/// (Sign In / Sign Up / Reset). The Swimmer flow is just Sign In
+/// + Reset — swimmers don't sign themselves up (the coach creates
+/// the account via Create Swimmer Account in the swimmers view).
+///
+/// Per VISION.md "coach is the authority": the swimmer doesn't
+/// self-register. They get an email + one-time password from the
+/// coach, then sign in. So the Swimmer tab has no Sign Up form.
+enum AuthRoleTab: String, CaseIterable, Identifiable {
+    case coach = "Coach"
+    case swimmer = "Swimmer"
+    var id: String { rawValue }
 }
 
-/// LoginView — email/password auth screen with three inline modes (Sign In / Sign Up / Reset).
+/// PHASE 2.4: Top-level LoginView — chooses Coach vs Swimmer flow.
 ///
-/// Micro-interactions:
-/// - Mode switch: the form cross-fades with a slight upward
-///   translation (0.18s) instead of the default `withAnimation`
-///   swap. The transition tells the user "we're in a different
-///   state" without sliding the whole form around.
-/// - Submit: light haptic on tap, success haptic on resolve,
-///   error haptic on throw. The user gets a tactile signal
-///   whether the auth succeeded or failed.
+/// This replaces the prior single-flow LoginView. The Coach flow
+/// is delegated to `CoachLoginFlow` (the existing 3-mode form,
+/// extracted into its own struct). The Swimmer flow is a simpler
+/// `SwimmerLoginFlow` (Sign In + Reset only). The tab chooser is
+/// a thin segmented control at the top of the form.
 struct LoginView: View {
+    @Environment(AuthManager.self) private var authManager
+    @State private var role: AuthRoleTab = .coach
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                headerSection
+                rolePicker
+                Group {
+                    switch role {
+                    case .coach:
+                        CoachLoginFlow()
+                    case .swimmer:
+                        SwimmerLoginFlow()
+                    }
+                }
+                .transition(.opacity)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 60)
+        }
+        .background(Color(hex: "060e18"))
+        .onTapGesture { hideKeyboard() }
+        .animation(.easeInOut(duration: 0.18), value: role)
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        VStack(spacing: 8) {
+            Text("HYDROLYZE")
+                .font(.system(size: 44, weight: .bold, design: .monospaced))
+                .foregroundColor(Color(hex: "09d4ee"))
+
+            Text("Sign in to your account")
+                .font(.system(size: 14))
+                .foregroundColor(Color(hex: "4a6572"))
+        }
+    }
+
+    // MARK: - Role picker
+
+    private var rolePicker: some View {
+        HStack(spacing: 0) {
+            ForEach(AuthRoleTab.allCases) { tab in
+                Button {
+                    role = tab
+                } label: {
+                    Text(tab.rawValue)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(role == tab ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(role == tab ? Color(hex: "09d4ee") : Color.clear)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(Color(hex: "0d1f33"))
+        .cornerRadius(10)
+    }
+}
+
+// MARK: - Coach flow
+
+/// PHASE 2.4: CoachLoginFlow — extracted from the prior LoginView.
+/// Coach has Sign In / Sign Up / Reset (the 3-mode inline flow).
+struct CoachLoginFlow: View {
     @Environment(AuthManager.self) private var authManager
 
     @State private var email = ""
@@ -26,28 +101,13 @@ struct LoginView: View {
     @State private var errorMessage: String?
     @State private var showSuccessAlert = false
     @State private var successMessage = ""
-    @State private var emailFieldFocused = false
-    @State private var passwordFieldFocused = false
-    // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion change.
-    // The HYDROLYZE wordmark reveals on first appear (gentle opacity
-    // + scale 0.95 → 1.0 over 0.6s). First-impression warmth through
-    // motion, NOT through "Welcome back, Coach." text. See
-    // [[concepts/warmth-through-motion]] for the principle.
-    @State private var wordmarkAppeared = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                headerSection
-                formSection
-                submitButton
-                footerLinks
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 60)
+        VStack(spacing: 24) {
+            formSection
+            submitButton
+            footerLinks
         }
-        .background(Color(hex: "060e18"))
-        .onTapGesture { hideKeyboard() }
         .alert("Authentication Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
         } message: {
@@ -60,135 +120,88 @@ struct LoginView: View {
         }
     }
 
-    private var headerSection: some View {
-        VStack(spacing: 8) {
-            // HYDROLYZE wordmark — gentle fade-in + scale-up on
-            // first appear, so the first paint of the login screen
-            // reads as "the app is alive" rather than "the screen
-            // snapped into place." The animation is keyed off
-            // wordmarkAppeared, which flips to true in the .task
-            // below. The opacity + scale together produce the
-            // "reveal" feeling without being theatrical.
-            Text("HYDROLYZE")
-                .font(.system(size: 44, weight: .bold, design: .monospaced))
-                .foregroundColor(Color(hex: "09d4ee"))
-                .opacity(wordmarkAppeared ? 1 : 0)
-                .scaleEffect(wordmarkAppeared ? 1.0 : 0.95)
-                .animation(Animations.gentle, value: wordmarkAppeared)
-                .task {
-                    // Tiny delay so the user perceives the reveal
-                    // rather than it being instantaneous with the
-                    // screen paint. 80ms is enough for the brain
-                    // to register "something appeared" without
-                    // feeling laggy.
-                    try? await Task.sleep(for: .milliseconds(80))
-                    wordmarkAppeared = true
-                }
-
-            Text(subtitleText)
-                .font(.system(size: 14))
-                .foregroundColor(Color(hex: "4a6572"))
-                // Subtitle cross-fades when the mode changes —
-                // the "Coach Dashboard" → "Create Account" swap
-                // becomes a soft transition, not a hard cut.
-                .id("subtitle-\(mode)")
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .top)),
-                    removal: .opacity
-                ))
+    private var formSection: some View {
+        VStack(spacing: 16) {
+            AuthTextField(
+                icon: "envelope.fill",
+                placeholder: "Email",
+                text: $email,
+                isSecure: false,
+                keyboardType: .emailAddress
+            )
+            AuthTextField(
+                icon: "lock.fill",
+                placeholder: "Password",
+                text: $password,
+                isSecure: true,
+                keyboardType: .default
+            )
         }
-        .animation(Animations.gentle, value: mode)
     }
 
-    private var subtitleText: String {
+    private var submitButton: some View {
+        Button {
+            Haptics.tap()
+            Task { await handleSubmit() }
+        } label: {
+            HStack {
+                if isLoading {
+                    ProgressView().tint(Color(hex: "060e18"))
+                } else {
+                    Text(submitButtonText)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color(hex: "060e18"))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color(hex: "09d4ee"))
+            .cornerRadius(10)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading || email.isEmpty || password.isEmpty)
+    }
+
+    private var footerLinks: some View {
+        VStack(spacing: 8) {
+            Button {
+                Haptics.tap()
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    mode = mode == .signIn ? .signUp : .signIn
+                }
+            } label: {
+                Text(mode == .signIn ? "Don't have an account? Sign Up" : "Have an account? Sign In")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: "09d4ee"))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                Haptics.tap()
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    mode = .reset
+                }
+            } label: {
+                Text("Forgot password?")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: "7a9bb0"))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var submitButtonText: String {
         switch mode {
-        case .signIn: return "Coach Dashboard"
+        case .signIn: return "Sign In"
         case .signUp: return "Create Account"
         case .reset: return "Reset Password"
         }
     }
 
-    private var formSection: some View {
-        VStack(spacing: 16) {
-            // Animated swap of the form fields so the password
-            // field appears/disappears gracefully when toggling
-            // into/out of the reset mode.
-            AuthTextField(
-                label: "Email",
-                text: $email
-            )
-
-            if mode != .reset {
-                AuthTextField(
-                    label: "Password",
-                    text: $password,
-                    isSecure: true
-                )
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .top)),
-                    removal: .opacity
-                ))
-            }
-        }
-        .animation(Animations.gentle, value: mode)
-    }
-
-    private var submitButton: some View {
-        PrimaryButton(
-            title: buttonTitle,
-            isLoading: isLoading
-        ) {
-            Haptics.tap()
-            Task { await submit() }
-        }
-    }
-
-    private var buttonTitle: String {
-        switch mode {
-        case .signIn: return "SIGN IN"
-        case .signUp: return "SIGN UP"
-        case .reset: return "SEND RESET LINK"
-        }
-    }
-
-    private var footerLinks: some View {
-        VStack(spacing: 12) {
-            switch mode {
-            case .signIn:
-                HStack {
-                    Text("New coach?")
-                        .foregroundColor(Color(hex: "4a6572"))
-                    Button("Sign Up") {
-                        Haptics.selection()
-                        withAnimation(Animations.gentle) { mode = .signUp }
-                    }
-                    .foregroundColor(Color(hex: "09d4ee"))
-                    Spacer()
-                    Button("Forgot Password?") {
-                        Haptics.selection()
-                        withAnimation(Animations.gentle) { mode = .reset }
-                    }
-                    .foregroundColor(Color(hex: "09d4ee"))
-                }
-                .font(.system(size: 12))
-            case .signUp, .reset:
-                Button("Back to Sign In") {
-                    Haptics.selection()
-                    withAnimation(Animations.gentle) {
-                        mode = .signIn; email = ""; password = ""
-                    }
-                }
-                .foregroundColor(Color(hex: "09d4ee"))
-                .font(.system(size: 12))
-            }
-        }
-    }
-
-    private func submit() async {
-        guard validateInput() else { return }
+    private func handleSubmit() async {
         isLoading = true
         errorMessage = nil
-
+        defer { isLoading = false }
         do {
             switch mode {
             case .signIn:
@@ -197,50 +210,144 @@ struct LoginView: View {
             case .signUp:
                 try await authManager.signUp(email: email, password: password)
                 Haptics.success()
-                successMessage = "Check your email to confirm your account."
+                successMessage = "Account created. Check your email to confirm."
                 showSuccessAlert = true
-                mode = .signIn
-                password = ""
             case .reset:
                 try await authManager.resetPassword(email: email)
                 Haptics.success()
-                successMessage = "Check your email for a reset link."
+                successMessage = "Password reset email sent."
                 showSuccessAlert = true
-                mode = .signIn
             }
         } catch {
             Haptics.error()
-            errorMessage = "Authentication Error: \(error.localizedDescription)"
+            errorMessage = error.localizedDescription
         }
-
-        isLoading = false
-    }
-
-    private func validateInput() -> Bool {
-        if email.isEmpty {
-            Haptics.warning()
-            errorMessage = "Please enter your email address."
-            return false
-        }
-        if mode != .reset && password.isEmpty {
-            Haptics.warning()
-            errorMessage = "Please enter your password."
-            return false
-        }
-        if mode == .signUp && password.count < 6 {
-            Haptics.warning()
-            errorMessage = "Password must be at least 6 characters."
-            return false
-        }
-        return true
-    }
-
-    private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 
-#Preview {
-    LoginView()
-        .environment(AuthManager())
+// MARK: - Swimmer flow
+
+/// PHASE 2.4: SwimmerLoginFlow — Sign In + Reset only.
+/// Swimmers don't sign up — the coach creates the account via
+/// Create Swimmer Account. So no Sign Up form, no coach
+/// invitation UI here — the swimmer just enters the email +
+/// password the coach gave them.
+struct SwimmerLoginFlow: View {
+    @Environment(AuthManager.self) private var authManager
+
+    @State private var email = ""
+    @State private var password = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var showSuccessAlert = false
+    @State private var successMessage = ""
+
+    var body: some View {
+        VStack(spacing: 24) {
+            formSection
+            submitButton
+            footerLinks
+        }
+        .alert("Sign-in Error", isPresented: .constant(errorMessage != nil)) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .alert("Check your email", isPresented: $showSuccessAlert) {
+            Button("OK") { }
+        } message: {
+            Text(successMessage)
+        }
+    }
+
+    private var formSection: some View {
+        VStack(spacing: 16) {
+            AuthTextField(
+                icon: "envelope.fill",
+                placeholder: "Email (from your coach)",
+                text: $email,
+                isSecure: false,
+                keyboardType: .emailAddress
+            )
+            AuthTextField(
+                icon: "lock.fill",
+                placeholder: "Password (or one-time code)",
+                text: $password,
+                isSecure: true,
+                keyboardType: .default
+            )
+        }
+    }
+
+    private var submitButton: some View {
+        Button {
+            Haptics.tap()
+            Task { await handleSignIn() }
+        } label: {
+            HStack {
+                if isLoading {
+                    ProgressView().tint(Color(hex: "060e18"))
+                } else {
+                    Text("Sign In")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color(hex: "060e18"))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color(hex: "09d4ee"))
+            .cornerRadius(10)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading || email.isEmpty || password.isEmpty)
+    }
+
+    private var footerLinks: some View {
+        VStack(spacing: 8) {
+            Button {
+                Haptics.tap()
+                Task { await handleReset() }
+            } label: {
+                Text("Forgot password?")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: "7a9bb0"))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func handleSignIn() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            try await authManager.signIn(email: email, password: password)
+            Haptics.success()
+        } catch {
+            Haptics.error()
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func handleReset() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            try await authManager.resetPassword(email: email)
+            Haptics.success()
+            successMessage = "Password reset email sent."
+            showSuccessAlert = true
+        } catch {
+            Haptics.error()
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+/// Helper to hide the keyboard on tap.
+private func hideKeyboard() {
+    #if canImport(UIKit)
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    #endif
 }

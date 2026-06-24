@@ -1,0 +1,112 @@
+import Foundation
+
+/// PHASE 2.5: SwimmerHomeViewModel — the data layer for the
+/// SwimmerHomeView. Loads the swimmer's recent times + PBs +
+/// calibration context. Read-only for MVP.
+///
+/// Data sources:
+/// - ChartDataService.fetchSpeedCurveData(swimmerId:since:) —
+///   the swimmer's full history, no event filter
+/// - SwimmerService.fetchPersonalBests(swimmerId:) — the PBs
+///
+/// The RLS policies (Phase 2.1) ensure the swimmer can only see
+/// their own data. If the policy is bypassed somehow, the
+/// fetch still returns just the swimmer's rows because the
+/// WHERE clauses scope by swimmer_id.
+@MainActor
+final class SwimmerHomeViewModel: ObservableObject {
+    @Published var recentTimes: [TimeEntry] = []
+    @Published var pbs: [PBEntry] = []
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String?
+
+    /// One recent recorded time. Carries enough context for the
+    /// My Swims list to render an event label + relative date.
+    struct TimeEntry: Identifiable {
+        let id: String  // recorded_time.id
+        let timeMs: Int
+        let stroke: String
+        let distance: Int
+        let relativeDate: String
+        let createdAt: Date
+    }
+
+    /// One personal best.
+    struct PBEntry: Identifiable {
+        let id: String
+        let stroke: String
+        let distance: Int
+        let timeMs: Int
+        let intensity: String?
+    }
+
+    private let swimmerService = SwimmerService()
+    private let chartDataService = ChartDataService()
+
+    /// Lookback window for "recent times." 6 weeks matches the
+    /// analytics trend window (the SwimmerAnalyticsViewModel uses
+    /// the same value) so the views are consistent.
+    private let recentWindowDays: Int = 42
+
+    /// Fetch the swimmer's history + PBs. The coach's session
+    /// auth isn't needed here — the iOS anon key (configured in
+    /// SupabaseService) is enough because the swimmer_own_*
+    /// RLS policies grant SELECT on the swimmer's own rows
+    /// (auth.uid() = swimmers.auth_id).
+    func load(swimmerId: String?) async {
+        guard let swimmerId = swimmerId else { return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            async let timesTask = chartDataService.fetchSpeedCurveData(
+                swimmerId: swimmerId,
+                since: Date().addingTimeInterval(-Double(recentWindowDays) * 86400)
+            )
+            async let pbsTask = swimmerService.fetchPersonalBests(swimmerId: swimmerId)
+            let (times, pbs) = try await (timesTask, pbsTask)
+
+            self.recentTimes = times.compactMap { rt in
+                guard let timeMs = rt.timeMs, let stroke = rt.stroke,
+                      let distance = rt.paceDistance else { return nil }
+                let date = ISO8601DateParser.parse(rt.createdAt) ?? Date()
+                return TimeEntry(
+                    id: rt.id,
+                    timeMs: timeMs,
+                    stroke: stroke,
+                    distance: distance,
+                    relativeDate: relativeDateString(from: date),
+                    createdAt: date
+                )
+            }
+            // Most recent first; cap at the last 20 entries so
+            // the My Swims list stays scannable
+            .sorted { $0.createdAt > $1.createdAt }
+            .prefix(20)
+            .map { $0 }
+
+            self.pbs = pbs.compactMap { pb in
+                PBEntry(
+                    id: pb.id,
+                    stroke: pb.stroke,
+                    distance: pb.distance,
+                    timeMs: pb.timeMs,
+                    intensity: pb.intensity
+                )
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func relativeDateString(from date: Date) -> String {
+        let interval = Date().timeIntervalSince(date)
+        let days = Int(interval / 86400)
+        if days < 0 { return "in the future" }
+        if days == 0 { return "today" }
+        if days == 1 { return "yesterday" }
+        if days < 7 { return "\(days)d ago" }
+        if days < 30 { return "\(days / 7)w ago" }
+        return "\(days / 30)mo ago"
+    }
+}
