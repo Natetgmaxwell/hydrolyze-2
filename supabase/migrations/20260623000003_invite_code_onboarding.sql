@@ -92,9 +92,19 @@ BEGIN
   -- Generate a 6-char alphanumeric code (uppercase + digits),
   -- excluding ambiguous chars (0/O/1/I/L) for readability.
   -- md5() gives 32 hex chars; take 6; translate ambiguous chars.
+  -- BUGFIX 2026-06-23: prior source-string '0OIL' was missing the
+  -- digit '1' (digit one). md5 hex can produce 1, so '1' leaked
+  -- through and the validation check (regex [0O1IL]) rejected
+  -- codes like '3C182D'. Fixed source: '0O1IL' (5 chars).
+  -- To-string: 'Q2ZXV' (5 chars). Mappings:
+  --   0 (digit zero) → Q
+  --   O (letter O)   → 2 (so we have a digit slot; reusing Q)
+  --   1 (digit one)  → Z
+  --   I (letter I)   → X
+  --   L (letter L)   → V
   v_code := upper(substring(md5(random()::text || clock_timestamp()::text)
                             from 1 for 6));
-  v_code := translate(v_code, '0OIL', 'QDZX');
+  v_code := translate(v_code, '0O1IL', 'Q2ZXV');
 
   -- Set the code + expiry (overwrites any previous code on the row)
   UPDATE swimmers
