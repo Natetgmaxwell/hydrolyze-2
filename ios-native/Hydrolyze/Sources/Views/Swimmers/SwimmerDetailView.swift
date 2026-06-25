@@ -8,6 +8,7 @@ struct SwimmerDetailView: View {
     @StateObject private var viewModel: SwimmerDetailViewModel
     @State private var showEditSheet = false
     @State private var showPBSheet = false
+    @State private var showInviteSheet = false
     @State private var showArchiveAlert = false
     @State private var showDeleteAlert = false
 
@@ -44,6 +45,18 @@ struct SwimmerDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // PHASE 2.8.3: "Invite to App" share icon — opens the
+            // InviteSwimmerSheet. Sits before Edit in the trailing
+            // toolbar so it doesn't crowd the existing button.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showInviteSheet = true
+                } label: {
+                    Image(systemName: "person.crop.circle.badge.plus")
+                }
+                .foregroundColor(Color(hex: "09d4ee"))
+                .accessibilityLabel("Invite to Hydrolyze")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Edit") { showEditSheet = true }
                     .foregroundColor(Color(hex: "09d4ee"))
@@ -53,6 +66,15 @@ struct SwimmerDetailView: View {
             SwimmerSheetView(swimmerId: viewModel.swimmerId, onSave: {
                 Task { await viewModel.load(coachId: coachId) }
             })
+        }
+        .sheet(isPresented: $showInviteSheet) {
+            if let swimmer = viewModel.swimmer {
+                InviteSwimmerSheet(
+                    swimmerId: swimmer.id,
+                    swimmerName: swimmer.fullName,
+                    onDismiss: {}
+                )
+            }
         }
         .sheet(isPresented: $showPBSheet) {
             PBAddSheet(swimmerId: viewModel.swimmerId, onSave: {

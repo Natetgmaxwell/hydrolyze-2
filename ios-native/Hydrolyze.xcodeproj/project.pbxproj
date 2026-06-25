@@ -77,6 +77,7 @@
 		CDCD6C2C307A57FD86A728E4 /* Enums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066524AA52E1B4A8C140F20D /* Enums.swift */; };
 		CDD80498161FC9698655D5EF /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D2580BBF5B8D7A9A39C750D /* ProfileView.swift */; };
 		D300AD6D7658B42054A8B292 /* SwimmerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60EE719A0BDA810FFD70F454 /* SwimmerRow.swift */; };
+		D47E31D76B7750E64F6D0627 /* InviteSwimmerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96014AF82D49C3F8EC0FEF70 /* InviteSwimmerSheet.swift */; };
 		D5E6A80BB8CC594D92AD9FBB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5C86E053B25B290CFC57475D /* Assets.xcassets */; };
 		D6638C677F23361A23C0B633 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481474A86010D3AE00A5B895 /* EmptyStateView.swift */; };
 		DA8BBB4AF988EFA6398B8A42 /* Coach.swift in Sources */ = {isa = PBXBuildFile; fileRef = E054B0B3F7353601DA86C879 /* Coach.swift */; };
@@ -166,6 +167,7 @@
 		93A75A9B833BA692D9F61C24 /* SwimmerHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerHomeView.swift; sourceTree = "<group>"; };
 		946F09F1BB6D858EE01E66E2 /* SwimmersListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmersListViewModel.swift; sourceTree = "<group>"; };
 		953FDAF57842AEC0AF43B76F /* SessionStartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStartViewModel.swift; sourceTree = "<group>"; };
+		96014AF82D49C3F8EC0FEF70 /* InviteSwimmerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteSwimmerSheet.swift; sourceTree = "<group>"; };
 		9769C6AF2FC9D2292E64C103 /* SwimmerAnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerAnalyticsView.swift; sourceTree = "<group>"; };
 		9B560C80F4FA1D136883DDAB /* SpeedCurveChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedCurveChart.swift; sourceTree = "<group>"; };
 		9BCC2E5E797656F432A0858C /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
@@ -237,6 +239,7 @@
 			children = (
 				E678CC1B71BDD1590E0124E2 /* Auth */,
 				8A4C37177B4DFB1F98CCED90 /* Charts */,
+				5388C101C163E38A9AC2BE43 /* Coach */,
 				914953693C6534D1873F6A89 /* Components */,
 				0A5E71D227B4916EE183E5F3 /* Profile */,
 				FB8B97AD8101090DFA8E05E8 /* SessionReview */,
@@ -344,6 +347,14 @@
 				CBB7C1706AD3C037674651AD /* SessionStartView.swift */,
 			);
 			path = SessionStart;
+			sourceTree = "<group>";
+		};
+		5388C101C163E38A9AC2BE43 /* Coach */ = {
+			isa = PBXGroup;
+			children = (
+				96014AF82D49C3F8EC0FEF70 /* InviteSwimmerSheet.swift */,
+			);
+			path = Coach;
 			sourceTree = "<group>";
 		};
 		55A7EC54CD1DC13516EFD3AB /* Analytics */ = {
@@ -679,6 +690,7 @@
 				49636A4AD8B6BA6A7BF17B23 /* HungarianMatching.swift in Sources */,
 				2B5DE3E8702D5162B451A7BF /* HydrolyzeApp.swift in Sources */,
 				E0443FBF485B7A79B34AA8D8 /* ISO8601DateParser.swift in Sources */,
+				D47E31D76B7750E64F6D0627 /* InviteSwimmerSheet.swift in Sources */,
 				AFFCEB114CF74D2BD5ACDC2F /* JetBrainsMonoFont.swift in Sources */,
 				98E81C8A6B63B262E0D2DE3D /* LapAssignment.swift in Sources */,
 				191E434A103ED20F037A275F /* LoginView.swift in Sources */,
