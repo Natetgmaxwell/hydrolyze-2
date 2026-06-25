@@ -86,8 +86,11 @@ config/Config.xcconfig
 logs/
 
 # Xcode may create a sibling .xcodeproj when opening the project dir
-# (Xcode calls it "<dirname> 2.xcodeproj" if the dir name has a space).
-# The canonical project is the xcodegen-generated one without a space.
+# (Xcode calls it "<dirname> 2.xcodeproj", "<dirname> 3.xcodeproj", etc. if the
+# dir name has a space or if multiple Xcode windows are open).
+# Match all variants with a wildcard.
+Hydrolyze *.xcodeproj/
+!Hydrolyze.xcodeproj/
 Hydrolyze 2.xcodeproj/
 
 # Supabase CLI temp cache
