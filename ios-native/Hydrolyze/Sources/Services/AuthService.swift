@@ -184,6 +184,98 @@ final class AuthService {
         // Supabase auth.updateUser with the new password
         try await supabase.auth.update(user: UserAttributes(password: newPassword))
     }
+
+    // MARK: - PHASE 2.8: Invite-code onboarding
+
+    /// PHASE 2.8.2: Coach-side invite code generation.
+    /// Calls the generate_invite_code Postgres RPC. Returns
+    /// the 6-char code the coach can hand to the swimmer.
+    /// The function generates the code, sets the expiry
+    /// (default 7 days), and overwrites any prior code on
+    /// the swimmer row (one active code per swimmer).
+    ///
+    /// The coach must be the swimmer's owner; the RPC
+    /// validates this server-side and errors otherwise.
+    func generateInviteCode(
+        swimmerId: String,
+        expiresInDays: Int = 7
+    ) async throws -> String {
+        struct Params: Encodable {
+            let pSwimmerId: String
+            let pExpiresInDays: Int
+
+            enum CodingKeys: String, CodingKey {
+                case pSwimmerId = "p_swimmer_id"
+                case pExpiresInDays = "p_expires_in_days"
+            }
+        }
+        let params = Params(
+            pSwimmerId: swimmerId,
+            pExpiresInDays: expiresInDays
+        )
+        let response = try await supabase.rpc(
+            "generate_invite_code",
+            params: params
+        ).execute()
+
+        // The RPC returns TEXT (the 6-char code)
+        let code = String(data: response.data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if code.count != 6 {
+            throw AuthError.inviteCodeGenerationFailed(
+                "expected 6-char code, got \(code.count)"
+            )
+        }
+        return code
+    }
+
+    /// PHASE 2.8.2: Swimmer-side invite code redemption.
+    /// Calls the redeem_invite_code Postgres RPC. On success:
+    /// - Creates the auth.users row (signed in via the
+    ///   Supabase auth session returned by the supabase auth
+    ///   signIn call the caller makes after this).
+    /// - Sets swimmers.auth_id + swimmers.email on the swimmer row.
+    /// - Clears the invite_code (one-time use enforced server-side).
+    ///
+    /// Returns the updated Swimmer row (with auth_id set).
+    /// The caller should follow up with signInSwimmer(email,
+    /// password) to establish the auth session.
+    func redeemInviteCode(
+        code: String,
+        email: String,
+        password: String,
+        firstName: String,
+        lastName: String? = nil
+    ) async throws -> Swimmer {
+        struct Params: Encodable {
+            let pCode: String
+            let pEmail: String
+            let pPassword: String
+            let pFirstName: String
+            let pLastName: String?
+
+            enum CodingKeys: String, CodingKey {
+                case pCode = "p_code"
+                case pEmail = "p_email"
+                case pPassword = "p_password"
+                case pFirstName = "p_first_name"
+                case pLastName = "p_last_name"
+            }
+        }
+        let params = Params(
+            pCode: code,
+            pEmail: email,
+            pPassword: password,
+            pFirstName: firstName,
+            pLastName: lastName
+        )
+        let response = try await supabase.rpc(
+            "redeem_invite_code",
+            params: params
+        ).execute()
+
+        return try JSONDecoder().decode(Swimmer.self, from: response.data)
+    }
 }
 
 enum AuthError: Error, LocalizedError {
@@ -191,6 +283,8 @@ enum AuthError: Error, LocalizedError {
     case createSwimmerAccountFailed(String)
     case invalidEmail
     case weakPassword
+    case inviteCodeGenerationFailed(String)
+    case inviteCodeRedemptionFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -198,6 +292,8 @@ enum AuthError: Error, LocalizedError {
         case .createSwimmerAccountFailed(let msg): return "Couldn't create swimmer account: \(msg)"
         case .invalidEmail: return "Invalid email format"
         case .weakPassword: return "Password too weak — use at least 8 characters"
+        case .inviteCodeGenerationFailed(let msg): return "Couldn't generate invite code: \(msg)"
+        case .inviteCodeRedemptionFailed(let msg): return "Couldn't redeem invite code: \(msg)"
         }
     }
 }
