@@ -67,7 +67,10 @@ final class SwimmerHomeViewModel: ObservableObject {
             let (times, pbs) = try await (timesTask, pbsTask)
 
             self.recentTimes = times.compactMap { rt in
-                guard let timeMs = rt.timeMs, let stroke = rt.stroke,
+                // RecordedTime.timeMs is non-optional (recorded_times.time_ms is NOT NULL).
+                // paceDistance + stroke are optional (only set on pace sets / pre-Phase 2.6 rows).
+                let timeMs = rt.timeMs
+                guard let stroke = rt.stroke,
                       let distance = rt.paceDistance else { return nil }
                 let date = ISO8601DateParser.parse(rt.createdAt) ?? Date()
                 return TimeEntry(

@@ -354,7 +354,13 @@ struct ProfileTab: View {
 
             if let swimmer = authManager.currentSwimmer {
                 profileRow(label: "Name", value: swimmer.fullName)
-                if let email = swimmer.email {
+                // Email is on authManager.currentUser?.email (the auth.users row),
+                // not on the swimmers table. The swimmers row has no email column
+                // until Phase 2.8 — invite-code onboarding writes it there
+                // post-redeem, but the canonical source for the swimmer-side
+                // sign-in surface is the Supabase auth user.
+                if let email = authManager.currentUser?.email,
+                   !email.isEmpty {
                     profileRow(label: "Email", value: email)
                 }
             }
