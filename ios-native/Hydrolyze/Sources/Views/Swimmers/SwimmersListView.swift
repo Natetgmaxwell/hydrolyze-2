@@ -79,6 +79,18 @@ struct SwimmersListView: View {
             .task {
                 await viewModel.loadSwimmers(coachId: coachId)
             }
+            // PHASE 2.8.6: re-trigger loadSwimmers when authManager.coachId
+            // transitions from nil → non-nil. Without this, the .task
+            // above fires once when the view appears, captures coachId
+            // = nil (because AuthManager.checkExistingSession hasn't
+            // finished resolving yet), loadSwimmers early-returns
+            // silently, and the roster stays empty even after sign-in
+            // completes. The pull-to-refresh at L82-84 only "fixes" it
+            // by manually re-running the load with a fresh coachId.
+            .onChange(of: authManager.coachId) { _, newCoachId in
+                guard let newCoachId = newCoachId else { return }
+                Task { await viewModel.loadSwimmers(coachId: newCoachId) }
+            }
             .refreshable {
                 await viewModel.loadSwimmers(coachId: coachId)
             }

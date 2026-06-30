@@ -90,6 +90,15 @@ struct SessionStartView: View {
         .task {
             await viewModel.loadRoster(coachId: coachId)
         }
+        // PHASE 2.8.6: same nil→non-nil race fix as SwimmersListView.
+        // The .task fires once on appear; if coachId is still nil
+        // because AuthManager hasn't resolved the coach row, the roster
+        // silently stays empty. The .onChange re-triggers when
+        // coachId becomes available.
+        .onChange(of: coachId) { _, newCoachId in
+            guard let newCoachId = newCoachId else { return }
+            Task { await viewModel.loadRoster(coachId: newCoachId) }
+        }
     }
 }
 

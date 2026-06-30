@@ -865,6 +865,15 @@ struct SwimmerPickerSheet: View {
             .task {
                 await viewModel.loadSwimmers(coachId: authManager.coachId)
             }
+            // PHASE 2.8.6: same nil→non-nil race fix as SwimmersListView.
+            // .task captures coachId at view-appear time; if AuthManager
+            // hasn't resolved the coach row yet, coachId is nil and
+            // loadSwimmers early-returns. The .onChange re-triggers the
+            // load once coachId becomes available.
+            .onChange(of: authManager.coachId) { _, newCoachId in
+                guard let newCoachId = newCoachId else { return }
+                Task { await viewModel.loadSwimmers(coachId: newCoachId) }
+            }
         }
     }
 }
