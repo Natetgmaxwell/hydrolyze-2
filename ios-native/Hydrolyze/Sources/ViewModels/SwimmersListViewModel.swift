@@ -59,18 +59,18 @@ final class SwimmersListViewModel: ObservableObject {
     private var allSwimmerGroupIds: Set<String> = []
 
     func loadSwimmers(coachId: String?) async {
-        print("[SwimmersListViewModel] loadSwimmers coachId=\\(coachId ?? "nil") filter=\\(selectedFilter.rawValue)")
+        print("[SwimmersListViewModel] loadSwimmers coachId=\(String(describing: coachId)) filter=\(selectedFilter.rawValue)")
         guard let coachId = coachId else { return }
         isLoading = true
         errorMessage = nil
         do {
             let (swimmerList, groupList) = try await swimmerService.fetchSwimmersWithGroups(coachId: coachId, includeArchived: selectedFilter == .archived)
-            print("[SwimmersListViewModel] loadSwimmers got \\(swimmerList.count) swimmers, \\(groupList.count) groups")
+            print("[SwimmersListViewModel] loadSwimmers got \(swimmerList.count) swimmers, \(groupList.count) groups")
             allSwimmers = swimmerList
             groups = groupList
             rebuildGroupMap()
         } catch {
-            print("[SwimmersListViewModel] loadSwimmers error: \\(error)")
+            print("[SwimmersListViewModel] loadSwimmers error: \(error)")
             errorMessage = error.localizedDescription
         }
         isLoading = false
