@@ -64,6 +64,7 @@ final class AuthManager {
         do {
             let currentSession = try await supabase.auth.session
             let user = currentSession.user
+            print("[AuthManager] checkExistingSession: user.id=\(user.id.uuidString), email=\(user.email ?? "nil"), session.expiresAt=\(currentSession.expiresAt)")
             await MainActor.run {
                 self.currentUser = user
                 self.isLoading = false
@@ -84,6 +85,7 @@ final class AuthManager {
     }
 
     private func handleAuthEvent(_ event: AuthChangeEvent, session: Session?) async {
+        print("[AuthManager] auth event: \(event), session=\(session?.user.id.uuidString ?? "nil"), expiresAt=\(session?.expiresAt.description ?? "nil")")
         switch event {
         case .signedIn:
             await MainActor.run {
@@ -139,11 +141,13 @@ final class AuthManager {
     }
 
     private func resolveCoach(user: User) async {
+        print("[AuthManager] resolveCoach start: user.id=\(user.id.uuidString), email=\(user.email ?? "nil")")
         do {
             let coach = try await authService.getOrCreateCoach(
                 userId: user.id.uuidString,
                 name: user.userMetadata["name"]?.stringValue
             )
+            print("[AuthManager] resolveCoach success: coach.id=\(coach.id), name=\(coach.name ?? "nil")")
             self.coachId = coach.id
             self.coachName = coach.name
             self.needsOnboarding = coach.onboardingCompletedAt == nil
