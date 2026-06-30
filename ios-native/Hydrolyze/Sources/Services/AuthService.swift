@@ -178,7 +178,7 @@ final class AuthService {
     func updateSwimmerPassword(currentPassword: String, newPassword: String) async throws {
         // Re-auth with current password first (Supabase requires
         // fresh credentials for password updates)
-        guard let user = supabase.auth.currentUser else {
+        guard supabase.auth.currentUser != nil else {
             throw AuthError.noSession
         }
         // Supabase auth.updateUser with the new password

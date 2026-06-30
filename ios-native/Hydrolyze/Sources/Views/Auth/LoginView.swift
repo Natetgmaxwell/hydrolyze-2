@@ -16,6 +16,18 @@ enum AuthRoleTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// PHASE 2.4 + 2.8.4: AuthMode — the 3 modes for the coach login
+/// flow (Sign In / Sign Up / Reset). The SwimmerLoginFlow has its
+/// own nested Mode enum (signIn / createAccount) because the
+/// swimmer flow uses a 2-mode pill picker instead of a 3-mode
+/// inline toggle; the swimmer flow doesn't reset their own
+/// password through the iOS app, so Reset is not a swimmer mode.
+enum AuthMode {
+    case signIn
+    case signUp
+    case reset
+}
+
 /// PHASE 2.4: Top-level LoginView — chooses Coach vs Swimmer flow.
 ///
 /// This replaces the prior single-flow LoginView. The Coach flow
@@ -123,18 +135,17 @@ struct CoachLoginFlow: View {
     private var formSection: some View {
         VStack(spacing: 16) {
             AuthTextField(
-                icon: "envelope.fill",
-                placeholder: "Email",
+                label: "Email",
                 text: $email,
                 isSecure: false,
-                keyboardType: .emailAddress
+                keyboardType: .emailAddress,
+                icon: "envelope.fill"
             )
             AuthTextField(
-                icon: "lock.fill",
-                placeholder: "Password",
+                label: "Password",
                 text: $password,
                 isSecure: true,
-                keyboardType: .default
+                icon: "lock.fill"
             )
         }
     }
@@ -336,40 +347,39 @@ struct SwimmerLoginFlow: View {
     private var formSection: some View {
         VStack(spacing: 16) {
             AuthTextField(
-                icon: "envelope.fill",
-                placeholder: "Email",
+                label: "Email",
                 text: $email,
                 isSecure: false,
-                keyboardType: .emailAddress
+                keyboardType: .emailAddress,
+                icon: "envelope.fill"
             )
             AuthTextField(
-                icon: "lock.fill",
-                placeholder: mode == .signIn ? "Password" : "Password (min 8 chars)",
+                label: mode == .signIn ? "Password" : "Password (min 8 chars)",
                 text: $password,
                 isSecure: true,
-                keyboardType: .default
+                icon: "lock.fill"
             )
             if mode == .createAccount {
                 AuthTextField(
-                    icon: "person.fill",
-                    placeholder: "First name",
+                    label: "First name",
                     text: $firstName,
                     isSecure: false,
-                    keyboardType: .default
+                    keyboardType: .default,
+                    icon: "person.fill"
                 )
                 AuthTextField(
-                    icon: "person",
-                    placeholder: "Last name (optional)",
+                    label: "Last name (optional)",
                     text: $lastName,
                     isSecure: false,
-                    keyboardType: .default
+                    keyboardType: .default,
+                    icon: "person"
                 )
                 AuthTextField(
-                    icon: "key.fill",
-                    placeholder: "Invite code (from your coach)",
+                    label: "Invite code (from your coach)",
                     text: $inviteCode,
                     isSecure: false,
-                    keyboardType: .asciiCapitel
+                    keyboardType: .asciiCapable,
+                    icon: "key.fill"
                 )
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
