@@ -44,8 +44,13 @@ struct SwimmerUpcomingView: View {
     private var content: some View {
         if isLoading && workouts.isEmpty {
             // PhasedProgressView already exists; matches the v1.16
-            // loading vocabulary.
-            PhasedProgressView()
+            // loading vocabulary. One phase = "loading".
+            PhasedProgressView(
+                phaseCount: 1,
+                currentPhase: 0,
+                phaseLabels: [],
+                currentDescription: "Loading this week's practices"
+            )
         } else if let error = errorMessage, workouts.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle")
