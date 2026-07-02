@@ -37,6 +37,11 @@ struct SwimmerHomeView: View {
                             Label("My Coach", systemImage: "person.fill")
                         }
 
+                    SwimmerUpcomingView()
+                        .tabItem {
+                            Label("Upcoming", systemImage: "calendar")
+                        }
+
                     ProfileTab()
                         .tabItem {
                             Label("Profile", systemImage: "gearshape.fill")
