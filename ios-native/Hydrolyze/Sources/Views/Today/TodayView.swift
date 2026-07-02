@@ -25,6 +25,8 @@ struct TodayView: View {
     @StateObject private var viewModel = TodayViewModel()
     @State private var showSessionStart = false
     @State private var activeSession: ActiveTimingSession?
+    @State private var attendanceEntries: [CoachAttendanceEntry] = []
+    @State private var showAttendancePopover = false
 
     private var coachId: String? {
         authManager.coachId
@@ -39,12 +41,36 @@ struct TodayView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         dateSection
                         if let workout = viewModel.todayWorkout {
-                            WorkoutCard(
-                                workout: workout,
-                                setCount: viewModel.setCount,
-                                swimmerCount: viewModel.swimmerCount,
-                                onStartSession: { showSessionStart = true }
-                            )
+                            VStack(spacing: 12) {
+                                WorkoutCard(
+                                    workout: workout,
+                                    setCount: viewModel.setCount,
+                                    swimmerCount: viewModel.swimmerCount,
+                                    onStartSession: { showSessionStart = true }
+                                )
+                                // Attendance badge — non-intrusive,
+                                // tap to open the inline popover.
+                                AttendanceBadge(
+                                    attendingCount: attendingCount,
+                                    totalCount: viewModel.swimmerCount
+                                )
+                                .padding(.horizontal, 16)
+                                .onTapGesture {
+                                    Haptics.selection()
+                                    showAttendancePopover = true
+                                }
+                                .popover(isPresented: $showAttendancePopover) {
+                                    AttendancePopoverContent(
+                                        entries: attendanceEntries,
+                                        onSetIntent: { swimmerId, intent in
+                                            await setIntent(
+                                                swimmerId: swimmerId,
+                                                intent: intent
+                                            )
+                                        }
+                                    )
+                                }
+                            }
                             .padding(.horizontal, 16)
                         } else if !viewModel.isLoading {
                             EmptyStateView()
@@ -53,7 +79,7 @@ struct TodayView: View {
                     .padding(.top, 8)
                 }
                 .redacted(reason: viewModel.isLoading && viewModel.todayWorkout == nil ? .placeholder : [])
-                .refreshable { await viewModel.loadTodayWorkout(coachId: authManager.coachId) }
+                .refreshable { await reloadAll(coachId: authManager.coachId) }
                 // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion
                 // change. The pull-to-refresh indicator picks up the
                 // cyan tint automatically — small detail that makes
@@ -87,7 +113,46 @@ struct TodayView: View {
             }
         }
         .task {
-            await viewModel.loadTodayWorkout(coachId: authManager.coachId)
+            await reloadAll(coachId: authManager.coachId)
+        }
+    }
+
+    // MARK: - derived state
+
+    private var attendingCount: Int {
+        attendanceEntries.filter { $0.intent == "in" }.count
+    }
+
+    // MARK: - data flow
+
+    private func reloadAll(coachId: String?) async {
+        await viewModel.loadTodayWorkout(coachId: coachId)
+        if let workout = viewModel.todayWorkout {
+            await loadAttendance(workoutId: workout.id)
+        }
+    }
+
+    private func loadAttendance(workoutId: String) async {
+        do {
+            attendanceEntries = try await CoachIntentService()
+                .fetchAttendance(forWorkoutId: workoutId)
+        } catch {
+            attendanceEntries = []
+        }
+    }
+
+    private func setIntent(swimmerId: String, intent: String) async {
+        guard let workoutId = viewModel.todayWorkout?.id else { return }
+        do {
+            try await CoachIntentService().setIntent(
+                workoutId: workoutId,
+                swimmerId: swimmerId,
+                intent: intent
+            )
+            Haptics.tap()
+            await loadAttendance(workoutId: workoutId)
+        } catch {
+            Haptics.error()
         }
     }
 

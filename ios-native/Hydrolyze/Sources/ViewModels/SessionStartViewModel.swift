@@ -218,6 +218,19 @@ final class SessionStartViewModel: ObservableObject {
             self.allPBs = allPBsFetched
             self.recordedTimes = allTimesFetched
 
+            // Promote swimmer-self-marked intent into session_roster.
+            // Additive: the upsert dedupes if a swimmer is already
+            // on the roster from the manual picker. If the coach
+            // picked no swimmers manually, the promotion populates
+            // the roster entirely from intent — the seamless flow.
+            // Silent no-op if no intents exist.
+            if let workoutId = workoutSets.first?.workoutId {
+                try? await CoachIntentService().promoteConfirmedToRoster(
+                    workoutId: workoutId,
+                    sessionId: sessionId
+                )
+            }
+
             // PHASE 2.6 v1.13.0: use PBService as the SINGLE function
             // for "what's this swimmer's predicted time for this set +
             // intensity + gear?" Replaces the per-(swimmer, set) call

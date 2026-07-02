@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// SwimmerUpcomingView — the Upcoming tab for the swimmer home.
-/// Shows the next 7 days of scheduled sessions; the swimmer taps
+/// Shows the next 7 days of scheduled workouts; the swimmer taps
 /// "I'm in" or "Can't make it" on each row. Writes go through
 /// IntentService, which upserts into swimmer_attendance_intent.
 ///
@@ -17,10 +17,10 @@ import SwiftUI
 ///   - Empty state uses the shared EmptyStateView (already exists).
 struct SwimmerUpcomingView: View {
     @Environment(AuthManager.self) private var authManager
-    @State private var sessions: [UpcomingSession] = []
+    @State private var workouts: [UpcomingWorkout] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var togglingSessionId: String?
+    @State private var togglingWorkoutId: String?
 
     private var service: IntentService { IntentService() }
 
@@ -42,11 +42,11 @@ struct SwimmerUpcomingView: View {
 
     @ViewBuilder
     private var content: some View {
-        if isLoading && sessions.isEmpty {
+        if isLoading && workouts.isEmpty {
             // PhasedProgressView already exists; matches the v1.16
             // loading vocabulary.
             PhasedProgressView()
-        } else if let error = errorMessage, sessions.isEmpty {
+        } else if let error = errorMessage, workouts.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 32))
@@ -60,21 +60,21 @@ struct SwimmerUpcomingView: View {
                 }
                 .buttonStyle(.bordered)
             }
-        } else if sessions.isEmpty {
-            // No upcoming sessions this week.
+        } else if workouts.isEmpty {
+            // No upcoming workouts this week.
             EmptyStateView()
         } else {
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    ForEach(sessions) { session in
-                        UpcomingSessionRow(
-                            session: session,
-                            isToggling: togglingSessionId == session.id,
+                    ForEach(workouts) { workout in
+                        UpcomingWorkoutRow(
+                            workout: workout,
+                            isToggling: togglingWorkoutId == workout.id,
                             onMarkIn: {
-                                Task { await markIntent(session, intent: "in") }
+                                Task { await markIntent(workout, intent: "in") }
                             },
                             onMarkOut: {
-                                Task { await markIntent(session, intent: "out") }
+                                Task { await markIntent(workout, intent: "out") }
                             }
                         )
                     }
@@ -88,40 +88,28 @@ struct SwimmerUpcomingView: View {
     // MARK: - data flow
 
     private func load() async {
-        guard let swimmerId = authManager.currentSwimmer?.id else {
-            errorMessage = "No swimmer profile linked."
-            isLoading = false
-            return
-        }
         isLoading = true
         errorMessage = nil
         do {
-            let upcoming = try await service.fetchUpcomingSessions()
-            // Filter to the swimmer's relevant sessions only — the
-            // service already returns the next 7 days. Ponytail: if
-            // we ever need to filter by group / event, promote this
-            // out of the view.
-            _ = swimmerId  // referenced for future filter
-            sessions = upcoming
+            workouts = try await service.fetchUpcomingWorkouts()
             isLoading = false
         } catch {
-            errorMessage = "Couldn't load upcoming sessions.\n\(error.localizedDescription)"
+            errorMessage = "Couldn't load upcoming workouts.\n\(error.localizedDescription)"
             isLoading = false
         }
     }
 
-    private func markIntent(_ session: UpcomingSession, intent: String) async {
+    private func markIntent(_ workout: UpcomingWorkout, intent: String) async {
         guard let swimmerId = authManager.currentSwimmer?.id else { return }
-        togglingSessionId = session.id
+        togglingWorkoutId = workout.id
 
         // Optimistic update — flip the local row first, then write.
-        // The Realtime channel will reconcile if the write fails.
-        if let idx = sessions.firstIndex(where: { $0.id == session.id }) {
-            sessions[idx] = UpcomingSession(
-                id: sessions[idx].id,
-                date: sessions[idx].date,
-                slot: sessions[idx].slot,
-                swimmerCount: sessions[idx].swimmerCount,
+        if let idx = workouts.firstIndex(where: { $0.id == workout.id }) {
+            workouts[idx] = UpcomingWorkout(
+                id: workouts[idx].id,
+                title: workouts[idx].title,
+                date: workouts[idx].date,
+                slot: workouts[idx].slot,
                 myIntent: intent
             )
         }
@@ -130,35 +118,35 @@ struct SwimmerUpcomingView: View {
 
         do {
             try await service.markIntent(
-                sessionId: session.id,
+                workoutId: workout.id,
                 swimmerId: swimmerId,
                 intent: intent
             )
         } catch {
             // Revert on failure
-            if let idx = sessions.firstIndex(where: { $0.id == session.id }) {
-                sessions[idx] = UpcomingSession(
-                    id: sessions[idx].id,
-                    date: sessions[idx].date,
-                    slot: sessions[idx].slot,
-                    swimmerCount: sessions[idx].swimmerCount,
-                    myIntent: session.myIntent
+            if let idx = workouts.firstIndex(where: { $0.id == workout.id }) {
+                workouts[idx] = UpcomingWorkout(
+                    id: workouts[idx].id,
+                    title: workouts[idx].title,
+                    date: workouts[idx].date,
+                    slot: workouts[idx].slot,
+                    myIntent: workout.myIntent
                 )
             }
             errorMessage = "Couldn't save. Try again."
             Haptics.error()
         }
 
-        togglingSessionId = nil
+        togglingWorkoutId = nil
     }
 }
 
-/// UpcomingSessionRow — one row per upcoming session. Shows date,
-/// AM/PM slot, planned squad size, and the two intent pills.
+/// UpcomingWorkoutRow — one row per upcoming workout. Shows date,
+/// AM/PM slot, workout title, and the two intent pills.
 /// ponytail: pills are side-by-side, ~half width each, no icons.
 /// Already-marked state shows the chosen pill filled.
-private struct UpcomingSessionRow: View {
-    let session: UpcomingSession
+private struct UpcomingWorkoutRow: View {
+    let workout: UpcomingWorkout
     let isToggling: Bool
     let onMarkIn: () -> Void
     let onMarkOut: () -> Void
@@ -166,37 +154,38 @@ private struct UpcomingSessionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text(formattedDate)
+                Text(workout.title)
                     .font(.headline)
                     .foregroundStyle(.white)
-                Text(session.slot)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Color(hex: "f59e0b"))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color(hex: "f59e0b").opacity(0.18))
-                    )
+                    .lineLimit(1)
                 Spacer()
-                if session.swimmerCount > 0 {
-                    Text("\(session.swimmerCount) planned")
+                HStack(spacing: 6) {
+                    Text(formattedDate)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text(workout.slot)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color(hex: "f59e0b"))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color(hex: "f59e0b").opacity(0.18))
+                        )
                 }
             }
 
             HStack(spacing: 10) {
                 IntentPill(
                     label: "I'm in",
-                    isSelected: session.myIntent == "in",
+                    isSelected: workout.myIntent == "in",
                     isDisabled: isToggling,
                     accent: Color(hex: "06b6d4"),
                     action: onMarkIn
                 )
                 IntentPill(
                     label: "Can't make it",
-                    isSelected: session.myIntent == "out",
+                    isSelected: workout.myIntent == "out",
                     isDisabled: isToggling,
                     accent: Color(hex: "71717a"),
                     action: onMarkOut
@@ -215,8 +204,21 @@ private struct UpcomingSessionRow: View {
     }
 
     private var formattedDate: String {
-        guard let date = ISO8601DateParser.parse(session.date) else {
-            return session.date
+        // The DB returns DATE columns as "YYYY-MM-DD" (not full ISO8601).
+        // Parse it directly without ISO8601DateParser.
+        let parts = workout.date.split(separator: "-")
+        guard parts.count == 3,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2]) else {
+            return workout.date
+        }
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        guard let date = Calendar.current.date(from: components) else {
+            return workout.date
         }
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE, MMM d"
