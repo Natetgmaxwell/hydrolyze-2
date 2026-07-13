@@ -152,6 +152,9 @@ GoogleService-Info.plist
 .hermes/
 .pi/
 
+# App Store icon exploration
+.icon-sketches/
+
 # -----------------------------------------------------------------------------
 # Agent / orchestrator project-local configs (personal, not project source)
 # -----------------------------------------------------------------------------

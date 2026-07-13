@@ -1,4 +1,5 @@
 # I5 TodayView Design Spec — Native SwiftUI
+> **[FROZEN 2026-06-30]** Shipped. See source files for current state. Do not edit without checking the working tree first.
 
 **Chunk:** I5 (coach home screen after sign-in)
 **Date:** 2026-05-10

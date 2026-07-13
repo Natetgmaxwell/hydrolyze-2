@@ -38,7 +38,7 @@ final class PairingEngine {
 
     /// Ghost-tap threshold. Above this cost, a lap is treated as a
     /// ghost tap (impossible to pair) and assigned to a dummy swimmer.
-    /// Matches V10's tuned gate from iOS pairing_research/algorithms.swift.
+    /// Tuned value: 5.0 (V10 pattern).
     private let ghostTapThresholdCost: Double = 5.0
 
     /// PHASE 2.6 v1.16.1: false-start guard. If a lap's wave-relative
@@ -302,8 +302,7 @@ final class PairingEngine {
             )
         }
 
-    /// Velocity-space cost for a (actual, prediction) pair. Matches the
-    /// V10 algorithm pattern from iOS pairing_research/algorithms.swift:
+    /// Velocity-space cost for a (actual, prediction) pair. V10 pattern:
     ///   cost = (vel - meanVel)^2 / (2 * varVel)
     /// where meanVel = 1 / prediction.timeMs
     ///       varVel  = (sigmaMs / timeMs^2)^2

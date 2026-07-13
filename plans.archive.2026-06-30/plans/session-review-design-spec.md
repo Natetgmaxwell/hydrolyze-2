@@ -1,4 +1,5 @@
 # v1.14 SessionReviewView Design Spec — Polish the pairing review surface
+> **[FROZEN 2026-06-30]** Shipped. See source files for current state. Do not edit without checking the working tree first.
 
 **Chunk:** v1.14 (SessionReviewView UX)
 **Date:** 2026-06-18

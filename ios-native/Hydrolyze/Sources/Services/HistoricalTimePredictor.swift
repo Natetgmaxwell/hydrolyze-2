@@ -1,7 +1,6 @@
 import Foundation
 
-/// HistoricalTimePredictor — 3-layer prediction pipeline, ported from
-/// the pairing-engine-v2 TypeScript design (`src/predict.ts`).
+/// HistoricalTimePredictor — 3-layer prediction pipeline.
 ///
 /// For a swimmer + set context, find the best available prediction of
 /// their expected time and standard deviation. Priority (best first):

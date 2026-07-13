@@ -1,7 +1,6 @@
 import Foundation
 
-/// SpeedCurveFitter — power-law fit of personal bests, ported from the
-/// pairing-engine-v2 TypeScript design (`src/speed-curve.ts`).
+/// SpeedCurveFitter — power-law fit of personal bests.
 ///
 /// Model: speed = a × distance^b in log-log space, where
 ///     speed = distance / time_ms × 1000 (m/s).

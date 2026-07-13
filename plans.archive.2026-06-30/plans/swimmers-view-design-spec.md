@@ -1,4 +1,5 @@
 # I8 SwimmersView Design Spec — Native SwiftUI
+> **[FROZEN 2026-06-30]** Shipped. See source files for current state. Do not edit without checking the working tree first.
 
 **Chunk:** I8 (swimmers tab — list + detail + add/edit)
 **Date:** 2026-05-18

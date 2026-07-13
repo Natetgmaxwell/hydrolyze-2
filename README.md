@@ -14,7 +14,7 @@ At swim practice, the coach holds a stopwatch and calls lap times as swimmers fi
 
 Hydrolyze removes that friction. The coach taps **LAP** as each swimmer touches the wall; the app does the attribution. No lane sensors, no expensive hardware — just a phone, a stopwatch, and the coach's existing knowledge of their swimmers.
 
-The stopwatch uses the device's **volume button** for LAP taps, so the coach never has to look at the screen.
+The primary LAP control is a large on-screen tap target (Apple Watch crown is a planned premium eyes-free option for Phase 2).
 
 ---
 
@@ -41,55 +41,47 @@ The coach is always the authority. Every assignment can be overridden. The algor
 
 ```
 .
-├── hydrolyze-mobile/    React Native (Expo) — primary iOS app
-├── ios-native/          Swift / Xcode mirror (downstream)
-├── pairing-engine/      Core pairing algorithm (v1)
-├── pairing-engine-v2/   Pairing algorithm v2 (current)
-├── web-dashboard/       Coach-facing web UI
-├── supabase/            Postgres schema, migrations, edge functions
-├── plans/               Design specs (workout builder, timing screen, etc.)
-├── docs/                Higher-level docs (coach flow, ops)
-└── scripts/             Repo-local scripts
+├── ios-native/                       Swift / SwiftUI — the canonical client
+├── supabase/                         Postgres schema, migrations, edge functions
+├── plans.archive.2026-06-30/         Historical design specs (read-only archive)
+└── docs.archive.2026-06-30/          Historical operational docs (read-only archive)
 ```
 
-Each subproject has its own `README.md` (where applicable) and is treated as an independent unit for development. The monorepo ties them together.
+The `*.archive.2026-06-30/` directories hold pre-cleanup material from the
+React Native era (the RN app + TS pairing engine + web-dashboard reservation
+were all removed). They are frozen — see the `ARCHIVE-NOTE.md` in each.
 
 ---
 
 ## Stack
 
-- **Mobile** — React Native (Expo, TypeScript)
-- **iOS native** — Swift, Xcode, SwiftPM (mirror of the mobile app for hardware integration)
+- **iOS native** — Swift, SwiftUI, SwiftPM. The single client.
 - **Backend** — Supabase (Postgres, auth, edge functions)
-- **Pairing** — z-score matching against PB-derived or Welford-accumulated swimmer profiles
-- **Web** — see `web-dashboard/`
+- **Pairing** — z-score matching against PB-derived or Welford-accumulated swimmer profiles; lives inline in `ios-native/Hydrolyze/Sources/Services/`
 
 ---
 
 ## Status
 
-Active development. The mobile app's core timing and pairing flow is complete. Volume-button hardware integration requires an EAS development build (not supported in Expo Go). Pairing v2 is the current algorithm; v1 is retained for reference.
+Active development. iOS-native is the sole client. The pairing engine
+(`Services/PairingEngine.swift`) is the source of truth for the algorithm.
 
-Phase 2 (data center: trend lines, training load, progression) is downstream from a rock-solid Phase 1 timing workflow.
+Phase 2 (data center: trend lines, training load, progression) is downstream
+from a rock-solid Phase 1 timing workflow.
 
 ---
 
 ## Development setup
 
 ```bash
-# Mobile
-cd hydrolyze-mobile
-npm install
-cp .env.local.example .env.local   # then fill in EXPO_PUBLIC_SUPABASE_URL + anon key
-npm run start                      # launches Expo dev server
-
-# iOS native
+# Generate the Xcode project (one-time + after project.yml changes)
 cd ios-native
-xcodegen generate                  # if project.yml changed
+xcodegen generate
 open Hydrolyze.xcodeproj
 ```
 
-See the README in each subproject for full instructions.
+Supabase credentials are hardcoded in `ios-native/Hydrolyze/Sources/Services/SupabaseService.swift`.
+Replace the placeholder anon key with the real value before shipping.
 
 ---
 

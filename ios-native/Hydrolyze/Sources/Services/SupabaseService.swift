@@ -2,8 +2,8 @@ import Foundation
 import Supabase
 
 /// Supabase client singleton — initialized once at app launch.
-/// Uses credentials from the RN app (hydrolyze-mobile/.env.local).
-/// PKCE auth callback URL: hydrolyze://login-callback
+/// Credentials are hardcoded (see constants below). PKCE auth callback
+/// URL: hydrolyze://login-callback
 final class SupabaseService {
     static let shared = SupabaseService()
 
