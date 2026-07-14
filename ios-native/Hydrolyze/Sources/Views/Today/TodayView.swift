@@ -35,7 +35,7 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -84,7 +84,7 @@ struct TodayView: View {
                 // change. The pull-to-refresh indicator picks up the
                 // cyan tint automatically — small detail that makes
                 // the surface feel brand-consistent.
-                .tint(Color(hex: "09d4ee"))
+                .tint(Color.accentCyan)
             }
             .navigationTitle("TODAY")
             .navigationBarTitleDisplayMode(.inline)
@@ -92,7 +92,7 @@ struct TodayView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink(destination: ProfileView()) {
                         Image(systemName: "gearshape.fill")
-                            .foregroundColor(Color(hex: "4a6572"))
+                            .foregroundColor(Color.textFaint)
                     }
                 }
             }
@@ -159,12 +159,12 @@ struct TodayView: View {
     private var dateSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(formattedDate)
-                .font(.system(size: 22, weight: .bold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .font(.titleMedium)
+                .foregroundColor(Color.textPrimary)
 
             Text(greeting)
-                .font(.system(size: 15))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .font(.body)
+                .foregroundColor(Color.textMuted)
         }
         .padding(.horizontal, 16)
     }

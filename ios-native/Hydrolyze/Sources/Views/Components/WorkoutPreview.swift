@@ -10,8 +10,8 @@ struct WorkoutPreview: View {
         VStack(alignment: .leading, spacing: 16) {
             if workout.sections.isEmpty {
                 Text("No sets defined")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .font(.caption)
+                    .foregroundColor(Color.textFaint)
                     .italic()
             } else {
                 ForEach(Array(workout.sections.enumerated()), id: \.offset) { _, section in
@@ -30,14 +30,14 @@ private struct SectionView: View {
             if let title = section.title, !title.isEmpty {
                 HStack(spacing: 8) {
                     Rectangle()
-                        .fill(Color(hex: "2d3e50"))
+                        .fill(Color.divider)
                         .frame(height: 1)
                     Text(title.uppercased())
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "7a9bb0"))
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textMuted)
                         .tracking(1)
                     Rectangle()
-                        .fill(Color(hex: "2d3e50"))
+                        .fill(Color.divider)
                         .frame(height: 1)
                 }
             }
@@ -46,8 +46,8 @@ private struct SectionView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if let label = namedSet.label, !label.isEmpty {
                         Text(label.uppercased())
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "09d4ee"))
+                            .font(.eyebrow)
+                            .foregroundColor(Color.accentCyan)
                             .tracking(0.8)
                     }
 
@@ -69,30 +69,30 @@ private struct RepGroupRowView: View {
             HStack(spacing: 4) {
                 Text(spineText)
                     .font(.system(size: 15, design: .monospaced))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .foregroundColor(Color.textPrimary)
 
                 if let stroke = rg.stroke {
                     Text(stroke)
-                        .font(.system(size: 15))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .font(.body)
+                        .foregroundColor(Color.textPrimary)
                 }
 
                 if let intensity = rg.intensity {
                     Text(" @ \(fmtIntensity(intensity))")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "f59e0b"))
+                        .font(.caption)
+                        .foregroundColor(Color.accentAmber)
                 }
 
                 if let interval = rg.interval {
                     Text(" on \(interval)")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
 
                 if let note = rg.note {
                     Text(" \(note)")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                         .italic()
                 }
 
@@ -108,12 +108,12 @@ private struct RepGroupRowView: View {
             if let subLine = subRepLine {
                 HStack {
                     Rectangle()
-                        .fill(Color(hex: "2d3e50"))
+                        .fill(Color.divider)
                         .frame(width: 1)
                         .padding(.leading, 4)
                     Text(subLine)
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "7a9bb0"))
+                        .font(.caption)
+                        .foregroundColor(Color.textMuted)
                         .italic()
                 }
             }
@@ -122,15 +122,15 @@ private struct RepGroupRowView: View {
                 ForEach(oddEven, id: \.label) { line in
                     HStack {
                         Rectangle()
-                            .fill(Color(hex: "2d3e50"))
+                            .fill(Color.divider)
                             .frame(width: 1)
                             .padding(.leading, 4)
                         Text(line.label)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "4a6572"))
+                            .font(.eyebrow)
+                            .foregroundColor(Color.textFaint)
                         Text(line.text)
-                            .font(.system(size: 13))
-                            .foregroundColor(Color(hex: "7a9bb0"))
+                            .font(.caption)
+                            .foregroundColor(Color.textMuted)
                             .italic()
                     }
                 }
@@ -199,14 +199,14 @@ private struct GearBadge: View {
     var body: some View {
         Text("\(gear.capitalized)\(optional ? " optional" : "")")
             .font(.system(size: 10))
-            .foregroundColor(Color(hex: "7a9bb0"))
+            .foregroundColor(Color.textMuted)
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
-            .background(Color(hex: "1a2d42"))
+            .background(Color.bgInset)
             .cornerRadius(4)
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color(hex: "2d3e50"), lineWidth: 1)
+                    .stroke(Color.divider, lineWidth: 1)
             )
     }
 }
@@ -217,14 +217,14 @@ private struct DetailBadge: View {
     var body: some View {
         Text(String(text.prefix(1)).uppercased() + String(text.dropFirst()))
             .font(.system(size: 10))
-            .foregroundColor(Color(hex: "09d4ee"))
+            .foregroundColor(Color.accentCyan)
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
-            .background(Color(hex: "1a2d42"))
+            .background(Color.bgInset)
             .cornerRadius(4)
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color(hex: "2d3e50"), lineWidth: 1)
+                    .stroke(Color.divider, lineWidth: 1)
             )
     }
 }
@@ -361,5 +361,5 @@ struct ParsedWorkout: Codable {
         )
         .padding()
     }
-    .background(Color(hex: "060e18"))
+    .background(Color.bgBase)
 }

@@ -12,13 +12,13 @@ struct WorkoutRow: View {
                 if let date = workout.scheduledAt {
                     Text(Self.formatDate(date))
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                         .tracking(0.5)
                 }
 
                 Text(workout.title ?? "Untitled")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .font(.titleSmall)
+                    .foregroundColor(Color.textPrimary)
 
                 Text(Self.statusLabel(for: workout.status))
                     .font(.system(size: 10, weight: .semibold))
@@ -31,16 +31,16 @@ struct WorkoutRow: View {
             if let amPm = workout.amPm {
                 Text(amPm)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color(hex: "f59e0b"))
+                    .foregroundColor(Color.accentAmber)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color(hex: "f59e0b").opacity(0.15))
+                    .background(Color.accentAmber.opacity(0.15))
                     .cornerRadius(4)
             }
 
             Text("›")
                 .font(.system(size: 20))
-                .foregroundColor(Color(hex: "2d3e50"))
+                .foregroundColor(Color.divider)
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
@@ -64,10 +64,10 @@ struct WorkoutRow: View {
 
     private static func statusColor(for status: WorkoutStatus) -> Color {
         switch status {
-        case .draft: return Color(hex: "f59e0b")
-        case .scheduled: return Color(hex: "09d4ee")
-        case .inProgress: return Color(hex: "09d4ee")
-        case .complete: return Color(hex: "10b981")
+        case .draft: return Color.accentAmber
+        case .scheduled: return Color.accentCyan
+        case .inProgress: return Color.accentCyan
+        case .complete: return Color.statusSuccess
         }
     }
 }
@@ -86,5 +86,5 @@ struct WorkoutRow: View {
     List {
         WorkoutRow(workout: WorkoutRowData(from: workout))
     }
-    .background(Color(hex: "060e18"))
+    .background(Color.bgBase)
 }

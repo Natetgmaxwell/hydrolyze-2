@@ -79,7 +79,7 @@ struct WorkoutDetailView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "060e18").ignoresSafeArea()
+            Color.bgBase.ignoresSafeArea()
 
             ScrollView {
                 if let workout = viewModel.workout {
@@ -90,11 +90,11 @@ struct WorkoutDetailView: View {
                         if let errorMessage = viewModel.errorMessage {
                             Text(errorMessage)
                                 .font(.caption)
-                                .foregroundColor(Color(hex: "ef4444"))
+                                .foregroundColor(Color.statusError)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
                                 .frame(maxWidth: .infinity)
-                                .background(Color(hex: "ef4444").opacity(0.1))
+                                .background(Color.statusError.opacity(0.1))
                                 .cornerRadius(8)
                                 .padding(.horizontal, 16)
                         }
@@ -104,7 +104,7 @@ struct WorkoutDetailView: View {
                     .padding(.vertical, 16)
                 } else if !viewModel.isLoading {
                     Text(viewModel.errorMessage ?? "Workout not found")
-                        .foregroundColor(Color(hex: "7a9bb0"))
+                        .foregroundColor(Color.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 60)
                 }
@@ -113,7 +113,7 @@ struct WorkoutDetailView: View {
 
             if viewModel.isLoading && viewModel.workout == nil {
                 ProgressView()
-                    .tint(Color(hex: "09d4ee"))
+                    .tint(Color.accentCyan)
             }
         }
         .navigationTitle(viewModel.workout?.title ?? "Workout")
@@ -124,7 +124,7 @@ struct WorkoutDetailView: View {
                     viewModel.showDeleteConfirmation = true
                 } label: {
                     Image(systemName: "trash")
-                        .foregroundColor(Color(hex: "ef4444"))
+                        .foregroundColor(Color.statusError)
                 }
             }
         }
@@ -181,7 +181,7 @@ struct WorkoutDetailView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("SETS")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
                 .tracking(1.5)
                 .padding(.horizontal, 16)
 
@@ -227,20 +227,20 @@ struct WorkoutDetailView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(set.label)
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(Color(hex: "e2f4fa"))
+                            .font(.bodyEmphasis)
+                            .foregroundColor(Color.textPrimary)
                             .multilineTextAlignment(.leading)
 
                         HStack(spacing: 8) {
                             if let gear = set.gear {
                                 Text(gear)
                                     .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(Color(hex: "09d4ee"))
+                                    .foregroundColor(Color.accentCyan)
                             }
                             if let intensity = set.intensityLabel {
                                 Text(intensity)
                                     .font(.system(size: 11))
-                                    .foregroundColor(Color(hex: "f59e0b"))
+                                    .foregroundColor(Color.accentAmber)
                             }
                         }
                     }
@@ -250,7 +250,7 @@ struct WorkoutDetailView: View {
                     if isTimeable {
                         Image(systemName: "play.fill")
                             .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "09d4ee"))
+                            .foregroundColor(Color.accentCyan)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -261,7 +261,7 @@ struct WorkoutDetailView: View {
             .opacity(isTimeable ? 1 : 0.5)
 
             Divider()
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .padding(.leading, 16)
         }
     }
@@ -270,25 +270,25 @@ struct WorkoutDetailView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(workout.title ?? "Untitled")
                 .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
 
             HStack(spacing: 8) {
                 if let scheduledAt = workout.scheduledAt {
                     Text(formatDate(scheduledAt))
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
 
                 if let amPm = workout.amPm {
                     Text("·")
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                     Text(amPm)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: "f59e0b"))
+                        .foregroundColor(Color.accentAmber)
                 }
 
                 Text("·")
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                 Text(workout.status.rawValue.capitalized)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(statusColor(workout.status))
@@ -304,14 +304,14 @@ struct WorkoutDetailView: View {
                     navigateToBuilder = true
                 }
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(Color(hex: "0d1b2a"))
+                .background(Color.bgSunken)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "2d3e50"), lineWidth: 1)
+                        .stroke(Color.divider, lineWidth: 1)
                 )
             }
 
@@ -320,14 +320,14 @@ struct WorkoutDetailView: View {
                     Task { await viewModel.markComplete(workoutId: workoutId) }
                 }
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Color(hex: "10b981"))
+                .foregroundColor(Color.statusSuccess)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(Color(hex: "0d1b2a"))
+                .background(Color.bgSunken)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "10b981").opacity(0.3), lineWidth: 1)
+                        .stroke(Color.statusSuccess.opacity(0.3), lineWidth: 1)
                 )
             }
         }
@@ -385,10 +385,10 @@ struct WorkoutDetailView: View {
 
     private func statusColor(_ status: WorkoutStatus) -> Color {
         switch status {
-        case .draft: return Color(hex: "f59e0b")
-        case .scheduled: return Color(hex: "09d4ee")
-        case .inProgress: return Color(hex: "09d4ee")
-        case .complete: return Color(hex: "10b981")
+        case .draft: return Color.accentAmber
+        case .scheduled: return Color.accentCyan
+        case .inProgress: return Color.accentCyan
+        case .complete: return Color.statusSuccess
         }
     }
 }

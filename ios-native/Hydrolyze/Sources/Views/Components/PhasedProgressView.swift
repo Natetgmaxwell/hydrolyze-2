@@ -64,7 +64,7 @@ struct PhasedProgressView: View {
 
                     if index < phaseCount - 1 {
                         Rectangle()
-                            .fill(Color(hex: "4a6572").opacity(0.3))
+                            .fill(Color.textFaint.opacity(0.3))
                             .frame(height: 1)
                             .frame(maxWidth: 16)
                     }
@@ -79,7 +79,7 @@ struct PhasedProgressView: View {
             if let label = currentPhaseLabel {
                 Text(label)
                     .font(.jetBrainsMono(size: 13, weight: .bold))
-                    .foregroundColor(Color(hex: "09d4ee"))
+                    .foregroundColor(Color.accentCyan)
                     .tracking(2)
                     .id("phase-label-\(currentPhase)")
                     .transition(.opacity)
@@ -89,7 +89,7 @@ struct PhasedProgressView: View {
             if let desc = currentDescription, !desc.isEmpty {
                 Text(desc)
                     .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
                     .lineLimit(2)
@@ -119,15 +119,15 @@ struct PhasedProgressView: View {
     private func dotState(for index: Int) -> (color: Color, scale: CGFloat, isActive: Bool) {
         if currentPhase >= phaseCount {
             // All complete — all dots filled cyan at normal scale.
-            return (Color(hex: "09d4ee"), 1.0, false)
+            return (Color.accentCyan, 1.0, false)
         }
         if index < currentPhase {
-            return (Color(hex: "09d4ee"), 1.0, false)  // Completed
+            return (Color.accentCyan, 1.0, false)  // Completed
         }
         if index == currentPhase {
-            return (Color(hex: "09d4ee").opacity(0.7), 1.15, true)  // Active (pulses)
+            return (Color.accentCyan.opacity(0.7), 1.15, true)  // Active (pulses)
         }
-        return (Color(hex: "4a6572").opacity(0.3), 1.0, false)  // Future
+        return (Color.textFaint.opacity(0.3), 1.0, false)  // Future
     }
 
     /// Optional label for the current phase. Empty string when
@@ -192,5 +192,5 @@ private struct ActivePulseModifier: ViewModifier {
         )
     }
     .padding()
-    .background(Color(hex: "060e18"))
+    .background(Color.bgBase)
 }

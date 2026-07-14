@@ -35,15 +35,15 @@ struct ProgressionChart: View {
     private func fatigueColor(for intensity: String) -> Color {
         let i = intensity.lowercased()
         if i.contains("easy") || i.contains("recovery") || i.contains("warm") {
-            return Color(hex: "10b981")
+            return Color.statusSuccess
         } else if i.contains("moderate") || i.contains("tempo") || i.contains("steady") {
-            return Color(hex: "09d4ee")
+            return Color.accentCyan
         } else if i.contains("threshold") || i.contains("race") {
-            return Color(hex: "f59e0b")
+            return Color.accentAmber
         } else if i.contains("sprint") || i.contains("max") {
-            return Color(hex: "ef4444")
+            return Color.statusError
         }
-        return Color(hex: "7a9bb0")
+        return Color.textMuted
     }
 
     private func symbolSize(for repIndex: Int) -> CGFloat {
@@ -73,10 +73,10 @@ struct ProgressionChart: View {
         VStack(spacing: 8) {
             Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.system(size: 32))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
             Text("No times yet")
                 .font(.system(size: 14))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
@@ -89,7 +89,7 @@ struct ProgressionChart: View {
                     x: .value("Date", entry.date),
                     y: .value("Time (ms)", entry.timeMs)
                 )
-                .foregroundStyle(Color(hex: "09d4ee"))
+                .foregroundStyle(Color.accentCyan)
                 .interpolationMethod(.monotone)
             }
 
@@ -104,29 +104,29 @@ struct ProgressionChart: View {
 
             if let pbMs = personalBestMs {
                 RuleMark(y: .value("PB", pbMs))
-                    .foregroundStyle(Color(hex: "10b981"))
+                    .foregroundStyle(Color.statusSuccess)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     .annotation(position: .top, alignment: .trailing) {
                         Text("PB \(formatMs(pbMs))")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color(hex: "10b981"))
+                            .foregroundColor(Color.statusSuccess)
                     }
             }
         }
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                AxisGridLine().foregroundStyle(Color(hex: "1a2d42"))
+                AxisGridLine().foregroundStyle(Color.bgInset)
                 AxisValueLabel()
-                    .foregroundStyle(Color(hex: "7a9bb0"))
+                    .foregroundStyle(Color.textMuted)
             }
         }
         .chartYAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                AxisGridLine().foregroundStyle(Color(hex: "1a2d42"))
+                AxisGridLine().foregroundStyle(Color.bgInset)
                 AxisValueLabel {
                     if let ms = value.as(Int.self) {
                         Text(formatMs(ms))
-                            .foregroundColor(Color(hex: "7a9bb0"))
+                            .foregroundColor(Color.textMuted)
                     }
                 }
             }

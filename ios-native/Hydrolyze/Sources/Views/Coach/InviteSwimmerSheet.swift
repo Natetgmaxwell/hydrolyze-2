@@ -60,13 +60,13 @@ struct InviteSwimmerSheet: View {
                 }
             }
             .padding(24)
-            .background(Color(hex: "060e18").ignoresSafeArea())
+            .background(Color.bgBase.ignoresSafeArea())
             .navigationTitle("Invite to Hydrolyze")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 }
             }
         }
@@ -84,13 +84,13 @@ struct InviteSwimmerSheet: View {
         VStack(spacing: 8) {
             Image(systemName: "person.badge.plus")
                 .font(.system(size: 44))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
             Text("Invite \(swimmerName)")
                 .font(.title2.weight(.semibold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
             Text("Generate a 6-character code so \(swimmerName) can sign in to see their times.")
                 .font(.callout)
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
                 .multilineTextAlignment(.center)
         }
         .padding(.top, 16)
@@ -99,10 +99,10 @@ struct InviteSwimmerSheet: View {
     private var loadingState: some View {
         VStack(spacing: 12) {
             ProgressView()
-                .tint(Color(hex: "09d4ee"))
+                .tint(Color.accentCyan)
             Text("Generating code…")
                 .font(.footnote)
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
@@ -111,11 +111,11 @@ struct InviteSwimmerSheet: View {
     private var confirmState: some View {
         VStack(spacing: 12) {
             Image(systemName: "envelope.badge.shield.half.filled")
-                .font(.system(size: 56))
-                .foregroundColor(Color(hex: "09d4ee").opacity(0.6))
+                .font(.displayLarge)
+                .foregroundColor(Color.accentCyan.opacity(0.6))
             Text("Ready to invite")
                 .font(.headline)
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
@@ -128,9 +128,9 @@ struct InviteSwimmerSheet: View {
                 ForEach(Array(code), id: \.self) { char in
                     Text(String(char))
                         .font(.system(size: 36, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                         .frame(width: 44, height: 56)
-                        .background(Color(hex: "1a2d42"))
+                        .background(Color.bgInset)
                         .cornerRadius(8)
                 }
             }
@@ -138,7 +138,7 @@ struct InviteSwimmerSheet: View {
             if let generatedAt {
                 Text("Code generated \(generatedAt.formatted(.relative(presentation: .named)))")
                     .font(.caption)
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
             }
 
             // Copy button
@@ -149,14 +149,14 @@ struct InviteSwimmerSheet: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(Color(hex: "09d4ee").opacity(0.2))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .background(Color.accentCyan.opacity(0.2))
+                .foregroundColor(Color.accentCyan)
                 .cornerRadius(10)
             }
 
             Text("Share this code with \(swimmerName). They'll enter it when signing up. The code expires in 7 days.")
                 .font(.footnote)
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
                 .multilineTextAlignment(.center)
         }
         .padding(.vertical, 8)
@@ -185,8 +185,8 @@ struct InviteSwimmerSheet: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(Color(hex: "1a2d42"))
-            .foregroundColor(Color(hex: "e2f4fa"))
+            .background(Color.bgInset)
+            .foregroundColor(Color.textPrimary)
             .cornerRadius(10)
         }
     }
@@ -200,8 +200,8 @@ struct InviteSwimmerSheet: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color(hex: "09d4ee"))
-                .foregroundColor(Color(hex: "060e18"))
+                .background(Color.accentCyan)
+                .foregroundColor(Color.bgBase)
                 .cornerRadius(10)
         }
     }
@@ -210,7 +210,7 @@ struct InviteSwimmerSheet: View {
         Button("Cancel") { dismiss() }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .foregroundColor(Color(hex: "7a9bb0"))
+            .foregroundColor(Color.textMuted)
     }
 
     // MARK: - Actions

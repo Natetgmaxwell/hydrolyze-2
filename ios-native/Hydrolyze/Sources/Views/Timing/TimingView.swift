@@ -150,23 +150,23 @@ struct TimingView: View {
             Spacer()
 
             Text("START SESSION")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrowLarge)
+                .foregroundColor(Color.textFaint)
                 .tracking(2)
 
             // When launched from a workout set, show locked label instead of pickers
             if let prefill = prefill {
                 Text(prefill.displayLabel)
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .font(.titleLarge)
+                    .foregroundColor(Color.textPrimary)
                     .padding(.bottom, 8)
             }
 
             // Swimmer picker
             VStack(alignment: .leading, spacing: 8) {
                 Text("SWIMMER")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .font(.eyebrow)
+                    .foregroundColor(Color.textFaint)
 
                 Button {
                     Haptics.selection()
@@ -177,18 +177,18 @@ struct TimingView: View {
                             .font(.system(size: 17))
                             .foregroundColor(
                                 viewModel.selectedSwimmerId != nil
-                                ? Color(hex: "e2f4fa")
-                                : Color(hex: "4a6572")
+                                ? Color.textPrimary
+                                : Color.textFaint
                             )
                         Spacer()
                         Image(systemName: "chevron.down")
-                            .foregroundColor(Color(hex: "4a6572"))
+                            .foregroundColor(Color.textFaint)
                             .rotationEffect(.degrees(showSwimmerPicker ? 180 : 0))
                             .animation(Animations.snap, value: showSwimmerPicker)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
-                    .background(Color(hex: "111d2b"))
+                    .background(Color.bgRaised)
                     .cornerRadius(10)
                 }
             }
@@ -198,8 +198,8 @@ struct TimingView: View {
             if prefill == nil {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("STROKE")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textFaint)
 
                     FlowLayout(spacing: 8) {
                         ForEach(["Free", "Back", "Breast", "Fly", "IM"], id: \.self) { stroke in
@@ -213,8 +213,8 @@ struct TimingView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISTANCE")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textFaint)
 
                     FlowLayout(spacing: 8) {
                         ForEach([25, 50, 100, 200], id: \.self) { dist in
@@ -240,13 +240,13 @@ struct TimingView: View {
             } label: {
                 Text("CONTINUE")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(Color(hex: "060e18"))
+                    .foregroundColor(Color.bgBase)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
                     .background(
                         viewModel.selectedSwimmerId != nil
-                        ? Color(hex: "09d4ee")
-                        : Color(hex: "1a2d42")
+                        ? Color.accentCyan
+                        : Color.bgInset
                     )
                     .cornerRadius(12)
             }
@@ -296,10 +296,10 @@ struct TimingView: View {
         } label: {
             Text(label)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(selected ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                .foregroundColor(selected ? Color.bgBase : Color.textMuted)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(selected ? Color(hex: "09d4ee") : Color(hex: "111d2b"))
+                .background(selected ? Color.accentCyan : Color.bgRaised)
                 .cornerRadius(20)
         }
         // Subtle scale on press for the chip — these are tappable
@@ -336,7 +336,7 @@ struct TimingView: View {
                 .padding(.top, 12)
 
             Text("Press volume up or tap to start")
-                .font(.system(size: 13))
+                .font(.caption)
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.top, 4)
 
@@ -364,13 +364,13 @@ struct TimingView: View {
                     .font(.system(size: 26, weight: .heavy, design: .monospaced))
                     .foregroundColor(.black)
                     .frame(width: 200, height: 200)
-                    .background(Color(hex: "09d4ee"))
+                    .background(Color.accentCyan)
                     .clipShape(Circle())
                     // Soft outer glow that intensifies with the
                     // breathing pulse — the button radiates
                     // energy when it wants to be tapped.
                     .shadow(
-                        color: Color(hex: "09d4ee").opacity(0.35),
+                        color: Color.accentCyan.opacity(0.35),
                         radius: 24, x: 0, y: 0
                     )
             }
@@ -379,7 +379,7 @@ struct TimingView: View {
                 content
                     .scaleEffect(scale)
                     .shadow(
-                        color: Color(hex: "09d4ee").opacity(scale == 1.0 ? 0.35 : 0.55),
+                        color: Color.accentCyan.opacity(scale == 1.0 ? 0.35 : 0.55),
                         radius: scale == 1.0 ? 24 : 32, x: 0, y: 0
                     )
             } animation: { _ in
@@ -449,7 +449,7 @@ struct TimingView: View {
                         .font(.system(size: 26, weight: .heavy, design: .monospaced))
                         .foregroundColor(.black)
                         .frame(width: 160, height: 160)
-                        .background(Color(hex: "09d4ee"))
+                        .background(Color.accentCyan)
                         .clipShape(Circle())
                 }
                 .buttonStyle(StrongPressFeedbackStyle(scale: 0.90))
@@ -479,7 +479,7 @@ struct TimingView: View {
             // haptic-visual confirmation. Spring-animated (not
             // easeOut) for a more "punchy" feel that matches the
             // medium LAP haptic.
-            Color(hex: "09d4ee")
+            Color.accentCyan
                 .opacity(lapFlashOpacity)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -621,12 +621,12 @@ struct TimingView: View {
                     Text("SKIP PAIRING — JUST RECORD TIMES")
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(1.5)
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
-                                .stroke(Color(hex: "09d4ee"), lineWidth: 1)
+                                .stroke(Color.accentCyan, lineWidth: 1)
                         )
                 }
 
@@ -676,7 +676,7 @@ struct TimingView: View {
                     UIPasteboard.general.string = info
                 } label: {
                     Text("COPY DEBUG INFO")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.eyebrow)
                         .tracking(1.5)
                         .foregroundColor(.white.opacity(0.5))
                         .padding(.horizontal, 16)
@@ -738,7 +738,7 @@ struct TimingView: View {
 
             if let error = viewModel.errorMessage {
                 Text(error)
-                    .font(.system(size: 13))
+                    .font(.caption)
                     .foregroundColor(.red)
                     .padding(.bottom, 8)
             }
@@ -784,7 +784,7 @@ struct TimingView: View {
                         ProgressView().tint(.black)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color(hex: "09d4ee"))
+                            .background(Color.accentCyan)
                             .cornerRadius(12)
                     } else {
                         Text("SAVE")
@@ -792,7 +792,7 @@ struct TimingView: View {
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color(hex: "09d4ee"))
+                            .background(Color.accentCyan)
                             .cornerRadius(12)
                     }
                 }
@@ -819,10 +819,10 @@ struct SwimmerPickerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 if viewModel.isLoading {
-                    ProgressView().tint(Color(hex: "09d4ee"))
+                    ProgressView().tint(Color.accentCyan)
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 2) {
@@ -836,16 +836,16 @@ struct SwimmerPickerSheet: View {
                                     HStack {
                                         Text(swimmer.fullName)
                                             .font(.system(size: 17))
-                                            .foregroundColor(Color(hex: "e2f4fa"))
+                                            .foregroundColor(Color.textPrimary)
                                         Spacer()
                                         if selectedId == swimmer.id {
                                             Image(systemName: "checkmark")
-                                                .foregroundColor(Color(hex: "09d4ee"))
+                                                .foregroundColor(Color.accentCyan)
                                         }
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 14)
-                                    .background(Color(hex: "111d2b"))
+                                    .background(Color.bgRaised)
                                 }
                             }
                         }
@@ -859,7 +859,7 @@ struct SwimmerPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 }
             }
             .task {

@@ -22,11 +22,11 @@ struct SwimmerDetailView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "060e18").ignoresSafeArea()
+            Color.bgBase.ignoresSafeArea()
 
             if viewModel.isLoading {
                 ProgressView()
-                    .tint(Color(hex: "09d4ee"))
+                    .tint(Color.accentCyan)
             } else if let swimmer = viewModel.swimmer {
                 ScrollView {
                     VStack(spacing: 0) {
@@ -54,12 +54,12 @@ struct SwimmerDetailView: View {
                 } label: {
                     Image(systemName: "person.crop.circle.badge.plus")
                 }
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
                 .accessibilityLabel("Invite to Hydrolyze")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Edit") { showEditSheet = true }
-                    .foregroundColor(Color(hex: "09d4ee"))
+                    .foregroundColor(Color.accentCyan)
             }
         }
         .sheet(isPresented: $showEditSheet) {
@@ -113,25 +113,25 @@ struct SwimmerDetailView: View {
         VStack(spacing: 12) {
             Text(viewModel.initials)
                 .font(.system(size: 28, weight: .semibold))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
                 .frame(width: 56, height: 56)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .clipShape(Circle())
 
             Text(swimmer.fullName)
                 .font(.system(size: 28, weight: .semibold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
 
             if let ageText = viewModel.ageText {
                 Text(ageText)
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
 
             if let notes = swimmer.notes, !notes.isEmpty {
                 Text(notes)
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .font(.caption)
+                    .foregroundColor(Color.textFaint)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
             }
@@ -145,8 +145,8 @@ struct SwimmerDetailView: View {
     private func mainStrokeSection(_ swimmer: Swimmer) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("MAIN STROKE")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             Button {
@@ -155,15 +155,15 @@ struct SwimmerDetailView: View {
                 HStack {
                     Text(swimmer.mainStroke ?? "Not set")
                         .font(.system(size: 17))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .foregroundColor(Color.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Color(hex: "0d1b2a"))
+                .background(Color.bgSunken)
             }
             .padding(.bottom, 16)
         }
@@ -186,8 +186,8 @@ struct SwimmerDetailView: View {
     private func formStrokeSection(_ swimmer: Swimmer) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("FORM STROKE")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             Button {
@@ -196,15 +196,15 @@ struct SwimmerDetailView: View {
                 HStack {
                     Text(swimmer.formStroke ?? "Not set")
                         .font(.system(size: 17))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .foregroundColor(Color.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Color(hex: "0d1b2a"))
+                .background(Color.bgSunken)
             }
             .padding(.bottom, 16)
         }
@@ -227,8 +227,8 @@ struct SwimmerDetailView: View {
     private var groupsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("GROUPS")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
                 .padding(.bottom, 8)
@@ -244,12 +244,12 @@ struct SwimmerDetailView: View {
                                     .font(.system(size: 10, weight: .bold))
                             }
                             Text(group.name)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.captionStrong)
                         }
-                        .foregroundColor(isMember ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                        .foregroundColor(isMember ? Color.bgBase : Color.textMuted)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(isMember ? Color(hex: "09d4ee") : Color(hex: "1a2d42"))
+                        .background(isMember ? Color.accentCyan : Color.bgInset)
                         .cornerRadius(16)
                     }
                 }
@@ -265,15 +265,15 @@ struct SwimmerDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("PERSONAL BESTS")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .font(.eyebrow)
+                    .foregroundColor(Color.textFaint)
                 Spacer()
                 Button {
                     showPBSheet = true
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 }
             }
             .padding(.horizontal, 16)
@@ -283,7 +283,7 @@ struct SwimmerDetailView: View {
             if viewModel.personalBests.isEmpty {
                 Text("No personal bests yet.")
                     .font(.system(size: 14))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
             } else {
@@ -316,8 +316,8 @@ struct SwimmerDetailView: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(pb.distance)m \(pb.stroke)")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .font(.body)
+                    .foregroundColor(Color.textPrimary)
                 // PHASE 2.6 v1.14.1: show the intensity the PB was set at.
                 // Without this label, multiple PBs at the same
                 // (distance, stroke) look identical to the coach —
@@ -334,7 +334,7 @@ struct SwimmerDetailView: View {
             Spacer()
             Text(formatTimeMs(pb.timeMs))
                 .font(.system(size: 16, weight: .medium, design: .monospaced))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -361,8 +361,8 @@ struct SwimmerDetailView: View {
     private var progressionSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("PROGRESSION (LAST 30 DAYS)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)
                 .padding(.top, 24)
                 .padding(.bottom, 8)
@@ -385,14 +385,14 @@ struct SwimmerDetailView: View {
             } label: {
                 Text("Archive Swimmer")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color(hex: "f59e0b"))
+                    .foregroundColor(Color.accentAmber)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(Color(hex: "1a2d42"))
+                    .background(Color.bgInset)
                     .cornerRadius(12)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color(hex: "f59e0b"), lineWidth: 1)
+                            .stroke(Color.accentAmber, lineWidth: 1)
                     )
             }
 
@@ -401,10 +401,10 @@ struct SwimmerDetailView: View {
             } label: {
                 Text("Delete Swimmer")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color(hex: "ef4444"))
+                    .foregroundColor(Color.statusError)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(Color(hex: "1a2d42"))
+                    .background(Color.bgInset)
                     .cornerRadius(12)
             }
         }
@@ -430,10 +430,10 @@ struct SwimmerDetailView: View {
     private func gearBadge(_ gear: String) -> some View {
         Text(gear)
             .font(.system(size: 10, weight: .medium))
-            .foregroundColor(Color(hex: "09d4ee"))
+            .foregroundColor(Color.accentCyan)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color(hex: "09d4ee").opacity(0.18))
+            .background(Color.accentCyan.opacity(0.18))
             .cornerRadius(4)
     }
 
@@ -450,11 +450,11 @@ struct SwimmerDetailView: View {
         case "tempo", "t3":
             return Color(hex: "ffd166")  // yellow — tempo
         case "moderate", "cruise", "t2":
-            return Color(hex: "09d4ee")  // cyan — aerobic
+            return Color.accentCyan  // cyan — aerobic
         case "easy", "recovery", "t1":
             return Color(hex: "06d6a0")  // green — easy
         default:
-            return Color(hex: "4a6572")  // grey — unknown
+            return Color.textFaint  // grey — unknown
         }
     }
 
@@ -484,7 +484,7 @@ struct StrokePickerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
                 List {
                     ForEach(strokes, id: \.self) { stroke in
                         Button {
@@ -494,15 +494,15 @@ struct StrokePickerSheet: View {
                             HStack {
                                 Text(stroke)
                                     .font(.system(size: 17))
-                                    .foregroundColor(Color(hex: "e2f4fa"))
+                                    .foregroundColor(Color.textPrimary)
                                 Spacer()
                                 if selectedStroke == stroke {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color(hex: "09d4ee"))
+                                        .foregroundColor(Color.accentCyan)
                                 }
                             }
                         }
-                        .listRowBackground(Color(hex: "0d1b2a"))
+                        .listRowBackground(Color.bgSunken)
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -512,7 +512,7 @@ struct StrokePickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 }
             }
         }

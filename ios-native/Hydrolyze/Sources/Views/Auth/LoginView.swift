@@ -57,7 +57,7 @@ struct LoginView: View {
             .padding(.horizontal, 24)
             .padding(.top, 60)
         }
-        .background(Color(hex: "060e18"))
+        .background(Color.bgBase)
         .onTapGesture { hideKeyboard() }
         .animation(.easeInOut(duration: 0.18), value: role)
     }
@@ -68,11 +68,11 @@ struct LoginView: View {
         VStack(spacing: 8) {
             Text("HYDROLYZE")
                 .font(.system(size: 44, weight: .bold, design: .monospaced))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
 
             Text("Sign in to your account")
                 .font(.system(size: 14))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
         }
     }
 
@@ -86,15 +86,15 @@ struct LoginView: View {
                 } label: {
                     Text(tab.rawValue)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(role == tab ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                        .foregroundColor(role == tab ? Color.bgBase : Color.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(role == tab ? Color(hex: "09d4ee") : Color.clear)
+                        .background(role == tab ? Color.accentCyan : Color.clear)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(10)
     }
 }
@@ -157,16 +157,16 @@ struct CoachLoginFlow: View {
         } label: {
             HStack {
                 if isLoading {
-                    ProgressView().tint(Color(hex: "060e18"))
+                    ProgressView().tint(Color.bgBase)
                 } else {
                     Text(submitButtonText)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color(hex: "060e18"))
+                        .foregroundColor(Color.bgBase)
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color(hex: "09d4ee"))
+            .background(Color.accentCyan)
             .cornerRadius(10)
         }
         .buttonStyle(.plain)
@@ -182,8 +182,8 @@ struct CoachLoginFlow: View {
                 }
             } label: {
                 Text(mode == .signIn ? "Don't have an account? Sign Up" : "Have an account? Sign In")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "09d4ee"))
+                    .font(.caption)
+                    .foregroundColor(Color.accentCyan)
             }
             .buttonStyle(.plain)
 
@@ -194,8 +194,8 @@ struct CoachLoginFlow: View {
                 }
             } label: {
                 Text("Forgot password?")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
             .buttonStyle(.plain)
         }
@@ -311,7 +311,7 @@ struct SwimmerLoginFlow: View {
                 switchMode(.createAccount)
             }
         }
-        .background(Color(hex: "1a2d42"))
+        .background(Color.bgInset)
         .cornerRadius(10)
         .padding(.bottom, 8)
     }
@@ -320,10 +320,10 @@ struct SwimmerLoginFlow: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 13, weight: isActive ? .semibold : .regular))
-                .foregroundColor(isActive ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                .foregroundColor(isActive ? Color.bgBase : Color.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(isActive ? Color(hex: "09d4ee") : Color.clear)
+                .background(isActive ? Color.accentCyan : Color.clear)
                 .cornerRadius(8)
         }
         .buttonStyle(.plain)
@@ -399,16 +399,16 @@ struct SwimmerLoginFlow: View {
         } label: {
             HStack {
                 if isLoading {
-                    ProgressView().tint(Color(hex: "060e18"))
+                    ProgressView().tint(Color.bgBase)
                 } else {
                     Text(mode == .signIn ? "Sign In" : "Create Account")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color(hex: "060e18"))
+                        .foregroundColor(Color.bgBase)
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color(hex: "09d4ee"))
+            .background(Color.accentCyan)
             .cornerRadius(10)
         }
         .buttonStyle(.plain)
@@ -433,8 +433,8 @@ struct SwimmerLoginFlow: View {
                 Task { await handleReset() }
             } label: {
                 Text("Forgot password?")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
             .buttonStyle(.plain)
         }

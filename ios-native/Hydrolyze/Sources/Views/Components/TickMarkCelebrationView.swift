@@ -36,7 +36,7 @@ struct TickMarkCelebrationView: View {
             Circle()
                 .trim(from: 0, to: circleProgress)
                 .stroke(
-                    Color(hex: "09d4ee"),
+                    Color.accentCyan,
                     style: StrokeStyle(lineWidth: 3, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
@@ -45,7 +45,7 @@ struct TickMarkCelebrationView: View {
             TickShape()
                 .trim(from: 0, to: tickProgress)
                 .stroke(
-                    Color(hex: "09d4ee"),
+                    Color.accentCyan,
                     style: StrokeStyle(
                         lineWidth: 3,
                         lineCap: .round,
@@ -108,7 +108,7 @@ private struct TickShape: Shape {
 
 #Preview {
     ZStack {
-        Color(hex: "060e18").ignoresSafeArea()
+        Color.bgBase.ignoresSafeArea()
         TickMarkCelebrationView()
     }
 }

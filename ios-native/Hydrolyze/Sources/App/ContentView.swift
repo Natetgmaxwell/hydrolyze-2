@@ -31,16 +31,16 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(hex: "060e18"))
+        .background(Color.bgBase)
     }
 
     private var loadingView: some View {
         VStack(spacing: 16) {
             ProgressView()
-                .tint(Color(hex: "09d4ee"))
+                .tint(Color.accentCyan)
             Text("Loading...")
                 .font(.system(.body, design: .default))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
         }
     }
 
@@ -75,7 +75,7 @@ struct ContentView: View {
                     Label("Profile", systemImage: "gearshape.fill")
                 }
         }
-        .tint(Color(hex: "09d4ee"))
+        .tint(Color.accentCyan)
     }
 }
 

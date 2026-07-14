@@ -21,7 +21,7 @@ struct SessionReviewView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     filterTabs
@@ -112,16 +112,16 @@ struct SessionReviewView: View {
                             .font(.system(size: 12, weight: .regular))
                             .foregroundColor(
                                 viewModel.filter == f
-                                ? Color(hex: "09d4ee").opacity(0.75)
-                                : Color(hex: "4a6572").opacity(0.75)
+                                ? Color.accentCyan.opacity(0.75)
+                                : Color.textFaint.opacity(0.75)
                             )
                     }
-                    .foregroundColor(viewModel.filter == f ? Color(hex: "09d4ee") : Color(hex: "4a6572"))
+                    .foregroundColor(viewModel.filter == f ? Color.accentCyan : Color.textFaint)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(
                         viewModel.filter == f ?
-                        Color(hex: "0d2847") : Color.clear
+                        Color.bgSelected : Color.clear
                     )
                     .cornerRadius(8)
                     // Animate the (N) count badge color too —
@@ -155,14 +155,14 @@ struct SessionReviewView: View {
                         currentDescription: nil
                     )
                     Text("Loading review…")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .font(.caption)
+                        .foregroundColor(Color.textFaint)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 64)
             } else if let error = viewModel.errorMessage {
                 Text(error)
-                    .font(.system(size: 15))
+                    .font(.body)
                     .foregroundColor(Color.red)
                     .padding()
             } else if viewModel.filteredRows.isEmpty {
@@ -172,14 +172,14 @@ struct SessionReviewView: View {
                 VStack(spacing: 8) {
                     Image(systemName: viewModel.filter.emptyStateIcon)
                         .font(.system(size: 32, weight: .light))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                     Text(viewModel.filter.emptyStateTitle)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                     if let subtitle = viewModel.filter.emptyStateSubtitle {
                         Text(subtitle)
                             .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "4a6572"))
+                            .foregroundColor(Color.textFaint)
                             .multilineTextAlignment(.center)
                     }
                 }
@@ -274,7 +274,7 @@ struct SessionReviewView: View {
             if viewModel.effectiveUnconfirmedCount > 0 {
                 Text("\(viewModel.effectiveUnconfirmedCount) row(s) need review")
                     .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
             }
 
             // PHASE 2.6 v1.14: smart Confirm button. Label and tap
@@ -311,11 +311,11 @@ struct SessionReviewView: View {
                     Task { await handleConfirmTap() }
                 } label: {
                     Text(confirmButtonLabel)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.titleSmall)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(Color(hex: "09d4ee"))
-                        .foregroundColor(Color(hex: "060e18"))
+                        .background(Color.accentCyan)
+                        .foregroundColor(Color.bgBase)
                         .cornerRadius(12)
                         // Animate the label change — when the
                         // row mix changes (e.g., a row moves
@@ -332,7 +332,7 @@ struct SessionReviewView: View {
             }
         }
         .padding(16)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
     }
 
     /// PHASE 2.6 v1.14: smart label for the Confirm button.
@@ -435,27 +435,27 @@ struct ReviewRowView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 12, weight: .semibold))
                             Text("Predicted \(String(format: "%.1f", h.predSec))s, actual \(String(format: "%.1f", h.actualSec))s (\(String(format: "%.1f", h.zScore))σ off)")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.eyebrowLarge)
                                 .lineLimit(2)
                         }
-                        .foregroundColor(Color(hex: "f59e0b"))
+                        .foregroundColor(Color.accentAmber)
                         .padding(.bottom, 4)
                     }
 
                     Text(row.swimmerName)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .font(.bodyEmphasis)
+                        .foregroundColor(Color.textPrimary)
 
                     HStack(spacing: 8) {
                         if let lane = row.lane {
                             Text("Lane \(lane)")
                                 .font(.system(size: 12))
-                                .foregroundColor(Color(hex: "4a6572"))
+                                .foregroundColor(Color.textFaint)
                         }
                         if let wave = row.wave {
                             Text("Wave \(wave)")
                                 .font(.system(size: 12))
-                                .foregroundColor(Color(hex: "4a6572"))
+                                .foregroundColor(Color.textFaint)
                         }
                         Text("\(row.confidence)%")
                             .font(.system(size: 12, weight: .medium))
@@ -485,14 +485,14 @@ struct ReviewRowView: View {
                                     // .contentShape(Rectangle()).
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 18))
-                                        .foregroundColor(Color(hex: "09d4ee"))
+                                        .foregroundColor(Color.accentCyan)
                                         .frame(width: 44, height: 44)
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.borderless)
                             }
                         }
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                         .padding(.top, 2)
                     }
 
@@ -511,14 +511,14 @@ struct ReviewRowView: View {
                                     .font(.system(size: 11))
                             }
                             if c.suitPct != 0 && c.startPct != 0 {
-                                Text("·").font(.system(size: 11)).foregroundColor(Color(hex: "4a6572"))
+                                Text("·").font(.system(size: 11)).foregroundColor(Color.textFaint)
                             }
                             if c.startPct != 0 {
                                 Text(String(format: "%.1f%% off due to start calibration", abs(c.startPct)))
                                     .font(.system(size: 11))
                             }
                         }
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                         .padding(.top, 2)
                     }
                 }
@@ -527,7 +527,7 @@ struct ReviewRowView: View {
 
                 Text(TimingSession.formatMs(row.recordedTime.timeMs))
                     .font(.system(size: 15, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .foregroundColor(Color.textPrimary)
 
                 if isAcceptedByCoach {
                     // Visual confirmation that the coach has accepted
@@ -535,11 +535,11 @@ struct ReviewRowView: View {
                     // auto-paired high-confidence green.
                     Image(systemName: "hand.thumbsup.fill")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
             }
             .padding(12)
@@ -601,7 +601,7 @@ struct ReassignSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 List {
                     ForEach(candidates) { candidate in
@@ -613,7 +613,7 @@ struct ReassignSheet: View {
                         } label: {
                             HStack(spacing: 8) {
                                 Text(candidate.name)
-                                    .foregroundColor(Color(hex: "e2f4fa"))
+                                    .foregroundColor(Color.textPrimary)
                                 Spacer()
                                 // PHASE 2.6 v1.14: "Pred: X.Xs" suffix
                                 // so the coach can see why this row is
@@ -621,15 +621,15 @@ struct ReassignSheet: View {
                                 if let pred = candidate.predictedTimeMs {
                                     Text("Pred: \(String(format: "%.1f", Double(pred) / 1000))s")
                                         .font(.system(size: 12))
-                                        .foregroundColor(Color(hex: "4a6572"))
+                                        .foregroundColor(Color.textFaint)
                                 }
                                 if candidate.id == row.id {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color(hex: "09d4ee"))
+                                        .foregroundColor(Color.accentCyan)
                                 }
                             }
                         }
-                        .listRowBackground(Color(hex: "0d1f33"))
+                        .listRowBackground(Color.bgDeep)
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -642,7 +642,7 @@ struct ReassignSheet: View {
                         Haptics.tap()
                         dismiss()
                     }
-                    .foregroundColor(Color(hex: "09d4ee"))
+                    .foregroundColor(Color.accentCyan)
                 }
             }
         }

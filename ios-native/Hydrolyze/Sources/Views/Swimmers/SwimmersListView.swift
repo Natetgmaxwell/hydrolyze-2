@@ -21,7 +21,7 @@ struct SwimmersListView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     filterPills
@@ -38,7 +38,7 @@ struct SwimmersListView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color(hex: "09d4ee"))
+                            .foregroundColor(Color.accentCyan)
                     }
                 }
             }
@@ -96,7 +96,7 @@ struct SwimmersListView: View {
             }
             // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion
             // change. Cyan-tinted pull-to-refresh indicator.
-            .tint(Color(hex: "09d4ee"))
+            .tint(Color.accentCyan)
         }
     }
 
@@ -114,18 +114,18 @@ struct SwimmersListView: View {
                     Task { await viewModel.loadSwimmers(coachId: coachId) }
                 } label: {
                     Text(filter.rawValue)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.eyebrowLarge)
                         .foregroundColor(
                             viewModel.selectedFilter == filter
-                            ? Color(hex: "060e18")
-                            : Color(hex: "7a9bb0")
+                            ? Color.bgBase
+                            : Color.textMuted
                         )
                         .padding(.horizontal, 16)
                         .padding(.vertical, 6)
                         .background(
                             viewModel.selectedFilter == filter
-                            ? Color(hex: "09d4ee")
-                            : Color(hex: "1a2d42")
+                            ? Color.accentCyan
+                            : Color.bgInset
                         )
                         .cornerRadius(20)
                         // Animate the foreground + background swap
@@ -147,7 +147,7 @@ struct SwimmersListView: View {
             LazyVStack(spacing: 0) {
                 if viewModel.isLoading && viewModel.allSwimmers.isEmpty {
                     ProgressView()
-                        .tint(Color(hex: "09d4ee"))
+                        .tint(Color.accentCyan)
                         .padding(.top, 40)
                 } else if viewModel.filteredSwimmers.isEmpty {
                     emptyState
@@ -194,7 +194,7 @@ struct SwimmersListView: View {
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
-            .tint(Color(hex: "f59e0b"))
+            .tint(Color.accentAmber)
         }
         // Long-press = delete. Haptics.heavy() for destructive
         // symmetry with the swipe action.
@@ -209,11 +209,11 @@ struct SwimmersListView: View {
     private func groupHeader(name: String, count: Int, onDelete: (() -> Void)?) -> some View {
         HStack {
             Text(name.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             Text("\(count)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             Spacer()
             if let onDelete = onDelete {
                 Button {
@@ -221,13 +221,13 @@ struct SwimmersListView: View {
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color(hex: "060e18"))
+        .background(Color.bgBase)
     }
 
     private var emptyState: some View {
@@ -241,7 +241,7 @@ struct SwimmersListView: View {
             // warmth, not the copy. See [[concepts/warmth-through-motion]].
             Image(systemName: "person.fill")
                 .font(.system(size: 48))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
                 .phaseAnimator([1.0, 1.06, 1.0]) { content, scale in
                     content.scaleEffect(scale)
                 } animation: { _ in
@@ -250,11 +250,11 @@ struct SwimmersListView: View {
 
             Text("No swimmers yet.")
                 .font(.system(size: 17, weight: .medium))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
 
             Text("Tap + Add to add your first swimmer")
                 .font(.system(size: 14))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
         }
         .padding(.top, 80)
     }

@@ -34,10 +34,10 @@ struct PrimaryButton: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 56)
-            .background(Color(hex: "09d4ee"))
+            .background(Color.accentCyan)
             .cornerRadius(12)
             .shadow(
-                color: Color(hex: "09d4ee").opacity(isLoading ? 0.3 : 0.3),
+                color: Color.accentCyan.opacity(isLoading ? 0.3 : 0.3),
                 radius: 20, x: 0, y: 0
             )
         }
@@ -47,7 +47,7 @@ struct PrimaryButton: View {
         // "breathes" gently to invite tap. Pauses while loading.
         .phaseAnimator([0.3, 0.5], trigger: isLoading == false) { content, opacity in
             content.shadow(
-                color: Color(hex: "09d4ee").opacity(opacity),
+                color: Color.accentCyan.opacity(opacity),
                 radius: 20, x: 0, y: 0
             )
         } animation: { _ in
@@ -62,5 +62,5 @@ struct PrimaryButton: View {
         PrimaryButton(title: "SIGN UP", isLoading: true) {}
     }
     .padding()
-    .background(Color(hex: "060e18"))
+    .background(Color.bgBase)
 }

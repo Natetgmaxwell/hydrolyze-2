@@ -18,12 +18,12 @@ struct SetScheduleView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 VStack(alignment: .leading, spacing: 24) {
                     Text("DATE")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textFaint)
                         .tracking(1.5)
 
                     DatePicker(
@@ -32,13 +32,13 @@ struct SetScheduleView: View {
                         displayedComponents: .date
                     )
                     .datePickerStyle(.graphical)
-                    .background(Color(hex: "0d1b2a"))
+                    .background(Color.bgSunken)
                     .cornerRadius(12)
-                    .tint(Color(hex: "09d4ee"))
+                    .tint(Color.accentCyan)
 
                     Text("SESSION")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textFaint)
                         .tracking(1.5)
 
                     HStack(spacing: 12) {
@@ -50,12 +50,12 @@ struct SetScheduleView: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 48)
-                                    .background(viewModel.amPm == option ? Color(hex: "09d4ee") : Color(hex: "0d1b2a"))
-                                    .foregroundColor(viewModel.amPm == option ? .black : Color(hex: "7a9bb0"))
+                                    .background(viewModel.amPm == option ? Color.accentCyan : Color.bgSunken)
+                                    .foregroundColor(viewModel.amPm == option ? .black : Color.textMuted)
                                     .cornerRadius(8)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color(hex: "2d3e50"), lineWidth: 1)
+                                            .stroke(Color.divider, lineWidth: 1)
                                     )
                             }
                         }
@@ -84,7 +84,7 @@ struct SetScheduleView: View {
                             }
                         }
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color(hex: "7a9bb0"))
+                        .foregroundColor(Color.textMuted)
                     }
                 }
                 .padding(24)
@@ -94,7 +94,7 @@ struct SetScheduleView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color(hex: "ef4444"))
+                        .foregroundColor(Color.statusError)
                 }
             }
         }

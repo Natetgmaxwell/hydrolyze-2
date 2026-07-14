@@ -27,12 +27,12 @@ struct SwimmerUpcomingView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 content
             }
             .navigationTitle("Upcoming")
-            .toolbarBackground(Color(hex: "060e18"), for: .navigationBar)
+            .toolbarBackground(Color.bgBase, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task {
                 await load()
@@ -55,7 +55,7 @@ struct SwimmerUpcomingView: View {
             VStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 32))
-                    .foregroundStyle(Color(hex: "f59e0b"))
+                    .foregroundStyle(Color.accentAmber)
                 Text(error)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -170,12 +170,12 @@ private struct UpcomingWorkoutRow: View {
                         .foregroundStyle(.secondary)
                     Text(workout.slot)
                         .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color(hex: "f59e0b"))
+                        .foregroundStyle(Color.accentAmber)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color(hex: "f59e0b").opacity(0.18))
+                                .fill(Color.accentAmber.opacity(0.18))
                         )
                 }
             }
@@ -185,14 +185,14 @@ private struct UpcomingWorkoutRow: View {
                     label: "I'm in",
                     isSelected: workout.myIntent == "in",
                     isDisabled: isToggling,
-                    accent: Color(hex: "06b6d4"),
+                    accent: Color.accentCyanDim,
                     action: onMarkIn
                 )
                 IntentPill(
                     label: "Can't make it",
                     isSelected: workout.myIntent == "out",
                     isDisabled: isToggling,
-                    accent: Color(hex: "71717a"),
+                    accent: Color.accentSlate,
                     action: onMarkOut
                 )
             }
@@ -248,7 +248,7 @@ private struct IntentPill: View {
         Button(action: action) {
             Text(label)
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(isSelected ? Color(hex: "060e18") : .white)
+                .foregroundStyle(isSelected ? Color.bgBase : .white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(

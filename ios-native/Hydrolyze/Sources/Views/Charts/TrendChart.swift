@@ -29,10 +29,10 @@ struct TrendChart: View {
 
     private var swimmerColorMap: [String: Color] {
         let palette: [Color] = [
-            Color(hex: "09d4ee"),
-            Color(hex: "10b981"),
-            Color(hex: "f59e0b"),
-            Color(hex: "ef4444"),
+            Color.accentCyan,
+            Color.statusSuccess,
+            Color.accentAmber,
+            Color.statusError,
             Color(hex: "8b5cf6"),
             Color(hex: "ec4899"),
             Color(hex: "14b8a6")
@@ -48,10 +48,10 @@ struct TrendChart: View {
             VStack(spacing: 8) {
                 Image(systemName: "chart.bar.fill")
                     .font(.system(size: 32))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                 Text("No rep data")
                     .font(.system(size: 14))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 32)
@@ -68,18 +68,18 @@ struct TrendChart: View {
                                        range: swimmerColorMap.values.sorted(by: { _, _ in true }))
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: buckets.map { $0.repIndex }.max() ?? 4)) { _ in
-                    AxisGridLine().foregroundStyle(Color(hex: "1a2d42"))
+                    AxisGridLine().foregroundStyle(Color.bgInset)
                     AxisValueLabel()
-                        .foregroundStyle(Color(hex: "7a9bb0"))
+                        .foregroundStyle(Color.textMuted)
                 }
             }
             .chartYAxis {
                 AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                    AxisGridLine().foregroundStyle(Color(hex: "1a2d42"))
+                    AxisGridLine().foregroundStyle(Color.bgInset)
                     AxisValueLabel {
                         if let ms = value.as(Int.self) {
                             Text(formatMs(ms))
-                                .foregroundColor(Color(hex: "7a9bb0"))
+                                .foregroundColor(Color.textMuted)
                         }
                     }
                 }

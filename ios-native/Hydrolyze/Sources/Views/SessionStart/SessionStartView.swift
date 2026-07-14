@@ -39,7 +39,7 @@ struct SessionStartView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 switch viewModel.step {
                 case .rosterPicker:
@@ -76,7 +76,7 @@ struct SessionStartView: View {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .foregroundColor(Color(hex: "09d4ee"))
+                    .foregroundColor(Color.accentCyan)
                 }
             }
         }
@@ -150,12 +150,12 @@ struct RosterPickerView: View {
     private var searchBar: some View {
         HStack {
             Image(systemName: "magnifyingglass")
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
             TextField("Search swimmers", text: $viewModel.searchQuery)
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
         }
         .padding(12)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(10)
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -266,14 +266,14 @@ struct RosterPickerView: View {
                             .padding(.trailing, 8)
                     }
                     Text("Lock Roster")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.titleSmall)
                     Text("(\(viewModel.selectedSwimmerIds.count))")
-                        .font(.system(size: 15))
+                        .font(.body)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(viewModel.selectedSwimmerIds.isEmpty ? Color(hex: "1a3050") : Color(hex: "09d4ee"))
-                .foregroundColor(viewModel.selectedSwimmerIds.isEmpty ? Color(hex: "4a6572") : Color(hex: "060e18"))
+                .background(viewModel.selectedSwimmerIds.isEmpty ? Color(hex: "1a3050") : Color.accentCyan)
+                .foregroundColor(viewModel.selectedSwimmerIds.isEmpty ? Color.textFaint : Color.bgBase)
                 .cornerRadius(12)
             }
             // Disabled if nothing selected OR if lockRoster is in-flight
@@ -281,7 +281,7 @@ struct RosterPickerView: View {
             .disabled(viewModel.selectedSwimmerIds.isEmpty || viewModel.isLoading)
         }
         .padding(16)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
     }
 }
 
@@ -297,15 +297,15 @@ struct SwimmerRowView: View {
             HStack(spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22))
-                    .foregroundColor(isSelected ? Color(hex: "09d4ee") : Color(hex: "4a6572"))
+                    .foregroundColor(isSelected ? Color.accentCyan : Color.textFaint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(swimmer.fullName)
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .foregroundColor(Color.textPrimary)
                     if !swimmer.groups.isEmpty {
                         Text(swimmer.groups.map { $0.name }.joined(separator: ", "))
                             .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "4a6572"))
+                            .foregroundColor(Color.textFaint)
                     }
                 }
 
@@ -313,7 +313,7 @@ struct SwimmerRowView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(isSelected ? Color(hex: "0d2847") : Color.clear)
+            .background(isSelected ? Color.bgSelected : Color.clear)
         }
         .buttonStyle(.plain)
         // Smooth the checkmark + background transition on select/deselect.
@@ -488,13 +488,13 @@ struct WavePreviewView: View {
                     HStack(spacing: 6) {
                         Text("Wave \(wave + 1)")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(Color(hex: "e2f4fa"))
+                            .foregroundColor(Color.textPrimary)
                         Text("·")
-                            .foregroundColor(Color(hex: "4a6572"))
+                            .foregroundColor(Color.textFaint)
                         Text(pairs.map { "Lane \($0.laneA) ↔ Lane \($0.laneB) (gap \($0.gapMs)ms)" }
                             .joined(separator: "  •  "))
                             .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "7a9bb0"))
+                            .foregroundColor(Color.textMuted)
                             .lineLimit(2)
                     }
                 }
@@ -503,7 +503,7 @@ struct WavePreviewView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(hex: "3d2a00"))
+        .background(Color.accentAmberOn)
         .cornerRadius(8)
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -534,7 +534,7 @@ struct WavePreviewView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(viewModel.previewSetIndex == 0 ? Color(hex: "4a6572") : Color(hex: "09d4ee"))
+                    .foregroundColor(viewModel.previewSetIndex == 0 ? Color.textFaint : Color.accentCyan)
             }
             .disabled(viewModel.previewSetIndex == 0)
 
@@ -542,11 +542,11 @@ struct WavePreviewView: View {
                 Text("SET \(viewModel.previewSetIndex + 1) OF \(workoutSets.count)")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.0)
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                 if let currentSet = workoutSets[safe: viewModel.previewSetIndex] {
                     Text("\(currentSet.reps ?? 0) × \(currentSet.distance ?? 0)m \(currentSet.stroke ?? "")")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "7a9bb0"))
+                        .font(.caption)
+                        .foregroundColor(Color.textMuted)
                 }
             }
             .frame(minWidth: 160)
@@ -556,13 +556,13 @@ struct WavePreviewView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(viewModel.previewSetIndex >= workoutSets.count - 1 ? Color(hex: "4a6572") : Color(hex: "09d4ee"))
+                    .foregroundColor(viewModel.previewSetIndex >= workoutSets.count - 1 ? Color.textFaint : Color.accentCyan)
             }
             .disabled(viewModel.previewSetIndex >= workoutSets.count - 1)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
     }
 
     // MARK: - Phase 2.5-c / 2.6 lane picker (coach-configurable 1-10 lanes)
@@ -573,11 +573,11 @@ struct WavePreviewView: View {
                 Text("LANES")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.0)
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                 Spacer()
                 Text("\(viewModel.poolConfig.laneCount)")
                     .font(.jetBrainsMono(size: 14, weight: .bold))
-                    .foregroundColor(Color(hex: "09d4ee"))
+                    .foregroundColor(Color.accentCyan)
                     .frame(minWidth: 28)
             }
             Slider(
@@ -588,11 +588,11 @@ struct WavePreviewView: View {
                 in: 1...10,
                 step: 1
             )
-            .tint(Color(hex: "09d4ee"))
+            .tint(Color.accentCyan)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
     }
 
     // MARK: - Phase 2.6 maturity badge helper
@@ -615,7 +615,7 @@ struct WavePreviewView: View {
         } label: {
             Text("Reset to Suggested")
                 .font(.system(size: 14))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
         }
         .padding(.bottom, 8)
     }
@@ -631,12 +631,12 @@ struct WavePreviewView: View {
                         .padding(.trailing, 8)
                 }
                 Text("Start Session")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.titleSmall)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(Color(hex: "09d4ee"))
-            .foregroundColor(Color(hex: "060e18"))
+            .background(Color.accentCyan)
+            .foregroundColor(Color.bgBase)
             .cornerRadius(12)
         }
         .disabled(viewModel.isLoading)
@@ -667,7 +667,7 @@ struct LaneColumn: View {
             HStack {
                 Text("LANE \(lane)")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                     .tracking(1.0)
 
                 if hasTightGap {
@@ -676,7 +676,7 @@ struct LaneColumn: View {
                         .foregroundColor(Color(hex: "f5a623"))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color(hex: "3d2a00"))
+                        .background(Color.accentAmberOn)
                         .cornerRadius(4)
                 }
             }
@@ -802,7 +802,7 @@ struct EmptyDropZone: View {
                 
             Image(systemName: "plus")
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
         }
         .dropDestination(for: WaveChipTransferable.self) { items, _ in
             guard let item = items.first else { return false }
@@ -855,8 +855,8 @@ struct SwimmerChip: View {
         /// convention in `badgeColor` below.
         var badgeColor: Color {
             switch self {
-            case .calibrating: return Color(hex: "f59e0b")
-            case .calibrated:  return Color(hex: "10b981")
+            case .calibrating: return Color.accentAmber
+            case .calibrated:  return Color.statusSuccess
             }
         }
     }
@@ -865,12 +865,12 @@ struct SwimmerChip: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(swimmerName)
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
                 .lineLimit(1)
 
             Text(formattedTouch)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
 
             // Maturity badge — Phase 2.6 maturity tiers. Shows the coach
             // where the prediction came from: "PB" (curve), "N swims"
@@ -904,7 +904,7 @@ struct SwimmerChip: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(minWidth: 90, minHeight: 44, alignment: .leading)
-        .background(Color(hex: "0d2847"))
+        .background(Color.bgSelected)
         .cornerRadius(8)
     }
 
@@ -927,9 +927,9 @@ struct SwimmerChip: View {
     ///   .reliable / .excellent → green (trustworthy)
     private var badgeColor: Color {
         switch prediction?.maturity {
-        case .excellent, .reliable: return Color(hex: "10b981")
-        case .learning:            return Color(hex: "f59e0b")
-        default:                   return Color(hex: "4a6572")
+        case .excellent, .reliable: return Color.statusSuccess
+        case .learning:            return Color.accentAmber
+        default:                   return Color.textFaint
         }
     }
 }

@@ -31,18 +31,18 @@ struct AuthTextField: View {
             Text(label.uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(1.5)
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
                 // Slight label color shift on focus so the user
                 // knows which field is the active one without
                 // having to look at the border.
-                .foregroundColor(isFocused ? Color(hex: "09d4ee") : Color(hex: "4a6572"))
+                .foregroundColor(isFocused ? Color.accentCyan : Color.textFaint)
                 .animation(Animations.snap, value: isFocused)
 
             HStack(spacing: 12) {
                 if let icon = icon {
                     Image(systemName: icon)
                         .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(isFocused ? Color(hex: "09d4ee") : Color(hex: "4a6572"))
+                        .foregroundColor(isFocused ? Color.accentCyan : Color.textFaint)
                         .frame(width: 18)
                 }
                 Group {
@@ -55,16 +55,16 @@ struct AuthTextField: View {
                             .keyboardType(keyboardType)
                     }
                 }
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
             }
             .padding(.horizontal, 16)
             .frame(height: 56)
-            .background(Color(hex: "1a2d42"))
+            .background(Color.bgInset)
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(
-                        isFocused ? Color(hex: "09d4ee") : Color(hex: "2d3e50"),
+                        isFocused ? Color.accentCyan : Color.divider,
                         lineWidth: isFocused ? 1.5 : 1.0
                     )
                     .animation(Animations.snap, value: isFocused)
@@ -85,5 +85,5 @@ struct AuthTextField: View {
         AuthTextField(label: "Invite code", text: .constant(""), keyboardType: .asciiCapable, icon: "key.fill")
     }
     .padding()
-    .background(Color(hex: "060e18"))
+    .background(Color.bgBase)
 }

@@ -20,7 +20,7 @@ struct SwimmerSheetView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 24) {
@@ -48,7 +48,7 @@ struct SwimmerSheetView: View {
                             dismiss()
                         }
                     }
-                    .foregroundColor(Color(hex: "09d4ee"))
+                    .foregroundColor(Color.accentCyan)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
@@ -58,7 +58,7 @@ struct SwimmerSheetView: View {
                             }
                         }
                     }
-                    .foregroundColor(viewModel.canSave ? Color(hex: "09d4ee") : Color(hex: "4a6572"))
+                    .foregroundColor(viewModel.canSave ? Color.accentCyan : Color.textFaint)
                     .disabled(!viewModel.canSave)
                 }
             }
@@ -76,13 +76,13 @@ struct SwimmerSheetView: View {
     private var firstNameField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("FIRST NAME *")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             TextField("", text: $viewModel.firstName)
                 .font(.system(size: 17))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
                 .padding(12)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .cornerRadius(8)
                 .onChange(of: viewModel.firstName) { _, _ in viewModel.isDirty = true }
         }
@@ -91,13 +91,13 @@ struct SwimmerSheetView: View {
     private var lastNameField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("LAST NAME")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             TextField("", text: $viewModel.lastName)
                 .font(.system(size: 17))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
                 .padding(12)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .cornerRadius(8)
                 .onChange(of: viewModel.lastName) { _, _ in viewModel.isDirty = true }
         }
@@ -106,21 +106,21 @@ struct SwimmerSheetView: View {
     private var birthdateField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("BIRTHDATE")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             Button {
                 showDatePicker = true
             } label: {
                 HStack {
                     Text(viewModel.hasBirthdate ? formatDate(viewModel.birthdate) : "Tap to set")
                         .font(.system(size: 17))
-                        .foregroundColor(viewModel.hasBirthdate ? Color(hex: "e2f4fa") : Color(hex: "4a6572"))
+                        .foregroundColor(viewModel.hasBirthdate ? Color.textPrimary : Color.textFaint)
                     Spacer()
                     Image(systemName: "calendar")
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
                 .padding(12)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .cornerRadius(8)
             }
             .sheet(isPresented: $showDatePicker) {
@@ -133,8 +133,8 @@ struct SwimmerSheetView: View {
     private var genderField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("GENDER")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             HStack(spacing: 8) {
                 ForEach(["M", "F", "X"], id: \.self) { g in
                     Button {
@@ -142,11 +142,11 @@ struct SwimmerSheetView: View {
                         viewModel.isDirty = true
                     } label: {
                         Text(g == "X" ? "—" : g)
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(viewModel.gender == g ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                            .font(.bodyEmphasis)
+                            .foregroundColor(viewModel.gender == g ? Color.bgBase : Color.textMuted)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(viewModel.gender == g ? Color(hex: "09d4ee") : Color(hex: "1a2d42"))
+                            .background(viewModel.gender == g ? Color.accentCyan : Color.bgInset)
                             .cornerRadius(8)
                     }
                 }
@@ -157,22 +157,22 @@ struct SwimmerSheetView: View {
     private var mainStrokeField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("MAIN STROKE")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             Button {
                 showMainStrokePicker = true
             } label: {
                 HStack {
                     Text(viewModel.mainStroke)
                         .font(.system(size: 17))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .foregroundColor(Color.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
                 .padding(12)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .cornerRadius(8)
             }
             .sheet(isPresented: $showMainStrokePicker) {
@@ -189,22 +189,22 @@ struct SwimmerSheetView: View {
     private var formStrokeField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("FORM STROKE")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             Button {
                 showFormStrokePicker = true
             } label: {
                 HStack {
                     Text(viewModel.formStroke)
                         .font(.system(size: 17))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .foregroundColor(Color.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                 }
                 .padding(12)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .cornerRadius(8)
             }
             .sheet(isPresented: $showFormStrokePicker) {
@@ -221,19 +221,19 @@ struct SwimmerSheetView: View {
     private var groupsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("GROUPS")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             SwimLayout(spacing: 8) {
                 ForEach(viewModel.availableGroups) { group in
                     Button {
                         viewModel.toggleGroup(group.id)
                     } label: {
                         Text(group.name)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(viewModel.selectedGroupIds.contains(group.id) ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                            .font(.captionStrong)
+                            .foregroundColor(viewModel.selectedGroupIds.contains(group.id) ? Color.bgBase : Color.textMuted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(viewModel.selectedGroupIds.contains(group.id) ? Color(hex: "09d4ee") : Color(hex: "1a2d42"))
+                            .background(viewModel.selectedGroupIds.contains(group.id) ? Color.accentCyan : Color.bgInset)
                             .cornerRadius(16)
                     }
                 }
@@ -244,14 +244,14 @@ struct SwimmerSheetView: View {
     private var notesField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("NOTES")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             TextEditor(text: $viewModel.notes)
                 .font(.system(size: 17))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
                 .frame(minHeight: 80)
                 .padding(8)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .cornerRadius(8)
                 .onChange(of: viewModel.notes) { _, _ in viewModel.isDirty = true }
         }
@@ -288,18 +288,18 @@ struct DatePickerSheet: View {
                 if useDate {
                     DatePicker("Birthdate", selection: $selectedDate, displayedComponents: .date)
                         .datePickerStyle(.graphical)
-                        .tint(Color(hex: "09d4ee"))
+                        .tint(Color.accentCyan)
                         .padding(.horizontal)
                 }
                 Spacer()
             }
-            .background(Color(hex: "060e18"))
+            .background(Color.bgBase)
             .navigationTitle("Birthdate")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 }
             }
         }

@@ -25,7 +25,7 @@ struct ProfileView: View {
             signOutButton
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(hex: "060e18"))
+        .background(Color.bgBase)
         .alert("Sign out?", isPresented: $showSignOutConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Sign Out", role: .destructive) {
@@ -39,8 +39,8 @@ struct ProfileView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Profile")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .font(.titleLarge)
+                .foregroundColor(Color.accentCyan)
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
 
@@ -48,18 +48,18 @@ struct ProfileView: View {
                 if let coachName = authManager.coachName {
                     Text(coachName)
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .foregroundColor(Color.textPrimary)
                 }
 
                 if let email = authManager.currentUser?.email {
                     Text(email)
                         .font(.system(size: 14))
-                        .foregroundColor(Color(hex: "7a9bb0"))
+                        .foregroundColor(Color.textMuted)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
-            .background(Color(hex: "0d1b2a"))
+            .background(Color.bgSunken)
             .cornerRadius(12)
             .padding(.horizontal, 24)
         }
@@ -75,10 +75,10 @@ struct ProfileView: View {
                 Text("PREDICTION ALGORITHM")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.0)
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                 Text("How the pairing engine estimates each swimmer's time")
                     .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24)
@@ -122,14 +122,14 @@ struct ProfileView: View {
         } label: {
             Text("Sign Out")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Color(hex: "ef4444"))
+                .foregroundColor(Color.statusError)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "ef4444"), lineWidth: 1)
+                        .stroke(Color.statusError, lineWidth: 1)
                 )
         }
         .padding(.horizontal, 24)

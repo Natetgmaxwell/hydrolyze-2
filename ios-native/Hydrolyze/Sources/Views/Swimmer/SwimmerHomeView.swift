@@ -18,7 +18,7 @@ struct SwimmerHomeView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "060e18").ignoresSafeArea()
+            Color.bgBase.ignoresSafeArea()
 
             if let swimmer = authManager.currentSwimmer {
                 TabView {
@@ -47,10 +47,10 @@ struct SwimmerHomeView: View {
                             Label("Profile", systemImage: "gearshape.fill")
                         }
                 }
-                .tint(Color(hex: "09d4ee"))
+                .tint(Color.accentCyan)
             } else {
                 ProgressView()
-                    .tint(Color(hex: "09d4ee"))
+                    .tint(Color.accentCyan)
             }
         }
         .task {
@@ -78,7 +78,7 @@ struct MySwimsTab: View {
                 VStack(spacing: 12) {
                     if viewModel.isLoading && viewModel.recentTimes.isEmpty {
                         ProgressView()
-                            .tint(Color(hex: "09d4ee"))
+                            .tint(Color.accentCyan)
                             .padding(.top, 40)
                     } else if viewModel.recentTimes.isEmpty {
                         emptyState
@@ -93,7 +93,7 @@ struct MySwimsTab: View {
             }
             .navigationTitle("My Swims")
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(Color(hex: "060e18"), for: .navigationBar)
+            .toolbarBackground(Color.bgBase, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
     }
@@ -102,13 +102,13 @@ struct MySwimsTab: View {
         VStack(spacing: 12) {
             Image(systemName: "stopwatch")
                 .font(.system(size: 32))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
             Text("No swims recorded yet")
                 .font(.headline)
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
             Text("Once your coach records your times at practice, they'll show up here.")
                 .font(.caption)
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
                 .multilineTextAlignment(.center)
         }
         .padding(.top, 40)
@@ -124,22 +124,22 @@ struct SwimTimeRow: View {
         HStack(spacing: 12) {
             Text(formatMs(entry.timeMs))
                 .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
                 .frame(width: 80, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(entry.distance)m \(entry.stroke)")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .foregroundColor(Color.textPrimary)
                 Text(entry.relativeDate)
                     .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
             }
 
             Spacer()
         }
         .padding(12)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(8)
     }
 
@@ -168,19 +168,19 @@ struct MyPBsTab: View {
                 VStack(spacing: 12) {
                     if viewModel.isLoading && viewModel.pbs.isEmpty {
                         ProgressView()
-                            .tint(Color(hex: "09d4ee"))
+                            .tint(Color.accentCyan)
                             .padding(.top, 40)
                     } else if viewModel.pbs.isEmpty {
                         Text("No personal bests yet")
                             .font(.headline)
-                            .foregroundColor(Color(hex: "7a9bb0"))
+                            .foregroundColor(Color.textMuted)
                             .padding(.top, 40)
                     } else {
                         ForEach(groupedPBs, id: \.0) { stroke, pbs in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(stroke)
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(Color(hex: "09d4ee"))
+                                    .foregroundColor(Color.accentCyan)
                                     .padding(.top, 8)
                                 ForEach(pbs) { pb in
                                     PBRow(pb: pb, isPersonalBest: pb.timeMs == fastestTimeMs(for: stroke))
@@ -194,7 +194,7 @@ struct MyPBsTab: View {
             }
             .navigationTitle("My PBs")
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(Color(hex: "060e18"), for: .navigationBar)
+            .toolbarBackground(Color.bgBase, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
     }
@@ -220,23 +220,23 @@ struct PBRow: View {
         HStack(spacing: 12) {
             Text("\(pb.distance)m")
                 .font(.system(size: 14, weight: .medium, design: .monospaced))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
                 .frame(width: 50, alignment: .leading)
 
             Text(formatMs(pb.timeMs))
                 .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                .foregroundColor(isPersonalBest ? Color(hex: "10b981") : Color(hex: "e2f4fa"))
+                .foregroundColor(isPersonalBest ? Color.statusSuccess : Color.textPrimary)
 
             Spacer()
 
             if isPersonalBest {
                 Image(systemName: "trophy.fill")
                     .font(.system(size: 14))
-                    .foregroundColor(Color(hex: "10b981"))
+                    .foregroundColor(Color.statusSuccess)
             }
         }
         .padding(12)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(8)
     }
 
@@ -271,7 +271,7 @@ struct MyCoachTab: View {
             }
             .navigationTitle("My Coach")
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(Color(hex: "060e18"), for: .navigationBar)
+            .toolbarBackground(Color.bgBase, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
     }
@@ -279,28 +279,28 @@ struct MyCoachTab: View {
     private var coachCard: some View {
         HStack(spacing: 14) {
             Circle()
-                .fill(Color(hex: "1a2d42"))
+                .fill(Color.bgInset)
                 .frame(width: 56, height: 56)
                 .overlay(
                     Text(initials)
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Your coach")
                     .font(.system(size: 11))
                     .tracking(0.8)
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
                 Text("Coach Nathan")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .foregroundColor(Color.textPrimary)
             }
 
             Spacer()
         }
         .padding(14)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(10)
     }
 
@@ -308,16 +308,16 @@ struct MyCoachTab: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("About")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
 
             Text("Your coach has invited you to Hydrolyze so you can see your times and personal bests. They'll record your swims at practice.")
-                .font(.system(size: 13))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .font(.caption)
+                .foregroundColor(Color.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(10)
     }
 
@@ -346,7 +346,7 @@ struct ProfileTab: View {
             }
             .navigationTitle("Profile")
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(Color(hex: "060e18"), for: .navigationBar)
+            .toolbarBackground(Color.bgBase, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
     }
@@ -355,7 +355,7 @@ struct ProfileTab: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Account")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
 
             if let swimmer = authManager.currentSwimmer {
                 profileRow(label: "Name", value: swimmer.fullName)
@@ -372,19 +372,19 @@ struct ProfileTab: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(10)
     }
 
     private func profileRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 13))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .font(.caption)
+                .foregroundColor(Color.textMuted)
             Spacer()
             Text(value)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .font(.captionStrong)
+                .foregroundColor(Color.textPrimary)
         }
     }
 
@@ -397,11 +397,11 @@ struct ProfileTab: View {
             }
         } label: {
             Text("Sign Out")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(Color(hex: "ef4444"))
+                .font(.bodyEmphasis)
+                .foregroundColor(Color.statusError)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color(hex: "0d1f33"))
+                .background(Color.bgDeep)
                 .cornerRadius(8)
         }
         .buttonStyle(.plain)

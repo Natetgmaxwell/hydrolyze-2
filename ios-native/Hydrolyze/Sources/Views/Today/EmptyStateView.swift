@@ -12,7 +12,7 @@ struct EmptyStateView: View {
         VStack(spacing: 12) {
             Image(systemName: "house.fill")
                 .font(.system(size: 48))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
                 .phaseAnimator([1.0, 1.06, 1.0]) { content, scale in
                     content.scaleEffect(scale)
                 } animation: { _ in
@@ -21,11 +21,11 @@ struct EmptyStateView: View {
 
             Text("No workout scheduled")
                 .font(.system(size: 18))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
 
             Text("Tap Workouts to schedule one.")
-                .font(.system(size: 13))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.caption)
+                .foregroundColor(Color.textFaint)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -33,5 +33,5 @@ struct EmptyStateView: View {
 
 #Preview {
     EmptyStateView()
-        .background(Color(hex: "060e18"))
+        .background(Color.bgBase)
 }

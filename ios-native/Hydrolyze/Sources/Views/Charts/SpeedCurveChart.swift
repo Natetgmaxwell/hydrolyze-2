@@ -57,10 +57,10 @@ struct SpeedCurveChart: View {
             VStack(spacing: 8) {
                 Image(systemName: "chart.dots.scatter")
                     .font(.system(size: 32))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                 Text("No data points")
                     .font(.system(size: 14))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 32)
@@ -71,7 +71,7 @@ struct SpeedCurveChart: View {
                         x: .value("Session", p.xIndex),
                         y: .value("Time (ms)", p.timeMs)
                     )
-                    .foregroundStyle(Color(hex: "09d4ee"))
+                    .foregroundStyle(Color.accentCyan)
                     .symbolSize(40)
                 }
 
@@ -81,7 +81,7 @@ struct SpeedCurveChart: View {
                         y: .value("Time (ms)", reg.startY),
                         series: .value("Series", "regression")
                     )
-                    .foregroundStyle(Color(hex: "f59e0b"))
+                    .foregroundStyle(Color.accentAmber)
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
 
                     LineMark(
@@ -89,24 +89,24 @@ struct SpeedCurveChart: View {
                         y: .value("Time (ms)", reg.endY),
                         series: .value("Series", "regression")
                     )
-                    .foregroundStyle(Color(hex: "f59e0b"))
+                    .foregroundStyle(Color.accentAmber)
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
                 }
             }
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-                    AxisGridLine().foregroundStyle(Color(hex: "1a2d42"))
+                    AxisGridLine().foregroundStyle(Color.bgInset)
                     AxisValueLabel()
-                        .foregroundStyle(Color(hex: "7a9bb0"))
+                        .foregroundStyle(Color.textMuted)
                 }
             }
             .chartYAxis {
                 AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                    AxisGridLine().foregroundStyle(Color(hex: "1a2d42"))
+                    AxisGridLine().foregroundStyle(Color.bgInset)
                     AxisValueLabel {
                         if let ms = value.as(Int.self) {
                             Text(formatMs(ms))
-                                .foregroundColor(Color(hex: "7a9bb0"))
+                                .foregroundColor(Color.textMuted)
                         }
                     }
                 }

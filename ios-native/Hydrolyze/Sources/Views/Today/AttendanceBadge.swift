@@ -23,22 +23,22 @@ struct AttendanceBadge: View {
     }
 
     private var accent: Color {
-        if totalCount == 0 { return Color(hex: "71717a") }
-        if attendingCount == 0 { return Color(hex: "f59e0b") }
-        return Color(hex: "06b6d4")
+        if totalCount == 0 { return Color.accentSlate }
+        if attendingCount == 0 { return Color.accentAmber }
+        return Color.accentCyanDim
     }
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: attendingCount > 0 ? "checkmark.circle.fill" : "person.2")
-                .font(.system(size: 13))
+                .font(.caption)
                 .foregroundStyle(accent)
             Text(displayText)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color(hex: "e2f4fa"))
+                .font(.captionStrong)
+                .foregroundStyle(Color.textPrimary)
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.eyebrow)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
@@ -75,7 +75,7 @@ struct AttendancePopoverContent: View {
             HStack {
                 Text("Attendance")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color(hex: "e2f4fa"))
+                    .foregroundStyle(Color.textPrimary)
                 Spacer()
                 Text("\(inCount) / \(entries.count) attending")
                     .font(.system(size: 12))
@@ -95,7 +95,7 @@ struct AttendancePopoverContent: View {
         }
         .padding(16)
         .frame(minWidth: 320)
-        .background(Color(hex: "0d1b2a"))
+        .background(Color.bgSunken)
     }
 
     private var inCount: Int {
@@ -118,7 +118,7 @@ private struct AttendanceRow: View {
                     .frame(width: 8, height: 8)
                 Text(entry.swimmerName)
                     .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "e2f4fa"))
+                    .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
             }
             Spacer()
@@ -127,13 +127,13 @@ private struct AttendanceRow: View {
                 MiniPill(
                     label: "In",
                     isSelected: entry.intent == "in",
-                    color: Color(hex: "06b6d4"),
+                    color: Color.accentCyanDim,
                     action: { Task { await onSetIntent(entry.swimmerId, "in") } }
                 )
                 MiniPill(
                     label: "Out",
                     isSelected: entry.intent == "out",
-                    color: Color(hex: "71717a"),
+                    color: Color.accentSlate,
                     action: { Task { await onSetIntent(entry.swimmerId, "out") } }
                 )
             }
@@ -143,8 +143,8 @@ private struct AttendanceRow: View {
 
     private var dotColor: Color {
         switch entry.intent {
-        case "in": return Color(hex: "06b6d4")
-        case "out": return Color(hex: "71717a")
+        case "in": return Color.accentCyanDim
+        case "out": return Color.accentSlate
         default: return Color.white.opacity(0.2)
         }
     }
@@ -162,7 +162,7 @@ private struct MiniPill: View {
         Button(action: action) {
             Text(label)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(isSelected ? Color(hex: "060e18") : .white)
+                .foregroundStyle(isSelected ? Color.bgBase : .white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(

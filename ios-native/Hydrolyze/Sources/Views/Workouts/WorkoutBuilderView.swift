@@ -14,7 +14,7 @@ struct WorkoutBuilderView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     scrollableContent
@@ -32,7 +32,7 @@ struct WorkoutBuilderView: View {
                             dismiss()
                         }
                     }
-                    .foregroundColor(Color(hex: "ef4444"))
+                    .foregroundColor(Color.statusError)
                 }
             }
         }
@@ -64,37 +64,37 @@ struct WorkoutBuilderView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("WORKOUT BUILDER")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                     .tracking(1.5)
 
                 TextField("Workout title (optional)", text: $viewModel.title)
                     .font(.system(size: 17))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .foregroundColor(Color.textPrimary)
                     .padding(12)
-                    .background(Color(hex: "0d1b2a"))
+                    .background(Color.bgSunken)
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(hex: "2d3e50"), lineWidth: 1)
+                            .stroke(Color.divider, lineWidth: 1)
                     )
 
                 TextEditor(text: $viewModel.workoutText)
                     .font(.system(size: 16))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .foregroundColor(Color.textPrimary)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 180)
                     .padding(12)
-                    .background(Color(hex: "0d1b2a"))
+                    .background(Color.bgSunken)
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(viewModel.isFocused ? Color(hex: "09d4ee") : Color(hex: "2d3e50"), lineWidth: viewModel.isFocused ? 2 : 1)
+                            .stroke(viewModel.isFocused ? Color.accentCyan : Color.divider, lineWidth: viewModel.isFocused ? 2 : 1)
                     )
                     .overlay(alignment: .topLeading) {
                         if viewModel.workoutText.isEmpty {
                             Text("4×100 free @1:30, 4×50 kick fins @1:00, 200 easy\n\nTip: separate sets with commas...")
                                 .font(.system(size: 16))
-                                .foregroundColor(Color(hex: "4a6572"))
+                                .foregroundColor(Color.textFaint)
                                 .padding(16)
                                 .opacity(viewModel.workoutText.isEmpty ? 1 : 0)
                                 .allowsHitTesting(false)
@@ -111,7 +111,7 @@ struct WorkoutBuilderView: View {
                     HStack {
                         Spacer()
                         ProgressView()
-                            .tint(Color(hex: "09d4ee"))
+                            .tint(Color.accentCyan)
                         Spacer()
                     }
                     .padding(.vertical, 20)
@@ -127,13 +127,13 @@ struct WorkoutBuilderView: View {
         Group {
             if let error = viewModel.parseError {
                 Text("⚠ \(error)")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "f59e0b"))
+                    .font(.caption)
+                    .foregroundColor(Color.accentAmber)
             } else if viewModel.parsedWorkout != nil {
                 let count = viewModel.parsedWorkout?.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count ?? 0
                 Text("✓ \(count) sets parsed")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "10b981"))
+                    .font(.caption)
+                    .foregroundColor(Color.statusSuccess)
             }
         }
     }
@@ -160,14 +160,14 @@ struct WorkoutBuilderView: View {
                 }
             }
             .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(Color(hex: "e2f4fa"))
+            .foregroundColor(Color.textPrimary)
             .frame(maxWidth: .infinity)
             .frame(height: 56)
-            .background(Color(hex: "0d1b2a"))
+            .background(Color.bgSunken)
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(hex: "2d3e50"), lineWidth: 1)
+                    .stroke(Color.divider, lineWidth: 1)
             )
             .disabled(!viewModel.canSave)
             .opacity(viewModel.canSave ? 1 : 0.5)

@@ -29,8 +29,8 @@ struct AnalyticsTabView: View {
     var body: some View {
         VStack(spacing: 24) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 56))
-                .foregroundStyle(Color(hex: "09d4ee").opacity(0.6))
+                .font(.displayLarge)
+                .foregroundStyle(Color.accentCyan.opacity(0.6))
             Text("Analytics — Coming in v2")
                 .font(.title2.weight(.semibold))
             Text("Squad-level progression view + per-swimmer F-V\nlens + Bu load model for endurance swimmers.")

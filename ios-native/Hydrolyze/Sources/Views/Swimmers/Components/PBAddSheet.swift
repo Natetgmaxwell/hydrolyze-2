@@ -27,14 +27,14 @@ struct PBAddSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 VStack(spacing: 28) {
                     strokePills
                     distancePills
                     timeInput
                     if let err = errorMessage {
-                        Text(err).font(.system(size: 13)).foregroundColor(.red)
+                        Text(err).font(.caption).foregroundColor(.red)
                     }
                     saveButton
                     Spacer()
@@ -46,7 +46,7 @@ struct PBAddSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 }
             }
         }
@@ -55,19 +55,19 @@ struct PBAddSheet: View {
     private var strokePills: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("STROKE")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             HStack(spacing: 8) {
                 ForEach(strokes, id: \.self) { stroke in
                     Button {
                         selectedStroke = stroke
                     } label: {
                         Text(stroke)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(selectedStroke == stroke ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                            .font(.captionStrong)
+                            .foregroundColor(selectedStroke == stroke ? Color.bgBase : Color.textMuted)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(selectedStroke == stroke ? Color(hex: "09d4ee") : Color(hex: "1a2d42"))
+                            .background(selectedStroke == stroke ? Color.accentCyan : Color.bgInset)
                             .cornerRadius(20)
                     }
                 }
@@ -78,19 +78,19 @@ struct PBAddSheet: View {
     private var distancePills: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("DISTANCE")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             FlowLayout(spacing: 8) {
                 ForEach(distances, id: \.self) { d in
                     Button {
                         selectedDistance = d
                     } label: {
                         Text("\(d)")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(selectedDistance == d ? Color(hex: "060e18") : Color(hex: "7a9bb0"))
+                            .font(.captionStrong)
+                            .foregroundColor(selectedDistance == d ? Color.bgBase : Color.textMuted)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(selectedDistance == d ? Color(hex: "09d4ee") : Color(hex: "1a2d42"))
+                            .background(selectedDistance == d ? Color.accentCyan : Color.bgInset)
                             .cornerRadius(20)
                     }
                 }
@@ -101,14 +101,14 @@ struct PBAddSheet: View {
     private var timeInput: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("TIME (mm:ss.SS)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
             TextField("0:00.00", text: $timeText)
                 .font(.system(size: 28, weight: .medium, design: .monospaced))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(16)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .cornerRadius(12)
                 .keyboardType(.numbersAndPunctuation)
         }
@@ -131,10 +131,10 @@ struct PBAddSheet: View {
         } label: {
             Text("Save PB")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(canSave ? Color(hex: "060e18") : Color(hex: "4a6572"))
+                .foregroundColor(canSave ? Color.bgBase : Color.textFaint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(canSave ? Color(hex: "09d4ee") : Color(hex: "1a2d42"))
+                .background(canSave ? Color.accentCyan : Color.bgInset)
                 .cornerRadius(12)
         }
         .disabled(!canSave || isSaving)

@@ -82,7 +82,7 @@ struct WorkoutsListView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "060e18").ignoresSafeArea()
+                Color.bgBase.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     filterPills
@@ -99,7 +99,7 @@ struct WorkoutsListView: View {
                             .foregroundColor(.black)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Color(hex: "09d4ee"))
+                            .background(Color.accentCyan)
                             .cornerRadius(8)
                     }
                 }
@@ -122,20 +122,20 @@ struct WorkoutsListView: View {
                         viewModel.selectedFilter = filter
                     } label: {
                         Text(filter.rawValue)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(viewModel.selectedFilter == filter ? Color(hex: "09d4ee") : Color(hex: "7a9bb0"))
+                            .font(.captionStrong)
+                            .foregroundColor(viewModel.selectedFilter == filter ? Color.accentCyan : Color.textMuted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(
                                 viewModel.selectedFilter == filter
-                                    ? Color(hex: "09d4ee").opacity(0.15)
-                                    : Color(hex: "1a2d42")
+                                    ? Color.accentCyan.opacity(0.15)
+                                    : Color.bgInset
                             )
                             .cornerRadius(8)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(
-                                        viewModel.selectedFilter == filter ? Color(hex: "09d4ee") : Color(hex: "2d3e50"),
+                                        viewModel.selectedFilter == filter ? Color.accentCyan : Color.divider,
                                         lineWidth: 1
                                     )
                             )
@@ -145,7 +145,7 @@ struct WorkoutsListView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
-        .background(Color(hex: "060e18"))
+        .background(Color.bgBase)
     }
 
     private var workoutList: some View {
@@ -153,12 +153,12 @@ struct WorkoutsListView: View {
             if viewModel.workouts.isEmpty && !viewModel.isLoading {
                 VStack(spacing: 8) {
                     Text("No \(emptyStateLabel) workouts")
-                        .font(.system(size: 15))
-                        .foregroundColor(Color(hex: "7a9bb0"))
+                        .font(.body)
+                        .foregroundColor(Color.textMuted)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 60)
-                .listRowBackground(Color(hex: "060e18"))
+                .listRowBackground(Color.bgBase)
             }
 
             ForEach(groupedWorkouts.keys.sorted(by: { $0 > $1 }), id: \.self) { dateKey in
@@ -167,7 +167,7 @@ struct WorkoutsListView: View {
                         NavigationLink(destination: WorkoutDetailView(workoutId: workout.id)) {
                             WorkoutRowView(workout: workout, onDelete: {})
                         }
-                        .listRowBackground(Color(hex: "0d1b2a"))
+                        .listRowBackground(Color.bgSunken)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 Task { await viewModel.deleteWorkout(id: workout.id) }
@@ -179,7 +179,7 @@ struct WorkoutsListView: View {
                 } header: {
                     Text(dateKey)
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                         .tracking(0.5)
                 }
             }
@@ -223,13 +223,13 @@ struct WorkoutRowView: View {
                 if let date = workout.scheduledAt {
                     Text(formatDate(date))
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "4a6572"))
+                        .foregroundColor(Color.textFaint)
                         .tracking(0.5)
                 }
 
                 Text(workout.title ?? "Untitled")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Color(hex: "e2f4fa"))
+                    .font(.titleSmall)
+                    .foregroundColor(Color.textPrimary)
 
                 Text(statusLabel)
                     .font(.system(size: 10, weight: .semibold))
@@ -242,10 +242,10 @@ struct WorkoutRowView: View {
             if let amPm = workout.amPm {
                 Text(amPm)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color(hex: "f59e0b"))
+                    .foregroundColor(Color.accentAmber)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color(hex: "f59e0b").opacity(0.15))
+                    .background(Color.accentAmber.opacity(0.15))
                     .cornerRadius(4)
             }
         }
@@ -264,10 +264,10 @@ struct WorkoutRowView: View {
 
     private var statusColor: Color {
         switch workout.status {
-        case .draft: return Color(hex: "f59e0b")
-        case .scheduled: return Color(hex: "09d4ee")
-        case .inProgress: return Color(hex: "09d4ee")
-        case .complete: return Color(hex: "10b981")
+        case .draft: return Color.accentAmber
+        case .scheduled: return Color.accentCyan
+        case .inProgress: return Color.accentCyan
+        case .complete: return Color.statusSuccess
         }
     }
 

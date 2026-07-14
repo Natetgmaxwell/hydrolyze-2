@@ -20,43 +20,43 @@ struct WorkoutCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(workout.amPm ?? "AM")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(Color(hex: "f59e0b"))
+                        .foregroundColor(Color.accentAmber)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Color(hex: "f59e0b").opacity(0.15))
+                        .background(Color.accentAmber.opacity(0.15))
                         .cornerRadius(4)
                         // Soft breathing on the amber chip — the
                         // card "feels scheduled" not "filed."
                         .phaseAnimator([0.15, 0.25], trigger: true) { content, opacity in
-                            content.background(Color(hex: "f59e0b").opacity(opacity))
+                            content.background(Color.accentAmber.opacity(opacity))
                         } animation: { _ in
                             .easeInOut(duration: 1.8)
                         }
 
                     Text(workout.title ?? "Workout")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Color(hex: "e2f4fa"))
+                        .foregroundColor(Color.textPrimary)
                 }
                 Spacer()
             }
 
             Text(setDescription)
-                .font(.system(size: 13))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .font(.caption)
+                .foregroundColor(Color.textMuted)
                 .lineLimit(1)
 
             Text("\(swimmerCount) swimmers · \(setCount) sets")
                 .font(.system(size: 12))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
 
             PrimaryButton(title: "Start Session", isLoading: false, action: onStartSession)
         }
         .padding(16)
-        .background(Color(hex: "0d1b2a"))
+        .background(Color.bgSunken)
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(hex: "2d3e50"), lineWidth: 1)
+                .stroke(Color.divider, lineWidth: 1)
         )
     }
 
@@ -84,5 +84,5 @@ struct WorkoutCard: View {
         onStartSession: {}
     )
     .padding()
-    .background(Color(hex: "060e18"))
+    .background(Color.bgBase)
 }

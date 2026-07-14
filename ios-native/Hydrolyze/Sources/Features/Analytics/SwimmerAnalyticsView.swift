@@ -32,11 +32,11 @@ struct SwimmerAnalyticsView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "060e18").ignoresSafeArea()
+            Color.bgBase.ignoresSafeArea()
 
             if viewModel.isLoading && viewModel.swimmer == nil {
                 ProgressView()
-                    .tint(Color(hex: "09d4ee"))
+                    .tint(Color.accentCyan)
             } else if let swimmer = viewModel.swimmer {
                 ScrollView {
                     VStack(spacing: 16) {
@@ -56,7 +56,7 @@ struct SwimmerAnalyticsView: View {
         .navigationTitle(viewModel.swimmer?.fullName ?? "Swimmer")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(Color(hex: "060e18"), for: .navigationBar)
+        .toolbarBackground(Color.bgBase, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .task {
             await viewModel.load(coachId: coachId)
@@ -73,11 +73,11 @@ struct SwimmerAnalyticsView: View {
             } else {
                 Text("Insufficient data — need at least 5 recorded times in the last 6 weeks.")
                     .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
             }
         }
         .padding(14)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(10)
     }
 
@@ -103,11 +103,11 @@ struct SwimmerAnalyticsView: View {
             } else {
                 Text("No recorded times in the last 6 weeks.")
                     .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
             }
         }
         .padding(14)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(10)
     }
 
@@ -141,18 +141,18 @@ struct SwimmerAnalyticsView: View {
             if viewModel.lastFive.isEmpty {
                 Text("No recent times.")
                     .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
             } else {
                 VStack(spacing: 4) {
                     ForEach(viewModel.lastFive) { entry in
                         HStack {
                             Text(formatMs(entry.timeMs))
                                 .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                .foregroundColor(Color(hex: "e2f4fa"))
+                                .foregroundColor(Color.textPrimary)
                             Spacer()
                             Text(entry.label)
                                 .font(.system(size: 11))
-                                .foregroundColor(Color(hex: "7a9bb0"))
+                                .foregroundColor(Color.textMuted)
                         }
                         .padding(.vertical, 4)
                     }
@@ -160,7 +160,7 @@ struct SwimmerAnalyticsView: View {
             }
         }
         .padding(14)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(10)
     }
 
@@ -198,10 +198,10 @@ struct SwimmerAnalyticsView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
             Text(subtitle)
                 .font(.system(size: 11))
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -211,17 +211,17 @@ struct SwimmerAnalyticsView: View {
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
             Text(value)
                 .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
             Text(hint)
                 .font(.system(size: 9))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color(hex: "0d1f33"))
+        .background(Color.bgDeep)
         .cornerRadius(8)
     }
 
@@ -229,13 +229,13 @@ struct SwimmerAnalyticsView: View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 32))
-                .foregroundColor(Color(hex: "f59e0b"))
+                .foregroundColor(Color.accentAmber)
             Text("Couldn't load swimmer analytics")
                 .font(.headline)
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
             Text(message)
                 .font(.caption)
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
@@ -257,16 +257,16 @@ private struct SwimmerAnalyticsHeader: View {
     var body: some View {
         VStack(spacing: 12) {
             Circle()
-                .fill(Color(hex: "1a2d42"))
+                .fill(Color.bgInset)
                 .frame(width: 56, height: 56)
                 .overlay(
                     Text(initials)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(Color(hex: "09d4ee"))
+                        .foregroundColor(Color.accentCyan)
                 )
             Text(swimmer.fullName)
                 .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
             HStack(spacing: 16) {
                 statPair("Best", value: formatMs(summary?.bestTimeMs))
                 statPair("Last", value: formatMs(summary?.lastTimeMs))
@@ -288,11 +288,11 @@ private struct SwimmerAnalyticsHeader: View {
         VStack(spacing: 2) {
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
-                .foregroundColor(Color(hex: "7a9bb0"))
+                .foregroundColor(Color.textMuted)
         }
     }
 
@@ -329,15 +329,15 @@ private struct TrainingBandView: View {
             HStack {
                 Text(formatMs(minMs))
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
                 Spacer()
                 Text(formatMs(mean))
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Color(hex: "09d4ee"))
+                    .foregroundColor(Color.accentCyan)
                 Spacer()
                 Text(formatMs(maxMs))
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Color(hex: "7a9bb0"))
+                    .foregroundColor(Color.textMuted)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -347,13 +347,13 @@ private struct TrainingBandView: View {
                         .frame(height: 16)
                     // ±1σ range
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(hex: "09d4ee").opacity(0.3))
+                        .fill(Color.accentCyan.opacity(0.3))
                         .frame(width: geo.size.width, height: 16)
                     // PB marker (if it's within the visible range)
                     if let pb = personalBestMs, pb >= minMs, pb <= maxMs {
                         let xRatio = Double(pb - minMs) / Double(maxMs - minMs)
                         Rectangle()
-                            .fill(Color(hex: "f59e0b"))
+                            .fill(Color.accentAmber)
                             .frame(width: 2, height: 24)
                             .offset(x: geo.size.width * CGFloat(xRatio) - 1, y: -4)
                     }
@@ -363,12 +363,12 @@ private struct TrainingBandView: View {
             HStack {
                 Label("±1σ", systemImage: "ruler")
                     .font(.system(size: 9))
-                    .foregroundColor(Color(hex: "4a6572"))
+                    .foregroundColor(Color.textFaint)
                 Spacer()
                 if personalBestMs != nil {
                     Label("PB", systemImage: "flag.fill")
                         .font(.system(size: 9))
-                        .foregroundColor(Color(hex: "f59e0b"))
+                        .foregroundColor(Color.accentAmber)
                 }
             }
         }

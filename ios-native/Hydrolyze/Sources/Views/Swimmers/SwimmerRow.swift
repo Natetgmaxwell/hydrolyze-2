@@ -19,24 +19,24 @@ struct SwimmerRow: View {
             // 44pt initials circle — elevated surface with cyan text
             Text(initials)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Color(hex: "09d4ee"))
+                .foregroundColor(Color.accentCyan)
                 .frame(width: 44, height: 44)
-                .background(Color(hex: "1a2d42"))
+                .background(Color.bgInset)
                 .clipShape(Circle())
 
             Text(swimmer.fullName)
                 .font(.system(size: 17, weight: .medium))
-                .foregroundColor(Color(hex: "e2f4fa"))
+                .foregroundColor(Color.textPrimary)
 
             Spacer()
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(Color(hex: "4a6572"))
+                .foregroundColor(Color.textFaint)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color(hex: "060e18"))
+        .background(Color.bgBase)
         // Long-press = delete (SwiftUI .contextMenu is idiomatic, but spec calls for alert)
         .contentShape(Rectangle())
     }
@@ -48,5 +48,5 @@ struct SwimmerRow: View {
         onDelete: {},
         onArchive: {}
     )
-    .background(Color(hex: "060e18"))
+    .background(Color.bgBase)
 }
