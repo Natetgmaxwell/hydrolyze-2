@@ -41,6 +41,7 @@
 		64833600ED0701686C6F395D /* SwimmerSheetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */; };
 		64D0C23101DC7F509AF5840D /* SwimmerDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */; };
 		6E63D74A84935A1342953360 /* build_and_run.sh in Resources */ = {isa = PBXBuildFile; fileRef = 3AA843D052311070F8AEE466 /* build_and_run.sh */; };
+		72A8F8D11B5CDF9E6AFFC8D1 /* HydrolyzeType.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5DBAF6EEDA31CAA214AE38 /* HydrolyzeType.swift */; };
 		7855878CDCEFE64FD8F75904 /* SwimmerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9108E7DFD14A0CC8F3D48ADC /* SwimmerDetailView.swift */; };
 		78BA0F01BC80043FD1ADBC44 /* TimingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8072313F8796BE24142DE5B4 /* TimingModels.swift */; };
 		7E87FA161B654CD3DEF00FEA /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01CB59EE3973B613CE63DF69 /* TrendChart.swift */; };
@@ -77,6 +78,7 @@
 		CDCD6C2C307A57FD86A728E4 /* Enums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066524AA52E1B4A8C140F20D /* Enums.swift */; };
 		CDD80498161FC9698655D5EF /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D2580BBF5B8D7A9A39C750D /* ProfileView.swift */; };
 		D300AD6D7658B42054A8B292 /* SwimmerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60EE719A0BDA810FFD70F454 /* SwimmerRow.swift */; };
+		D3D1C3D3643ED84D2298B6F7 /* HydrolyzeColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B318621C603AC7D8FAEBA1 /* HydrolyzeColors.swift */; };
 		D47E31D76B7750E64F6D0627 /* InviteSwimmerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96014AF82D49C3F8EC0FEF70 /* InviteSwimmerSheet.swift */; };
 		D5E6A80BB8CC594D92AD9FBB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5C86E053B25B290CFC57475D /* Assets.xcassets */; };
 		D6638C677F23361A23C0B633 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481474A86010D3AE00A5B895 /* EmptyStateView.swift */; };
@@ -192,9 +194,11 @@
 		DBCD81FD87A2BA882885F663 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		DC9FC4386910B6A7B249B8C3 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		E054B0B3F7353601DA86C879 /* Coach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Coach.swift; sourceTree = "<group>"; };
+		E3B318621C603AC7D8FAEBA1 /* HydrolyzeColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrolyzeColors.swift; sourceTree = "<group>"; };
 		E8D42BD09217EC1098E3901C /* ChartDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartDataService.swift; sourceTree = "<group>"; };
 		F0E11B7104A97D4F39692D1C /* SwimmerUpcomingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerUpcomingView.swift; sourceTree = "<group>"; };
 		F61147CDFCC03EC205F60066 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		FF5DBAF6EEDA31CAA214AE38 /* HydrolyzeType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrolyzeType.swift; sourceTree = "<group>"; };
 		FFEA7C247218656325E481BA /* SwimmerSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerSheetView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -488,6 +492,8 @@
 				4355EC298F9F720ABFE4603A /* Bundle+AppInfo.swift */,
 				B785FD52B8AAC2796EF6C35B /* Color+Hex.swift */,
 				F61147CDFCC03EC205F60066 /* Haptics.swift */,
+				E3B318621C603AC7D8FAEBA1 /* HydrolyzeColors.swift */,
+				FF5DBAF6EEDA31CAA214AE38 /* HydrolyzeType.swift */,
 				0D00A58874D880B534E5AE62 /* ISO8601DateParser.swift */,
 				35A3FEF422084985E5D70A7A /* JetBrainsMonoFont.swift */,
 				8A6BAA55BEC6817427B2B574 /* PressFeedbackStyle.swift */,
@@ -668,6 +674,8 @@
 				B7F5FBBA0267F4F9ED9DBE4F /* HistoricalTimePredictor.swift in Sources */,
 				49636A4AD8B6BA6A7BF17B23 /* HungarianMatching.swift in Sources */,
 				2B5DE3E8702D5162B451A7BF /* HydrolyzeApp.swift in Sources */,
+				D3D1C3D3643ED84D2298B6F7 /* HydrolyzeColors.swift in Sources */,
+				72A8F8D11B5CDF9E6AFFC8D1 /* HydrolyzeType.swift in Sources */,
 				E0443FBF485B7A79B34AA8D8 /* ISO8601DateParser.swift in Sources */,
 				1ABCAFB7D02DF7BA0F79695D /* IntentService.swift in Sources */,
 				D47E31D76B7750E64F6D0627 /* InviteSwimmerSheet.swift in Sources */,

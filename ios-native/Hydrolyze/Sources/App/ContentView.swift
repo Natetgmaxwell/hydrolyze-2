@@ -81,6 +81,9 @@ struct ContentView: View {
         // the app — the bar feels "on" the surface, not hovering.
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(Color.bgRaised, for: .tabBar)
+        // ponytail: tighter tab icons. Default SF Symbol sizing is
+        // generous — small scale reads more professional.
+        .imageScale(.small)
     }
 }
 

@@ -20,7 +20,7 @@ struct EmptyStateView: View {
                 }
 
             Text("No workout scheduled")
-                .font(.system(size: 18))
+                .font(.eyebrowLarge)
                 .foregroundColor(Color.textMuted)
 
             Text("Tap Workouts to schedule one.")

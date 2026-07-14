@@ -68,7 +68,7 @@ private struct RepGroupRowView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(spineText)
-                    .font(.system(size: 15, design: .monospaced))
+                    .font(.numeric)
                     .foregroundColor(Color.textPrimary)
 
                 if let stroke = rg.stroke {
@@ -198,14 +198,14 @@ private struct GearBadge: View {
 
     var body: some View {
         Text("\(gear.capitalized)\(optional ? " optional" : "")")
-            .font(.system(size: 10))
+            .font(.numericSmall)
             .foregroundColor(Color.textMuted)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
             .background(Color.bgInset)
-            .cornerRadius(4)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(Color.divider, lineWidth: 1)
             )
     }
@@ -216,14 +216,14 @@ private struct DetailBadge: View {
 
     var body: some View {
         Text(String(text.prefix(1)).uppercased() + String(text.dropFirst()))
-            .font(.system(size: 10))
+            .font(.numericSmall)
             .foregroundColor(Color.accentCyan)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
             .background(Color.bgInset)
-            .cornerRadius(4)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(Color.divider, lineWidth: 1)
             )
     }
