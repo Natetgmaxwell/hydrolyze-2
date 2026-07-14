@@ -25,6 +25,16 @@ struct AuthTextField: View {
     /// when nil, no icon is drawn.
     var icon: String? = nil
     @FocusState private var isFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+
+    /// Slice 4: breathing pulse on empty unfocused fields — the
+    /// border softly invites a tap. The text inside stays steady;
+    /// only the overlay stroke's opacity oscillates (0.6 → 1.0 →
+    /// 0.6 on a 2s easeInOut cycle). Suppressed when Reduce Motion
+    /// is on (handled in the phaseAnimator trigger).
+    private var shouldPulse: Bool {
+        text.isEmpty && !isFocused
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -68,6 +78,11 @@ struct AuthTextField: View {
                         lineWidth: isFocused ? 1.5 : 1.0
                     )
                     .animation(Animations.snap, value: isFocused)
+                    .phaseAnimator([0.6, 1.0, 0.6], trigger: shouldPulse && !reduceMotion) { content, alpha in
+                        content.opacity(alpha)
+                    } animation: { _ in
+                        .easeInOut(duration: 2.0)
+                    }
             )
         }
         .focused($isFocused)

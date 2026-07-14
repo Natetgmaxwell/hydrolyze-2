@@ -38,6 +38,7 @@ enum AuthMode {
 struct LoginView: View {
     @Environment(AuthManager.self) private var authManager
     @State private var role: AuthRoleTab = .coach
+    @State private var animateIn: Bool = false
 
     var body: some View {
         ScrollView {
@@ -60,6 +61,7 @@ struct LoginView: View {
         .background(Color.bgBase)
         .onTapGesture { hideKeyboard() }
         .animation(.easeInOut(duration: 0.18), value: role)
+        .onAppear { animateIn = true }
     }
 
     // MARK: - Header
@@ -67,12 +69,17 @@ struct LoginView: View {
     private var headerSection: some View {
         VStack(spacing: 8) {
             Text("HYDROLYZE")
-                .font(.system(size: 44, weight: .bold, design: .monospaced))
+                .font(.displayLarge)
                 .foregroundColor(Color.accentCyan)
+                .opacity(animateIn ? 1.0 : 0.0)
+                .scaleEffect(animateIn ? 1.0 : 0.95)
+                .animation(Animations.springSoft, value: animateIn)
 
             Text("Sign in to your account")
-                .font(.system(size: 14))
+                .font(.caption)
                 .foregroundColor(Color.textFaint)
+                .opacity(animateIn ? 1.0 : 0.0)
+                .animation(Animations.gentle.delay(0.15), value: animateIn)
         }
     }
 
