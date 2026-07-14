@@ -526,7 +526,7 @@ struct ReviewRowView: View {
                 Spacer()
 
                 Text(TimingSession.formatMs(row.recordedTime.timeMs))
-                    .font(.system(size: 15, weight: .medium, design: .monospaced))
+                    .font(.numeric)
                     .foregroundColor(Color.textPrimary)
 
                 if isAcceptedByCoach {
