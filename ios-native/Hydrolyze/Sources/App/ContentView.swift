@@ -76,6 +76,11 @@ struct ContentView: View {
                 }
         }
         .tint(Color.accentCyan)
+        // ponytail: tab bar gets a real surface (Color.bgRaised),
+        // not transparent-floating. Visually anchors the bottom of
+        // the app — the bar feels "on" the surface, not hovering.
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(Color.bgRaised, for: .tabBar)
     }
 }
 

@@ -333,7 +333,7 @@ struct SwimmerDetailView: View {
             }
             Spacer()
             Text(formatTimeMs(pb.timeMs))
-                .font(.system(size: 16, weight: .medium, design: .monospaced))
+                .font(.numeric)
                 .foregroundColor(Color.textPrimary)
         }
         .padding(.horizontal, 16)

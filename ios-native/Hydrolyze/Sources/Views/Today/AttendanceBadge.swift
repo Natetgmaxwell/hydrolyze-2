@@ -30,9 +30,18 @@ struct AttendanceBadge: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // ponytail: breathing when swimmers have responded.
+            // 1.0 -> 1.15 -> 1.0 on 2s cycle. The dot literally
+            // responds to the squad. Same phaseAnimator pattern as
+            // SwimmersListView.emptyState.
             Image(systemName: attendingCount > 0 ? "checkmark.circle.fill" : "person.2")
                 .font(.caption)
                 .foregroundStyle(accent)
+                .phaseAnimator([1.0, 1.15, 1.0]) { content, scale in
+                    content.scaleEffect(scale)
+                } animation: { _ in
+                    .easeInOut(duration: 2.0)
+                }
             Text(displayText)
                 .font(.captionStrong)
                 .foregroundStyle(Color.textPrimary)
