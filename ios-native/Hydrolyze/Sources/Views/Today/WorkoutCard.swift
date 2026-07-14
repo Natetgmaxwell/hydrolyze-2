@@ -9,6 +9,9 @@ import SwiftUI
 /// the explicit Start Session button is the action surface (no
 /// tap ambiguity).
 struct WorkoutCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    @State private var animateIn: Bool = false
+
     let workout: Workout
     let setCount: Int
     let swimmerCount: Int
@@ -19,7 +22,7 @@ struct WorkoutCard: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(workout.amPm ?? "AM")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.numericSmall)
                         .foregroundColor(Color.accentAmber)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -27,14 +30,14 @@ struct WorkoutCard: View {
                         .cornerRadius(4)
                         // Soft breathing on the amber chip — the
                         // card "feels scheduled" not "filed."
-                        .phaseAnimator([0.15, 0.25], trigger: true) { content, opacity in
+                        .phaseAnimator([0.15, 0.25], trigger: animateIn && !reduceMotion) { content, opacity in
                             content.background(Color.accentAmber.opacity(opacity))
                         } animation: { _ in
                             .easeInOut(duration: 1.8)
                         }
 
                     Text(workout.title ?? "Workout")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.titleSmall)
                         .foregroundColor(Color.textPrimary)
                 }
                 Spacer()
@@ -46,7 +49,7 @@ struct WorkoutCard: View {
                 .lineLimit(1)
 
             Text("\(swimmerCount) swimmers · \(setCount) sets")
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundColor(Color.textFaint)
 
             PrimaryButton(title: "Start Session", isLoading: false, action: onStartSession)
@@ -58,6 +61,7 @@ struct WorkoutCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.divider, lineWidth: 1)
         )
+        .onAppear { animateIn = true }
     }
 
     private var setDescription: String {

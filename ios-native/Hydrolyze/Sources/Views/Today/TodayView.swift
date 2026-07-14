@@ -22,7 +22,9 @@ struct ActiveTimingSession: Identifiable, Hashable {
 /// and on pull-to-refresh. Uses @StateObject for the view model (owns the data fetch).
 struct TodayView: View {
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @StateObject private var viewModel = TodayViewModel()
+    @State private var animateIn: Bool = false
     @State private var showSessionStart = false
     @State private var activeSession: ActiveTimingSession?
     @State private var attendanceEntries: [CoachAttendanceEntry] = []
@@ -112,6 +114,7 @@ struct TodayView: View {
                 TimingView(sessionId: session.id, workoutSetId: session.workoutSetId)
             }
         }
+        .onAppear { animateIn = true }
         .task {
             await reloadAll(coachId: authManager.coachId)
         }
@@ -165,7 +168,15 @@ struct TodayView: View {
             Text(greeting)
                 .font(.body)
                 .foregroundColor(Color.textMuted)
+                .opacity(animateIn ? 1.0 : 0.0)
+                .animation(
+                    reduceMotion ? nil : Animations.gentle.delay(0.15),
+                    value: animateIn
+                )
         }
+        .opacity(animateIn ? 1.0 : 0.0)
+        .scaleEffect(animateIn ? 1.0 : 0.95)
+        .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
         .padding(.horizontal, 16)
     }
 
