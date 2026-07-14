@@ -18,14 +18,15 @@ struct SwimmerRow: View {
         HStack(spacing: 12) {
             // 44pt initials circle — elevated surface with cyan text
             Text(initials)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.bodyEmphasis)
                 .foregroundColor(Color.accentCyan)
                 .frame(width: 44, height: 44)
                 .background(Color.bgInset)
                 .clipShape(Circle())
+                .overlay(Circle().stroke(Color.divider, lineWidth: 1))
 
             Text(swimmer.fullName)
-                .font(.system(size: 17, weight: .medium))
+                .font(.bodyEmphasis)
                 .foregroundColor(Color.textPrimary)
 
             Spacer()

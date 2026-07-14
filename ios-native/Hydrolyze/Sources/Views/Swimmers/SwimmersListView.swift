@@ -249,11 +249,11 @@ struct SwimmersListView: View {
                 }
 
             Text("No swimmers yet.")
-                .font(.system(size: 17, weight: .medium))
+                .font(.bodyEmphasis)
                 .foregroundColor(Color.textMuted)
 
             Text("Tap + Add to add your first swimmer")
-                .font(.system(size: 14))
+                .font(.caption)
                 .foregroundColor(Color.textFaint)
         }
         .padding(.top, 80)
