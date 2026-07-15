@@ -46,8 +46,23 @@ struct ContentView: View {
 
     /// PHASE 2.6: The coach's tab bar. Extracted into a private
     /// computed view so the three-way routing in `body` stays
-    /// readable. The 5 tabs match the prior ContentView —
-    /// Analytics is still here for v1, will be demoted in Phase 4.
+    /// readable.
+    ///
+    /// ponytail 2026-07-15: Analytics tab removed while the squad-
+    /// level progression view is still in development. The
+    /// AnalyticsTabView.swift file (with its "Coming in v2"
+    /// placeholder) is kept intact — when the squad-level design
+    /// lands, re-add the tab here between Swimmers and Workouts:
+    ///
+    ///     AnalyticsTabView()
+    ///         .tabItem {
+    ///             Label("Analytics", systemImage: "chart.line.uptrend.xyaxis")
+    ///         }
+    ///
+    /// The coach tab bar is now 4 tabs: Today / Swimmers /
+    /// Workouts / Profile. Tighter navigation rhythm + one less
+    /// "Coming in v2" surface competing for the coach's
+    /// attention.
     private var coachTabView: some View {
         TabView {
             TodayView()
@@ -58,11 +73,6 @@ struct ContentView: View {
             SwimmersListView()
                 .tabItem {
                     Label("Swimmers", systemImage: "person.2.fill")
-                }
-
-            AnalyticsTabView()
-                .tabItem {
-                    Label("Analytics", systemImage: "chart.line.uptrend.xyaxis")
                 }
 
             WorkoutsListView()
