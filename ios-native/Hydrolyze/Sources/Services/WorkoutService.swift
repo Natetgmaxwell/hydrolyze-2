@@ -22,13 +22,26 @@ final class WorkoutService {
 
     /// Fetch all workouts for a coach, most recent first.
     func fetchWorkouts(coachId: String) async throws -> [Workout] {
-        let response = try await supabase.from("workouts")
-            .select()
-            .eq("coach_id", value: coachId)
-            .filter("archived_at", operator: "is", value: "null")
-            .order("created_at", ascending: false)
-            .execute()
-        return try JSONDecoder().decode([Workout].self, from: response.data)
+        do {
+            let response = try await supabase.from("workouts")
+                .select()
+                .eq("coach_id", value: coachId)
+                .filter("archived_at", operator: "is", value: "null")
+                .order("created_at", ascending: false)
+                .execute()
+            return try JSONDecoder().decode([Workout].self, from: response.data)
+        } catch {
+            let msg = error.localizedDescription.lowercased()
+            if msg.contains("column") && msg.contains("does not exist") {
+                let response = try await supabase.from("workouts")
+                    .select()
+                    .eq("coach_id", value: coachId)
+                    .order("created_at", ascending: false)
+                    .execute()
+                return try JSONDecoder().decode([Workout].self, from: response.data)
+            }
+            throw error
+        }
     }
 
     /// Fetch a single workout with its sets.
