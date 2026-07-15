@@ -77,7 +77,14 @@ struct WorkoutRowData: Identifiable {
 /// WorkoutsListView — all workouts for the coach, grouped by date, filterable.
 struct WorkoutsListView: View {
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @StateObject private var viewModel = WorkoutsListViewModel()
+    // ponytail (warmth-through-motion iter 4): on-appear reveal.
+    // Same pattern as login reveal (d46c444), today reveal (0a90257),
+    // and swimmers migration (61404f1). When Workouts tab is selected,
+    // the list fades + scales in over Animations.springSoft, gated by
+    // Reduce Motion for a11y.
+    @State private var animateIn: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -95,7 +102,7 @@ struct WorkoutsListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink(destination: WorkoutBuilderView(workoutId: nil)) {
                         Text("+ New")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.captionStrong)
                             .foregroundColor(.black)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -112,6 +119,13 @@ struct WorkoutsListView: View {
         .onChange(of: viewModel.selectedFilter) { _, _ in
             Task { await viewModel.loadWorkouts(coachId: authManager.coachId) }
         }
+        // ponytail: worklist fade-in on tab appear. ScrollView is the
+        // outer container; gating by reduceMotion is the standard a11y
+        // pattern (matches d46c444, 0a90257, 61404f1).
+        .opacity(animateIn ? 1.0 : 0.0)
+        .scaleEffect(animateIn ? 1.0 : 0.98)
+        .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
+        .onAppear { animateIn = true }
     }
 
     private var filterPills: some View {
@@ -166,8 +180,11 @@ struct WorkoutsListView: View {
                     ForEach(groupedWorkouts[dateKey] ?? []) { workout in
                         NavigationLink(destination: WorkoutDetailView(workoutId: workout.id)) {
                             WorkoutRowView(workout: workout, onDelete: {})
+                                .padding(.vertical, 6)
                         }
-                        .listRowBackground(Color.bgSunken)
+                        .listRowBackground(Color.bgBase)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        .listRowSeparator(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 Task { await viewModel.deleteWorkout(id: workout.id) }
@@ -177,9 +194,13 @@ struct WorkoutsListView: View {
                         }
                     }
                 } header: {
-                    Text(dateKey)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(Color.textFaint)
+                    // ponytail: format the dateKey ('yyyy-MM-dd') into
+                    // 'Tuesday, May 12' instead of dumping the raw ISO
+                    // string. Old UI literally showed '2026-05-12' at the
+                    // top of the list — looked like a debug timestamp.
+                    Text(formatDateKey(dateKey))
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textMuted)
                         .tracking(0.5)
                 }
             }
@@ -202,6 +223,25 @@ struct WorkoutsListView: View {
         }
     }
 
+    private func formatDateKey(_ key: String) -> String {
+        // Format 'yyyy-MM-dd' key back into a human date. Falls back to
+        // the raw key if parsing fails (the 'UNSCHEDULED' group also
+        // routes here).
+        guard key != "UNSCHEDULED" else { return "UNSCHEDULED" }
+        let parser = DateFormatter()
+        parser.dateFormat = "yyyy-MM-dd"
+        parser.timeZone = TimeZone(identifier: "UTC")
+        guard let date = parser.date(from: key) else { return key }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMMM d"
+        let now = Date()
+        let calendar = Calendar.current
+        if calendar.component(.year, from: date) != calendar.component(.year, from: now) {
+            formatter.dateFormat = "EEEE, MMMM d, yyyy"
+        }
+        return formatter.string(from: date)
+    }
+
     private var emptyStateLabel: String {
         switch viewModel.selectedFilter {
         case .all: return ""
@@ -218,39 +258,50 @@ struct WorkoutRowView: View {
     let onDelete: () -> Void
 
     var body: some View {
+        // ponytail: card surface — raised background, rounded corners,
+        // subtle hairline ring. Matches the Workouts surface identity
+        // (cards on a dark surface, not raw text floating on screen).
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                if let date = workout.scheduledAt {
-                    Text(formatDate(date))
-                        .font(.system(size: 11))
-                        .foregroundColor(Color.textFaint)
-                        .tracking(0.5)
-                }
+                // ponytail: per-row date label REMOVED. The Section header
+                // (formatted via formatDateKey) already shows the date;
+                // duplicating it here was visual noise.
 
                 Text(workout.title ?? "Untitled")
                     .font(.titleSmall)
                     .foregroundColor(Color.textPrimary)
 
                 Text(statusLabel)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.numericSmall)
                     .foregroundColor(statusColor)
-                    .tracking(0.5)
             }
 
             Spacer()
 
             if let amPm = workout.amPm {
                 Text(amPm)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.numericSmall)
                     .foregroundColor(Color.accentAmber)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(Color.accentAmber.opacity(0.15))
                     .cornerRadius(4)
             }
+
+            // ponytail: chevron via SF Symbol instead of raw '>' text.
+            // Smaller, tighter weight, brand-consistent (textFaint).
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Color.textFaint)
         }
         .padding(.vertical, 12)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 12)
+        .background(Color.bgRaised)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.divider, lineWidth: 1)
+        )
     }
 
     private var statusLabel: String {
