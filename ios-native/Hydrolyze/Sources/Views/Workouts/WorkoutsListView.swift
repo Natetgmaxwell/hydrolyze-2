@@ -133,6 +133,11 @@ struct WorkoutsListView: View {
             HStack(spacing: 8) {
                 ForEach(WorkoutFilter.allCases, id: \.self) { filter in
                     Button {
+                        // Micro-interaction: selection haptic on filter
+                        // change. Pairs with the .animation on the
+                        // pill's foreground/background so the swap
+                        // has a consistent tactile + visual feel.
+                        Haptics.selection()
                         viewModel.selectedFilter = filter
                     } label: {
                         Text(filter.rawValue)
@@ -153,6 +158,11 @@ struct WorkoutsListView: View {
                                         lineWidth: 1
                                     )
                             )
+                            // Animate the foreground + background swap
+                            // when the selected filter changes, so the
+                            // pill "morphs" into the selected state
+                            // instead of jumping.
+                            .animation(Animations.snap, value: viewModel.selectedFilter)
                     }
                 }
             }

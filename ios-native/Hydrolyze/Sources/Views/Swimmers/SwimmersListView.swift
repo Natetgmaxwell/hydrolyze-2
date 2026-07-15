@@ -4,6 +4,7 @@ import SwiftUI
 /// Replaces the "Coming soon" placeholder from the initial scaffold.
 struct SwimmersListView: View {
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @StateObject private var viewModel = SwimmersListViewModel()
     @State private var showAddSheet = false
     @State private var swimmerToEdit: Swimmer?
@@ -13,6 +14,13 @@ struct SwimmersListView: View {
     @State private var swimmerToArchive: Swimmer?
     @State private var newGroupName = ""
     @State private var showAddGroupRow = false
+    // ponytail (warmth-through-motion iter 5): on-appear reveal.
+    // Same pattern as login reveal (d46c444), today reveal (0a90257),
+    // workouts reveal (06c6823), and swimmers migration (61404f1).
+    // When the Swimmers tab is selected, the inner VStack fades +
+    // scales in over Animations.springSoft, gated by Reduce Motion
+    // for a11y.
+    @State private var animateIn: Bool = false
 
     private var coachId: String? {
         authManager.coachId
@@ -27,6 +35,13 @@ struct SwimmersListView: View {
                     filterPills
                     swimmersList
                 }
+                // ponytail: swimmers fade-in on tab appear. Gating by
+                // reduceMotion is the standard a11y pattern (matches
+                // d46c444, 0a90257, 06c6823, 61404f1).
+                .opacity(animateIn ? 1.0 : 0.0)
+                .scaleEffect(animateIn ? 1.0 : 0.98)
+                .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
+                .onAppear { animateIn = true }
             }
             .navigationTitle("SWIMMERS")
             .navigationBarTitleDisplayMode(.inline)
@@ -114,20 +129,27 @@ struct SwimmersListView: View {
                     Task { await viewModel.loadSwimmers(coachId: coachId) }
                 } label: {
                     Text(filter.rawValue)
-                        .font(.eyebrowLarge)
+                        .font(.captionStrong)
                         .foregroundColor(
                             viewModel.selectedFilter == filter
-                            ? Color.bgBase
+                            ? Color.accentCyan
                             : Color.textMuted
                         )
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
                             viewModel.selectedFilter == filter
-                            ? Color.accentCyan
+                            ? Color.accentCyan.opacity(0.15)
                             : Color.bgInset
                         )
-                        .cornerRadius(20)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    viewModel.selectedFilter == filter ? Color.accentCyan : Color.divider,
+                                    lineWidth: 1
+                                )
+                        )
                         // Animate the foreground + background swap
                         // when the selected filter changes, so the
                         // pill "morphs" into the selected state
@@ -186,6 +208,8 @@ struct SwimmersListView: View {
             SwimmerRow(swimmer: swimmer, onDelete: {}, onArchive: {})
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 Haptics.heavy()
@@ -210,10 +234,10 @@ struct SwimmersListView: View {
         HStack {
             Text(name.uppercased())
                 .font(.eyebrow)
-                .foregroundColor(Color.textFaint)
+                .foregroundColor(Color.textMuted)
             Text("\(count)")
                 .font(.eyebrow)
-                .foregroundColor(Color.textFaint)
+                .foregroundColor(Color.textMuted)
             Spacer()
             if let onDelete = onDelete {
                 Button {
@@ -249,7 +273,7 @@ struct SwimmersListView: View {
                 }
 
             Text("No swimmers yet.")
-                .font(.bodyEmphasis)
+                .font(.body)
                 .foregroundColor(Color.textMuted)
 
             Text("Tap + Add to add your first swimmer")

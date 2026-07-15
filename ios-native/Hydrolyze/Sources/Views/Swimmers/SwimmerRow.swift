@@ -35,9 +35,14 @@ struct SwimmerRow: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(Color.textFaint)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.bgBase)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(Color.bgRaised)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.divider, lineWidth: 1)
+        )
         // Long-press = delete (SwiftUI .contextMenu is idiomatic, but spec calls for alert)
         .contentShape(Rectangle())
     }
