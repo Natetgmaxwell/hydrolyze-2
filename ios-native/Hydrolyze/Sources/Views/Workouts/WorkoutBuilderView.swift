@@ -10,6 +10,9 @@ struct WorkoutBuilderView: View {
     @State private var showCancelAlert = false
     @FocusState private var isTextFieldFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    @State private var syntaxHintsExpanded: Bool = false
+    @State private var animateIn: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -57,6 +60,7 @@ struct WorkoutBuilderView: View {
         .onChange(of: viewModel.workoutText) { _, newValue in
             viewModel.debouncedParse(newValue)
         }
+        .onAppear { animateIn = true }
     }
 
     private var scrollableContent: some View {
@@ -78,6 +82,8 @@ struct WorkoutBuilderView: View {
                             .stroke(Color.divider, lineWidth: 1)
                     )
 
+                syntaxHintsCard
+
                 TextEditor(text: $viewModel.workoutText)
                     .font(.system(size: 16))
                     .foregroundColor(Color.textPrimary)
@@ -92,7 +98,7 @@ struct WorkoutBuilderView: View {
                     )
                     .overlay(alignment: .topLeading) {
                         if viewModel.workoutText.isEmpty {
-                            Text("4×100 free @1:30, 4×50 kick fins @1:00, 200 easy\n\nTip: separate sets with commas...")
+                            Text("Write your practice...")
                                 .font(.system(size: 16))
                                 .foregroundColor(Color.textFaint)
                                 .padding(16)
@@ -116,11 +122,86 @@ struct WorkoutBuilderView: View {
                     }
                     .padding(.vertical, 20)
                 } else {
-                    WorkoutPreview(workout: viewModel.parsedWorkout ?? ParsedWorkout(title: nil, sections: []))
+                    WorkoutPreview(
+                        workout: viewModel.parsedWorkout ?? ParsedWorkout(title: nil, sections: []),
+                        onRemoveRepGroup: { sectionIdx, namedSetIdx, rgIdx in
+                            viewModel.removeRepGroup(
+                                sectionIndex: sectionIdx,
+                                namedSetIndex: namedSetIdx,
+                                repGroupIndex: rgIdx
+                            )
+                        }
+                    )
                 }
             }
             .padding(16)
         }
+    }
+
+    /// Persistent "Workout Syntax" expandable card. Lives between the title
+    /// field and the practice editor so coaches always know what shape the
+    /// parser expects — the inline placeholder alone vanished on first
+    /// keystroke and left new coaches without a reference.
+    private var syntaxHintsCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(reduceMotion ? nil : Animations.springSoft) {
+                    syntaxHintsExpanded.toggle()
+                }
+                Haptics.selection()
+            } label: {
+                HStack(spacing: 6) {
+                    Text("WORKOUT SYNTAX")
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textFaint)
+                        .tracking(1.2)
+                    Spacer()
+                    Image(systemName: syntaxHintsExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.textFaint)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if syntaxHintsExpanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    syntaxHintRow("Sets: 4×100 free @1:30")
+                    syntaxHintRow("Intervals: @1:30  /  on 2:00  /  on 1:30 rest")
+                    syntaxHintRow("Gear: paddles  /  pull buoy  /  fins  /  kickboard")
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .top)),
+                        removal: .opacity
+                    )
+                )
+            }
+        }
+        .background(Color.bgRaised)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.divider, lineWidth: 1)
+        )
+        .opacity(animateIn ? 1.0 : 0.0)
+        .scaleEffect(animateIn ? 1.0 : 0.98)
+        .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
+    }
+
+    private func syntaxHintRow(_ text: String) -> some View {
+        Text(text)
+            .font(Font.jetBrainsMono(size: 13, weight: .medium))
+            .foregroundColor(Color.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+            .background(Color.bgInset.opacity(0.4))
+            .cornerRadius(6)
     }
 
     private var parseStatusLine: some View {
@@ -129,6 +210,22 @@ struct WorkoutBuilderView: View {
                 Text("⚠ \(error)")
                     .font(.caption)
                     .foregroundColor(Color.accentAmber)
+            } else if viewModel.isLoading && viewModel.parsedWorkout != nil {
+                // Mid-debounce: parser is working, but the previous
+                // successful parse is still on screen. Show a quiet
+                // pulse so the coach knows their keystroke registered
+                // and a re-parse is in flight.
+                Text("Parsing...")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .phaseAnimator(
+                        reduceMotion ? [1.0] : [1.0, 0.6, 1.0],
+                        trigger: viewModel.isLoading
+                    ) { content, alpha in
+                        content.opacity(alpha)
+                    } animation: { _ in
+                        .easeInOut(duration: 1.4)
+                    }
             } else if viewModel.parsedWorkout != nil {
                 let count = viewModel.parsedWorkout?.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count ?? 0
                 Text("✓ \(count) sets parsed")
@@ -139,37 +236,44 @@ struct WorkoutBuilderView: View {
     }
 
     private var actionButtons: some View {
-        VStack(spacing: 12) {
-            PrimaryButton(
-                title: viewModel.isEditMode ? "Update Workout" : "Save Workout",
-                isLoading: viewModel.isSaving
-            ) {
-                Task {
-                    if await viewModel.saveWorkout(authManager: authManager) != nil {
-                        dismiss()
-                    }
-                }
-            }
-            .disabled(!viewModel.canSave)
-
-            Button("Schedule →") {
+        VStack(spacing: 10) {
+            // Primary: save + open the schedule sheet in one tap. Captures
+            // the 95% coach flow ("write it, send it to a day").
+            Button {
                 Task {
                     if await viewModel.saveWorkout(authManager: authManager) != nil {
                         showScheduleSheet = true
                     }
                 }
+            } label: {
+                Text(viewModel.isEditMode ? "Update & Schedule" : "Save & Schedule")
+                    .font(.titleSmall)
+                    .foregroundColor(Color.textOnAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.accentCyan)
+                    .cornerRadius(12)
             }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(Color.textPrimary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background(Color.bgSunken)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.divider, lineWidth: 1)
-            )
-            .disabled(!viewModel.canSave)
+            .disabled(!viewModel.canSave || viewModel.isSaving)
+            .opacity(viewModel.canSave ? 1 : 0.5)
+
+            // Secondary: save without scheduling. The 5% "I'll come back
+            // to schedule this" case. Quiet, no chrome — just a tap target.
+            Button {
+                Task {
+                    if await viewModel.saveWorkout(authManager: authManager) != nil {
+                        dismiss()
+                    }
+                }
+            } label: {
+                Text("Save as Draft")
+                    .font(.captionStrong)
+                    .foregroundColor(Color.textMuted)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .contentShape(Rectangle())
+            }
+            .disabled(!viewModel.canSave || viewModel.isSaving)
             .opacity(viewModel.canSave ? 1 : 0.5)
         }
         .padding(.horizontal, 16)
@@ -223,6 +327,41 @@ final class WorkoutBuilderViewModel: ObservableObject {
             parseSuccess = false
         }
         isLoading = false
+    }
+
+    /// Remove a single parsed rep group from the local parsedWorkout tree.
+    /// Triggered by long-press → context menu in WorkoutPreview. Indices
+    /// are into sections / namedSets / repGroups respectively. Drops
+    /// empty named sets and sections to keep the tree minimal.
+    /// The source `workoutText` is NOT rewritten — the next save will
+    /// persist whatever the parser last produced (minus the removed row).
+    /// The coach can still re-parse by editing the text if they want.
+    func removeRepGroup(sectionIndex: Int, namedSetIndex: Int, repGroupIndex: Int) {
+        guard var workout = parsedWorkout else { return }
+        guard workout.sections.indices.contains(sectionIndex) else { return }
+
+        var section = workout.sections[sectionIndex]
+        guard section.namedSets.indices.contains(namedSetIndex) else { return }
+
+        var namedSet = section.namedSets[namedSetIndex]
+        guard namedSet.repGroups.indices.contains(repGroupIndex) else { return }
+
+        namedSet.repGroups.remove(at: repGroupIndex)
+
+        if namedSet.repGroups.isEmpty {
+            section.namedSets.remove(at: namedSetIndex)
+        } else {
+            section.namedSets[namedSetIndex] = namedSet
+        }
+
+        if section.namedSets.isEmpty {
+            workout.sections.remove(at: sectionIndex)
+        } else {
+            workout.sections[sectionIndex] = section
+        }
+
+        parsedWorkout = workout
+        Haptics.warning()
     }
 
     func saveWorkout(authManager: AuthManager) async -> String? {

@@ -5,6 +5,10 @@ import SwiftUI
 /// Mirrors the RN WorkoutPreview.tsx renderV2Tree structure.
 struct WorkoutPreview: View {
     let workout: ParsedWorkout
+    /// Optional callback for removing a single parsed rep group via long-press.
+    /// Parameters: (sectionIndex, namedSetIndex, repGroupIndex).
+    /// Nil in read-only contexts (e.g. WorkoutDetailView).
+    var onRemoveRepGroup: ((Int, Int, Int) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -14,8 +18,12 @@ struct WorkoutPreview: View {
                     .foregroundColor(Color.textFaint)
                     .italic()
             } else {
-                ForEach(Array(workout.sections.enumerated()), id: \.offset) { _, section in
-                    SectionView(section: section)
+                ForEach(Array(workout.sections.enumerated()), id: \.offset) { sectionIdx, section in
+                    SectionView(
+                        section: section,
+                        sectionIndex: sectionIdx,
+                        onRemoveRepGroup: onRemoveRepGroup
+                    )
                 }
             }
         }
@@ -24,6 +32,8 @@ struct WorkoutPreview: View {
 
 private struct SectionView: View {
     let section: ParsedSection
+    let sectionIndex: Int
+    let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -42,7 +52,7 @@ private struct SectionView: View {
                 }
             }
 
-            ForEach(Array(section.namedSets.enumerated()), id: \.offset) { _, namedSet in
+            ForEach(Array(section.namedSets.enumerated()), id: \.offset) { namedSetIdx, namedSet in
                 VStack(alignment: .leading, spacing: 8) {
                     if let label = namedSet.label, !label.isEmpty {
                         Text(label.uppercased())
@@ -51,8 +61,14 @@ private struct SectionView: View {
                             .tracking(0.8)
                     }
 
-                    ForEach(Array(namedSet.repGroups.enumerated()), id: \.offset) { _, rg in
-                        RepGroupRowView(rg: rg)
+                    ForEach(Array(namedSet.repGroups.enumerated()), id: \.offset) { rgIdx, rg in
+                        RepGroupRowView(
+                            rg: rg,
+                            sectionIndex: sectionIndex,
+                            namedSetIndex: namedSetIdx,
+                            repGroupIndex: rgIdx,
+                            onRemoveRepGroup: onRemoveRepGroup
+                        )
                     }
                 }
                 .padding(.leading, 8)
@@ -63,6 +79,10 @@ private struct SectionView: View {
 
 private struct RepGroupRowView: View {
     let rg: ParsedRepGroup
+    let sectionIndex: Int
+    let namedSetIndex: Int
+    let repGroupIndex: Int
+    let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -133,6 +153,17 @@ private struct RepGroupRowView: View {
                             .foregroundColor(Color.textMuted)
                             .italic()
                     }
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            if let onRemoveRepGroup {
+                Button(role: .destructive) {
+                    Haptics.warning()
+                    onRemoveRepGroup(sectionIndex, namedSetIndex, repGroupIndex)
+                } label: {
+                    Text("Remove this set")
                 }
             }
         }
