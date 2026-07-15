@@ -10,6 +10,7 @@ struct TimingView: View {
     @Environment(AuthManager.self) private var authManager
     @StateObject private var viewModel = TimingViewModel()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
 
     let prefill: SetPrefill?
     var sessionId: String?
@@ -107,7 +108,7 @@ struct TimingView: View {
                     ))
             }
         }
-        .animation(Animations.springSoft, value: viewModel.state)
+        .animation(reduceMotion ? .linear(duration: 0.01) : Animations.springSoft, value: viewModel.state)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // Cancel is shown in .setup and .ready only. During .running, the only
@@ -184,7 +185,7 @@ struct TimingView: View {
                         Image(systemName: "chevron.down")
                             .foregroundColor(Color.textFaint)
                             .rotationEffect(.degrees(showSwimmerPicker ? 180 : 0))
-                            .animation(Animations.snap, value: showSwimmerPicker)
+                            .animation(reduceMotion ? .linear(duration: 0.01) : Animations.snap, value: showSwimmerPicker)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
@@ -383,7 +384,7 @@ struct TimingView: View {
                         radius: scale == 1.0 ? 24 : 32, x: 0, y: 0
                     )
             } animation: { _ in
-                .easeInOut(duration: 1.4)
+                reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 1.4)
             }
 
             Spacer()
@@ -483,7 +484,7 @@ struct TimingView: View {
                 .opacity(lapFlashOpacity)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
-                .animation(Animations.springSnappy, value: lapFlashOpacity)
+                .animation(reduceMotion ? .linear(duration: 0.01) : Animations.springSnappy, value: lapFlashOpacity)
         }
         .onChange(of: viewModel.lapFlashTrigger) { _, _ in
             // Pulse the cyan flash to 0.4 (was 0.35 — slightly

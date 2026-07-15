@@ -8,6 +8,8 @@ import SwiftUI
 /// "pulsing alert." The first impression for an empty state is
 /// that the app is waiting for the user, not broken.
 struct EmptyStateView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "house.fill")
@@ -16,7 +18,7 @@ struct EmptyStateView: View {
                 .phaseAnimator([1.0, 1.06, 1.0]) { content, scale in
                     content.scaleEffect(scale)
                 } animation: { _ in
-                    .easeInOut(duration: 1.6)
+                    reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 1.6)
                 }
 
             Text("No workout scheduled")

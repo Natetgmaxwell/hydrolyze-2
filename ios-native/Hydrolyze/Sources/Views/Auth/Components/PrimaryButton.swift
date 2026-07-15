@@ -16,6 +16,7 @@ struct PrimaryButton: View {
     let title: String
     var isLoading: Bool = false
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
 
     var body: some View {
         Button {
@@ -45,7 +46,7 @@ struct PrimaryButton: View {
         .disabled(isLoading)
         // Subtle glow pulse on the shadow when idle — the button
         // "breathes" gently to invite tap. Pauses while loading.
-        .phaseAnimator([0.3, 0.5], trigger: isLoading == false) { content, opacity in
+        .phaseAnimator([0.3, 0.5], trigger: isLoading == false && !reduceMotion) { content, opacity in
             content.shadow(
                 color: Color.accentCyan.opacity(opacity),
                 radius: 20, x: 0, y: 0

@@ -14,6 +14,7 @@ import SwiftUI
 struct AttendanceBadge: View {
     let attendingCount: Int
     let totalCount: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
 
     private var displayText: String {
         if totalCount == 0 {
@@ -40,7 +41,7 @@ struct AttendanceBadge: View {
                 .phaseAnimator([1.0, 1.15, 1.0]) { content, scale in
                     content.scaleEffect(scale)
                 } animation: { _ in
-                    .easeInOut(duration: 2.0)
+                    reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 2.0)
                 }
             Text(displayText)
                 .font(.captionStrong)
