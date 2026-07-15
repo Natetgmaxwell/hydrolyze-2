@@ -5,12 +5,20 @@ import SwiftUI
 struct SwimmerDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @StateObject private var viewModel: SwimmerDetailViewModel
     @State private var showEditSheet = false
     @State private var showPBSheet = false
     @State private var showInviteSheet = false
     @State private var showArchiveAlert = false
     @State private var showDeleteAlert = false
+    // ponytail (warmth-through-motion iter 6): on-appear reveal.
+    // Same pattern as login reveal (d46c444), today reveal (0a90257),
+    // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
+    // and workouts+swimmers cohesion (19e0e9f). When the SwimmerDetail
+    // is pushed, the content fades + scales in over Animations.springSoft,
+    // gated by Reduce Motion for a11y.
+    @State private var animateIn: Bool = false
 
     private var coachId: String? {
         authManager.coachId
@@ -105,6 +113,13 @@ struct SwimmerDetailView: View {
         .task {
             await viewModel.load(coachId: coachId)
         }
+        // ponytail: swimmer detail fade-in on push. Gating by
+        // reduceMotion is the standard a11y pattern (matches d46c444,
+        // 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f).
+        .opacity(animateIn ? 1.0 : 0.0)
+        .scaleEffect(animateIn ? 1.0 : 0.98)
+        .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
+        .onAppear { animateIn = true }
     }
 
     // MARK: - Header
@@ -112,14 +127,14 @@ struct SwimmerDetailView: View {
     private func headerSection(_ swimmer: Swimmer) -> some View {
         VStack(spacing: 12) {
             Text(viewModel.initials)
-                .font(.system(size: 28, weight: .semibold))
+                .font(.titleLarge)
                 .foregroundColor(Color.accentCyan)
                 .frame(width: 56, height: 56)
                 .background(Color.bgInset)
                 .clipShape(Circle())
 
             Text(swimmer.fullName)
-                .font(.system(size: 28, weight: .semibold))
+                .font(.titleLarge)
                 .foregroundColor(Color.textPrimary)
 
             if let ageText = viewModel.ageText {
@@ -154,11 +169,11 @@ struct SwimmerDetailView: View {
             } label: {
                 HStack {
                     Text(swimmer.mainStroke ?? "Not set")
-                        .font(.system(size: 17))
+                        .font(.titleSmall)
                         .foregroundColor(Color.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(Color.textFaint)
                 }
                 .padding(.horizontal, 16)
@@ -195,11 +210,11 @@ struct SwimmerDetailView: View {
             } label: {
                 HStack {
                     Text(swimmer.formStroke ?? "Not set")
-                        .font(.system(size: 17))
+                        .font(.titleSmall)
                         .foregroundColor(Color.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(Color.textFaint)
                 }
                 .padding(.horizontal, 16)
@@ -241,7 +256,7 @@ struct SwimmerDetailView: View {
                         HStack(spacing: 4) {
                             if isMember {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.eyebrow)
                             }
                             Text(group.name)
                                 .font(.captionStrong)
@@ -272,7 +287,7 @@ struct SwimmerDetailView: View {
                     showPBSheet = true
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.captionStrong)
                         .foregroundColor(Color.accentCyan)
                 }
             }
@@ -282,7 +297,7 @@ struct SwimmerDetailView: View {
 
             if viewModel.personalBests.isEmpty {
                 Text("No personal bests yet.")
-                    .font(.system(size: 14))
+                    .font(.caption)
                     .foregroundColor(Color.textFaint)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -384,7 +399,7 @@ struct SwimmerDetailView: View {
                 showArchiveAlert = true
             } label: {
                 Text("Archive Swimmer")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.titleSmall)
                     .foregroundColor(Color.accentAmber)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
@@ -400,7 +415,7 @@ struct SwimmerDetailView: View {
                 showDeleteAlert = true
             } label: {
                 Text("Delete Swimmer")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.titleSmall)
                     .foregroundColor(Color.statusError)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
@@ -418,7 +433,7 @@ struct SwimmerDetailView: View {
     @ViewBuilder
     private func intensityBadge(_ intensity: String) -> some View {
         Text(intensity.uppercased())
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .font(.monoChipBold)
             .foregroundColor(intensityColor(intensity))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -429,7 +444,7 @@ struct SwimmerDetailView: View {
     @ViewBuilder
     private func gearBadge(_ gear: String) -> some View {
         Text(gear)
-            .font(.system(size: 10, weight: .medium))
+            .font(.monoChip)
             .foregroundColor(Color.accentCyan)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -492,9 +507,9 @@ struct StrokePickerSheet: View {
                             dismiss()
                         } label: {
                             HStack {
-                                Text(stroke)
-                                    .font(.system(size: 17))
-                                    .foregroundColor(Color.textPrimary)
+Text(stroke)
+                                .font(.titleSmall)
+                                .foregroundColor(Color.textPrimary)
                                 Spacer()
                                 if selectedStroke == stroke {
                                     Image(systemName: "checkmark")

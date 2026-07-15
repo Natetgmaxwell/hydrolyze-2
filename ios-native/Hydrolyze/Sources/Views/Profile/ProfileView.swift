@@ -10,7 +10,15 @@ import SwiftUI
 ///   - sign-out confirm dialog (currently fires immediately)
 struct ProfileView: View {
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @State private var showSignOutConfirm = false
+    // ponytail (warmth-through-motion iter 6): on-appear reveal.
+    // Same pattern as login reveal (d46c444), today reveal (0a90257),
+    // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
+    // and workouts+swimmers cohesion (19e0e9f). When the Profile tab
+    // is selected, the content fades + scales in over
+    // Animations.springSoft, gated by Reduce Motion for a11y.
+    @State private var animateIn: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +34,13 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgBase)
+        // ponytail: profile fade-in on tab appear. Gating by
+        // reduceMotion is the standard a11y pattern (matches d46c444,
+        // 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f).
+        .opacity(animateIn ? 1.0 : 0.0)
+        .scaleEffect(animateIn ? 1.0 : 0.98)
+        .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
+        .onAppear { animateIn = true }
         .alert("Sign out?", isPresented: $showSignOutConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Sign Out", role: .destructive) {
@@ -47,13 +62,13 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if let coachName = authManager.coachName {
                     Text(coachName)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.titleSmall)
                         .foregroundColor(Color.textPrimary)
                 }
 
                 if let email = authManager.currentUser?.email {
                     Text(email)
-                        .font(.system(size: 14))
+                        .font(.body)
                         .foregroundColor(Color.textMuted)
                 }
             }
@@ -73,11 +88,11 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("PREDICTION ALGORITHM")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.eyebrow)
                     .tracking(1.0)
                     .foregroundColor(Color.textFaint)
                 Text("How the pairing engine estimates each swimmer's time")
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundColor(Color.textMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,7 +136,7 @@ struct ProfileView: View {
             showSignOutConfirm = true
         } label: {
             Text("Sign Out")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.titleSmall)
                 .foregroundColor(Color.statusError)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)

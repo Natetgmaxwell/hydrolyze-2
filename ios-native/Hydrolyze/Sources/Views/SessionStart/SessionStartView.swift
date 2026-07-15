@@ -16,7 +16,17 @@ struct WaveChipTransferable: Transferable, Codable {
 struct SessionStartView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @StateObject private var viewModel = SessionStartViewModel()
+    // ponytail (warmth-through-motion iter 6): on-appear reveal.
+    // Same pattern as login reveal (d46c444), today reveal (0a90257),
+    // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
+    // and workouts+swimmers cohesion (19e0e9f). When SessionStartView
+    // opens (sheet or fullScreenCover), the step content fades +
+    // scales in over Animations.springSoft, gated by Reduce Motion
+    // for a11y. Only applied to the OUTER content (the step switch)
+    // — nested VStacks keep their own per-step motion.
+    @State private var animateIn: Bool = false
 
     let sessionId: String
     let workoutSets: [WorkoutSet]
@@ -99,6 +109,14 @@ struct SessionStartView: View {
             guard let newCoachId = newCoachId else { return }
             Task { await viewModel.loadRoster(coachId: newCoachId) }
         }
+        // ponytail: outer content fade-in on sheet/cover appear. Gating
+        // by reduceMotion is the standard a11y pattern (matches d46c444,
+        // 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f). Only on the
+        // outer — nested VStacks own their own per-step motion.
+        .opacity(animateIn ? 1.0 : 0.0)
+        .scaleEffect(animateIn ? 1.0 : 0.98)
+        .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
+        .onAppear { animateIn = true }
     }
 }
 
@@ -119,10 +137,11 @@ struct RosterPickerView: View {
     let coachId: String?
     let sessionId: String
     let workoutSets: [WorkoutSet]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
 
     /// Captured frame of each row in the `rosterScroll` coordinate space.
     /// Updated as rows scroll into view; consumed by the drag gesture to find
-    /// which row is under the user's finger.
+    /// which row is currently under the user's finger.
     @State private var rowFrames: [UUID: CGRect] = [:]
 
     /// Set while a drag is in progress. Used to suppress the per-row tap
@@ -224,6 +243,9 @@ struct RosterPickerView: View {
     /// times per second per finger position). The `withAnimation` wrapper makes
     /// the resulting state change animate explicitly, so the checkmark + row
     /// background fade in instead of snapping.
+    /// ponytail (warmth-through-motion iter 6): gated by Reduce Motion so
+    /// users with motion sensitivity get instant row selection during drag.
+    /// Matches d46c444, 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f.
     private func addRowUnderPointToSelection(point: CGPoint) {
         for (id, frame) in rowFrames {
             guard frame.contains(point) else { continue }
@@ -231,8 +253,12 @@ struct RosterPickerView: View {
             if id == lastAddedRowId { return }
             lastAddedRowId = id
             if !viewModel.selectedSwimmerIds.contains(id) {
-                withAnimation(.easeInOut(duration: 0.12)) {
+                if reduceMotion {
                     viewModel.toggleSwimmer(id)
+                } else {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        viewModel.toggleSwimmer(id)
+                    }
                 }
             }
             return  // one row per frame
@@ -243,7 +269,7 @@ struct RosterPickerView: View {
         Group {
             if let error = viewModel.errorMessage {
                 Text(error)
-                    .font(.system(size: 14))
+                    .font(.caption)
                     .foregroundColor(.red)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
@@ -288,6 +314,7 @@ struct RosterPickerView: View {
 // MARK: - Swimmer Row
 
 struct SwimmerRowView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     let swimmer: Swimmer
     let isSelected: Bool
     let onToggle: () -> Void
@@ -296,15 +323,15 @@ struct SwimmerRowView: View {
         Button(action: onToggle) {
             HStack(spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22))
+                    .font(.titleSmall)
                     .foregroundColor(isSelected ? Color.accentCyan : Color.textFaint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(swimmer.fullName)
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.bodyEmphasis)
                         .foregroundColor(Color.textPrimary)
                     if !swimmer.groups.isEmpty {
                         Text(swimmer.groups.map { $0.name }.joined(separator: ", "))
-                            .font(.system(size: 12))
+                            .font(.caption)
                             .foregroundColor(Color.textFaint)
                     }
                 }
@@ -321,7 +348,10 @@ struct SwimmerRowView: View {
         // which felt choppy during drag-to-add (the gesture adds 5+ rows in
         // a second, each transition visible to the eye). With a spring, the
         // same transitions feel like a natural tap response.
-        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
+        // ponytail (warmth-through-motion iter 6): gated by Reduce Motion
+        // so users with motion sensitivity get instant transitions. Matches
+        // d46c444, 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f.
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
     }
 }
 
@@ -457,7 +487,7 @@ struct WavePreviewView: View {
 
             if let error = viewModel.errorMessage {
                 Text(error)
-                    .font(.system(size: 14))
+                    .font(.caption)
                     .foregroundColor(.red)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
@@ -476,24 +506,24 @@ struct WavePreviewView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(Color(hex: "f5a623"))
+                    .font(.eyebrow)
+                    .foregroundColor(Color.accentAmber)
                 Text("CLOSE FINISHES — coach can't LAP < 0.5s")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.eyebrow)
                     .tracking(0.8)
-                    .foregroundColor(Color(hex: "f5a623"))
+                    .foregroundColor(Color.accentAmber)
             }
             ForEach(waveCollisions.keys.sorted(), id: \.self) { wave in
                 if let pairs = waveCollisions[wave] {
                     HStack(spacing: 6) {
                         Text("Wave \(wave + 1)")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.captionStrong)
                             .foregroundColor(Color.textPrimary)
                         Text("·")
                             .foregroundColor(Color.textFaint)
                         Text(pairs.map { "Lane \($0.laneA) ↔ Lane \($0.laneB) (gap \($0.gapMs)ms)" }
                             .joined(separator: "  •  "))
-                            .font(.system(size: 12))
+                            .font(.caption)
                             .foregroundColor(Color.textMuted)
                             .lineLimit(2)
                     }
@@ -533,14 +563,14 @@ struct WavePreviewView: View {
                 viewModel.previewSetIndex = max(0, viewModel.previewSetIndex - 1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.captionStrong)
                     .foregroundColor(viewModel.previewSetIndex == 0 ? Color.textFaint : Color.accentCyan)
             }
             .disabled(viewModel.previewSetIndex == 0)
 
             VStack(spacing: 2) {
                 Text("SET \(viewModel.previewSetIndex + 1) OF \(workoutSets.count)")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.eyebrow)
                     .tracking(1.0)
                     .foregroundColor(Color.textFaint)
                 if let currentSet = workoutSets[safe: viewModel.previewSetIndex] {
@@ -555,7 +585,7 @@ struct WavePreviewView: View {
                 viewModel.previewSetIndex = min(workoutSets.count - 1, viewModel.previewSetIndex + 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.captionStrong)
                     .foregroundColor(viewModel.previewSetIndex >= workoutSets.count - 1 ? Color.textFaint : Color.accentCyan)
             }
             .disabled(viewModel.previewSetIndex >= workoutSets.count - 1)
@@ -571,12 +601,12 @@ struct WavePreviewView: View {
         VStack(spacing: 4) {
             HStack {
                 Text("LANES")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.eyebrow)
                     .tracking(1.0)
                     .foregroundColor(Color.textFaint)
                 Spacer()
                 Text("\(viewModel.poolConfig.laneCount)")
-                    .font(.jetBrainsMono(size: 14, weight: .bold))
+                    .font(.eyebrow)
                     .foregroundColor(Color.accentCyan)
                     .frame(minWidth: 28)
             }
@@ -614,7 +644,7 @@ struct WavePreviewView: View {
             viewModel.resetToSuggested()
         } label: {
             Text("Reset to Suggested")
-                .font(.system(size: 14))
+                .font(.caption)
                 .foregroundColor(Color.accentCyan)
         }
         .padding(.bottom, 8)
@@ -666,14 +696,14 @@ struct LaneColumn: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("LANE \(lane)")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.eyebrow)
                     .foregroundColor(Color.textFaint)
                     .tracking(1.0)
 
                 if hasTightGap {
                     Text("⚠ Tight Gap")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(Color(hex: "f5a623"))
+                        .font(.monoChipBold)
+                        .foregroundColor(Color.accentAmber)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.accentAmberOn)
@@ -796,12 +826,12 @@ struct EmptyDropZone: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(hex: "2a3f52"), style: StrokeStyle(lineWidth: 1.5, dash: [4]))
+                .stroke(Color.divider, style: StrokeStyle(lineWidth: 1.5, dash: [4]))
                 .background(Color.clear)
                 .frame(width: 60, height: 44)
                 
             Image(systemName: "plus")
-                .font(.system(size: 14, weight: .bold))
+                .font(.captionStrong)
                 .foregroundColor(Color.textFaint)
         }
         .dropDestination(for: WaveChipTransferable.self) { items, _ in
@@ -864,12 +894,12 @@ struct SwimmerChip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(swimmerName)
-                .font(.system(size: 14, weight: .bold))
+                .font(.captionStrong)
                 .foregroundColor(Color.textPrimary)
                 .lineLimit(1)
 
             Text(formattedTouch)
-                .font(.system(size: 11, weight: .medium))
+                .font(.captionStrong)
                 .foregroundColor(Color.accentCyan)
 
             // Maturity badge — Phase 2.6 maturity tiers. Shows the coach
@@ -878,7 +908,7 @@ struct SwimmerChip: View {
             // (seed) since we have no data to show.
             if let label = prediction?.badgeLabel {
                 Text(label)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.numericSmall)
                     .foregroundColor(badgeColor)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
@@ -893,7 +923,7 @@ struct SwimmerChip: View {
             // the actual lookup is a follow-up).
             if let state = calibrationState {
                 Text(state.badgeText)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.numericSmall)
                     .foregroundColor(state.badgeColor)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)

@@ -56,6 +56,7 @@ final class WorkoutDetailViewModel: ObservableObject {
 struct WorkoutDetailView: View {
     let workoutId: String
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @StateObject private var viewModel = WorkoutDetailViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var activeSession: ActiveSession? = nil
@@ -63,6 +64,13 @@ struct WorkoutDetailView: View {
     @State private var timingPrefill: SetPrefill?
     @State private var showSessionStart = false
     @State private var pendingSessionId = UUID().uuidString
+    // ponytail (warmth-through-motion iter 6): on-appear reveal.
+    // Same pattern as login reveal (d46c444), today reveal (0a90257),
+    // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
+    // and workouts+swimmers cohesion (19e0e9f). When the WorkoutDetail
+    // is pushed, the content fades + scales in over Animations.springSoft,
+    // gated by Reduce Motion for a11y.
+    @State private var animateIn: Bool = false
 
     /// Wrapper for `.fullScreenCover(item:)` — needs Identifiable to drive the cover.
     /// Plain `String?` doesn't conform; without this the bottom TabView stays visible during timing.
@@ -174,13 +182,20 @@ struct WorkoutDetailView: View {
         .task {
             await viewModel.loadWorkout(workoutId: workoutId)
         }
+        // ponytail: workout detail fade-in on push. Gating by
+        // reduceMotion is the standard a11y pattern (matches d46c444,
+        // 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f).
+        .opacity(animateIn ? 1.0 : 0.0)
+        .scaleEffect(animateIn ? 1.0 : 0.98)
+        .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
+        .onAppear { animateIn = true }
     }
 
     // Per-set start buttons — inline in the sets list
     private var setsList: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("SETS")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
                 .tracking(1.5)
                 .padding(.horizontal, 16)
@@ -234,12 +249,12 @@ struct WorkoutDetailView: View {
                         HStack(spacing: 8) {
                             if let gear = set.gear {
                                 Text(gear)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.captionStrong)
                                     .foregroundColor(Color.accentCyan)
                             }
                             if let intensity = set.intensityLabel {
                                 Text(intensity)
-                                    .font(.system(size: 11))
+                                    .font(.caption)
                                     .foregroundColor(Color.accentAmber)
                             }
                         }
@@ -249,7 +264,7 @@ struct WorkoutDetailView: View {
 
                     if isTimeable {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 12))
+                            .font(.caption)
                             .foregroundColor(Color.accentCyan)
                     }
                 }
@@ -269,13 +284,13 @@ struct WorkoutDetailView: View {
     private func metadataSection(workout: Workout) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(workout.title ?? "Untitled")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.titleMedium)
                 .foregroundColor(Color.textPrimary)
 
             HStack(spacing: 8) {
                 if let scheduledAt = workout.scheduledAt {
                     Text(formatDate(scheduledAt))
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(Color.textFaint)
                 }
 
@@ -283,14 +298,14 @@ struct WorkoutDetailView: View {
                     Text("·")
                         .foregroundColor(Color.textFaint)
                     Text(amPm)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.captionStrong)
                         .foregroundColor(Color.accentAmber)
                 }
 
                 Text("·")
                     .foregroundColor(Color.textFaint)
                 Text(workout.status.rawValue.capitalized)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.captionStrong)
                     .foregroundColor(statusColor(workout.status))
             }
         }
@@ -303,7 +318,7 @@ struct WorkoutDetailView: View {
                 Button("Edit Workout") {
                     navigateToBuilder = true
                 }
-                .font(.system(size: 16, weight: .semibold))
+                .font(.titleSmall)
                 .foregroundColor(Color.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
@@ -319,7 +334,7 @@ struct WorkoutDetailView: View {
                 Button("Mark Complete") {
                     Task { await viewModel.markComplete(workoutId: workoutId) }
                 }
-                .font(.system(size: 16, weight: .semibold))
+                .font(.titleSmall)
                 .foregroundColor(Color.statusSuccess)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
