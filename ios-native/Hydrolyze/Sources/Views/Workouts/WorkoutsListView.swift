@@ -33,12 +33,12 @@ final class WorkoutsListViewModel: ObservableObject {
         isLoading = false
     }
 
-    func deleteWorkout(id: String) async {
+    func archiveWorkout(id: String) async {
         do {
-            try await workoutService.deleteWorkout(workoutId: id)
+            try await workoutService.archiveWorkout(workoutId: id)
             workouts.removeAll { $0.id == id }
         } catch {
-            errorMessage = "Couldn't delete workout."
+            errorMessage = "Couldn't archive workout."
         }
     }
 
@@ -196,11 +196,12 @@ struct WorkoutsListView: View {
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                         .listRowSeparator(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                Task { await viewModel.deleteWorkout(id: workout.id) }
+                            Button {
+                                Task { await viewModel.archiveWorkout(id: workout.id) }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("Archive", systemImage: "archivebox")
                             }
+                            .tint(Color.accentAmber)
                         }
                     }
                 } header: {

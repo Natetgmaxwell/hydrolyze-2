@@ -25,6 +25,7 @@ final class WorkoutService {
         let response = try await supabase.from("workouts")
             .select()
             .eq("coach_id", value: coachId)
+            .filter("archived_at", operator: "is", value: "null")
             .order("created_at", ascending: false)
             .execute()
         return try JSONDecoder().decode([Workout].self, from: response.data)
@@ -140,6 +141,13 @@ final class WorkoutService {
             .single()
             .execute()
         return try JSONDecoder().decode(WorkoutSet.self, from: response.data)
+    }
+
+    func archiveWorkout(workoutId: String) async throws {
+        try await supabase.from("workouts")
+            .update(["archived_at": ISO8601DateFormatter().string(from: Date())])
+            .eq("id", value: workoutId)
+            .execute()
     }
 
     /// Delete a workout and all its sets.
