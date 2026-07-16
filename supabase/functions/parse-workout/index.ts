@@ -140,6 +140,12 @@ function normalize(text: string): string {
   out = out.replace(/(\d+)\s+and\s+a\s+half/g, (_m, n) =>
     String(parseFloat(n) + 0.5),
   );
+  // ponytail (autoresearch iter 4, 2026-07-15): coaches write
+  // intervals as "1.20", "4.30" (dot-separated, ambiguous with English
+  // decimal). The colonMatch regex requires a literal ":". Normalize
+  // any "<digits>.<two-digits>" pattern to "<digits>:<two-digits>".
+  // The \b at the end prevents eating decimal numbers like "1.5".
+  out = out.replace(/(\d+)\.(\d{2})\b/g, "$1:$2");
   out = out.replace(/–/g, "-");
   return out;
 }
@@ -872,6 +878,37 @@ function parseWorkoutV2(input: string): Workout {
       const rg = parseRepGroup(rest);
       if (rg) {
         namedSet.repGroups.push(rg);
+
+        // ponytail (autoresearch iter 1, 2026-07-15): detect multiple
+        // rep groups on one line. The current parser only emits one rg
+        // per line via parseRepGroup(rest). Real coach input often packs
+        // multiple sets on one line, e.g.
+        //   "400 kick for body/head position 100 free 100 back"
+        //   "3 x 300 free @ 4.30 as 1.fists/swim, 2. catch up/swim 3. swim"
+        // Strategy: re-scan the line text for "<N> m" distance
+        // occurrences beyond the first. For each, build a synthetic
+        // sub-line with that one set and parse it. Inherit interval
+        // and intensity from the first rg when not specified.
+        // Only split on `<N> m? <STROKE_WORD>` patterns. This avoids
+        // matching pattern numbers like "1." in "as 1.fists/swim, 2. catch up/swim".
+        // ponytail (autoresearch iter 2, 2026-07-15): bugfix — the previous
+        // iteration used a regex literal with template concatenation
+        // (`'...source...'/gi`) which JS parses as a literal regex
+        // containing the STRING `(?=' + STROKE_RE.source + ')` instead
+        // of interpolating. Use new RegExp() to build dynamically.
+        const STROKE_RE = /(?:free|back|breast|fly|im|kick|pull|choice|form)/i;
+        const allSetMatches = [...line.text.matchAll(new RegExp("\\b(\\d+)\\s*m?\\s+(?=" + STROKE_RE.source + ")", "gi"))];
+        if (allSetMatches.length > 1) {
+          for (let mi = 1; mi < allSetMatches.length; mi++) {
+            const m = allSetMatches[mi];
+            const subRep = parseRepGroup(line.text.slice(m.index!));
+            if (subRep) {
+              if (!subRep.interval) subRep.interval = rg.interval;
+              if (!subRep.intensity) subRep.intensity = rg.intensity;
+              namedSet.repGroups.push(subRep);
+            }
+          }
+        }
       }
 
       const plusMatch = rest.match(/^(.+?)\s*\+\s*(.+)$/);
