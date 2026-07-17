@@ -651,7 +651,13 @@ function parseRepGroup(lineText: string): RepGroup | null {
     );
     t = t.replace(/[~]?\d+\s*[-–]\s*\d+\s*%/gi, "");
     t = t.replace(/[~]?\d+\s*%/gi, "");
-    t = t.replace(/[,+]/g, " ");
+    // ponytail (autoresearch iter 5, 2026-07-17): treat '/' as a
+    // token separator so 'body/head' becomes 'body' and 'head' rather
+    // than 'body/' and 'head'. Same rationale as the existing comma/plus
+    // split. Also treat '–' (en-dash) and '|' as separators since
+    // coaches write things like '50 – 100' and 'kick | pull' to mean
+    // alternative.
+    t = t.replace(/[,+\/\-|–]/g, " ");
     t = t.replace(/\([^)]*\)/g, "");
     const words = t
       .split(/\s+/)
@@ -854,10 +860,52 @@ export function parseWorkoutV2(input: string): Workout {
         }
       }
 
-      const { label, rest } = extractLabel(line.text);
+      let { label, rest } = extractLabel(line.text);
+
+      // ponytail (autoresearch iter 6, 2026-07-17): resolve
+      // "same as above" / "do previous" / "repeat above" / "as above"
+      // cross-references. When a set line ends with one of these
+      // suffixes, strip the suffix and copy reps/distance/interval/
+      // stroke/pattern from the previous rep-group. Only fires when
+      // the rest still parses as a set after stripping — a bare
+      // "same as above" line with no leading set falls through to
+      // the normal unparseable-line path.
+      let sameAsAbovePrev: RepGroup | null = null;
+      const saaMatch = rest.match(
+        /\s*(same as above|do previous|repeat above|as above)\s*$/i,
+      );
+      if (saaMatch) {
+        const stripped = rest.replace(saaMatch[0], "").trim();
+        const strippedRd = parseRepDist(stripped);
+        if (strippedRd.reps !== null || strippedRd.distance !== null) {
+          for (let si = namedSets.length - 1; si >= 0; si--) {
+            const ns = namedSets[si];
+            if (ns.repGroups.length > 0) {
+              sameAsAbovePrev = ns.repGroups[ns.repGroups.length - 1];
+              break;
+            }
+          }
+          if (sameAsAbovePrev) rest = stripped;
+        }
+      }
 
       if (!rest) {
-        if (label.length > 0 && label.trim().length > 0) {
+        // ponytail (autoresearch iter 6, 2026-07-17): only promote
+        // a line to pendingLabel when it actually contains a set
+        // pattern. A pure free-text note like
+        //   "Float high Body position first, feet on lane rope and
+        //    hands on board or noodle or lane rope- breath control-
+        //    arms straight"
+        // must NOT become the label of the next set. The isSetLine
+        // guard also covers the wrap-in-parens case
+        //   "Some label (3 x 100 free)"
+        // where the original logic correctly retained the parens
+        // as a label.
+        if (
+          label.length > 0 &&
+          label.trim().length > 0 &&
+          isSetLine(line.text)
+        ) {
           pendingLabel = label;
         }
         i++;
@@ -884,6 +932,25 @@ export function parseWorkoutV2(input: string): Workout {
 
       const rg = parseRepGroup(rest);
       if (rg) {
+        // ponytail (autoresearch iter 6, 2026-07-17): when a
+        // "same as above" suffix was stripped, fill in any missing
+        // fields (reps/distance/interval/stroke/pattern) from the
+        // previous rep-group. Don't copy details/gear/intensity/
+        // descend — those are set-specific and stay on the new rg.
+        if (sameAsAbovePrev) {
+          if (rg.reps == null) rg.reps = sameAsAbovePrev.reps;
+          if (rg.distance == null) rg.distance = sameAsAbovePrev.distance;
+          if (rg.interval == null) rg.interval = sameAsAbovePrev.interval;
+          if (rg.stroke == null) rg.stroke = sameAsAbovePrev.stroke;
+          if (
+            (!rg.pattern || rg.pattern.length === 0) &&
+            sameAsAbovePrev.pattern &&
+            sameAsAbovePrev.pattern.length > 0
+          ) {
+            rg.pattern = sameAsAbovePrev.pattern.map((p) => ({ ...p }));
+            rg.patternType = sameAsAbovePrev.patternType;
+          }
+        }
         namedSet.repGroups.push(rg);
 
         // ponytail (autoresearch iter 1, 2026-07-15): detect multiple
