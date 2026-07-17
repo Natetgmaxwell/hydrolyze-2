@@ -644,7 +644,13 @@ function parseRepGroup(lineText: string): RepGroup | null {
     );
     t = t.replace(/[~]?\d+\s*[-–]\s*\d+\s*%/gi, "");
     t = t.replace(/[~]?\d+\s*%/gi, "");
-    t = t.replace(/[,+]/g, " ");
+    // ponytail (autoresearch iter 5, 2026-07-17): treat '/' as a
+    // token separator so 'body/head' becomes 'body' and 'head' rather
+    // than 'body/' and 'head'. Same rationale as the existing comma/plus
+    // split. Also treat '–' (en-dash) and '|' as separators since
+    // coaches write things like '50 – 100' and 'kick | pull' to mean
+    // alternative.
+    t = t.replace(/[,+\/\-|–]/g, " ");
     t = t.replace(/\([^)]*\)/g, "");
     const words = t
       .split(/\s+/)
