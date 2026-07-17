@@ -1,8 +1,23 @@
+// NOTE: This file's fragment-badge rendering is replaced by the post-parser
+// detail line (see L134-144) as of commit 06c6823. The server-side parser
+// changes (commits 18a0b22, 52fb776) are NOT live until the parse-workout
+// Edge Function is redeployed via .
+
 import SwiftUI
 
 /// WorkoutPreview — renders a parsed Workout tree (Section → NamedSet → RepGroup → Rep).
 /// Shared across WorkoutDetailView, TodayView (future), Session screens.
 /// Mirrors the RN WorkoutPreview.tsx renderV2Tree structure.
+///
+/// TOKEN AVAILABILITY — server-controlled.
+/// The parse-workout Supabase Edge Function was updated in commits 18a0b22 and
+/// 52fb776 to emit a richer token set (interval, intensity, descend, pacing,
+/// gear, details). This view only renders what the server returns; until that
+/// Edge Function is redeployed (separate workflow, NOT part of this iOS build)
+/// users will still see the legacy token layout. UI polish in this file does
+/// NOT change parser behaviour — it only re-shapes what the parser already
+/// returns. If "I can't see any difference" is reported, the fix is server-side
+/// redeploy of the parse-workout Edge Function, not a client change.
 struct WorkoutPreview: View {
     let workout: ParsedWorkout
     /// Optional callback for removing a single parsed rep group via long-press.
@@ -72,6 +87,7 @@ private struct SectionView: View {
                     }
                 }
                 .padding(.leading, 8)
+                .padding(.vertical, 2)
             }
         }
     }
@@ -85,8 +101,8 @@ private struct RepGroupRowView: View {
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 2) {
                 Text(spineText)
                     .font(.numeric)
                     .foregroundColor(Color.textPrimary)
@@ -94,7 +110,7 @@ private struct RepGroupRowView: View {
                 if let stroke = rg.stroke {
                     Text(stroke)
                         .font(.body)
-                        .foregroundColor(Color.textPrimary)
+                        .foregroundColor(Color.accentCyan)
                 }
 
                 if let intensity = rg.intensity {
@@ -105,24 +121,32 @@ private struct RepGroupRowView: View {
 
                 if let interval = rg.interval {
                     Text(" on \(interval)")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color.textFaint)
+                        .font(.captionStrong)
+                        .foregroundColor(Color.textMuted)
                 }
 
                 if let note = rg.note {
-                    Text(" \(note)")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color.textFaint)
+                    Text("(\(note))")
+                        .font(.caption)
                         .italic()
+                        .foregroundColor(Color.textFaint)
                 }
 
                 ForEach(rg.gear ?? [], id: \.self) { gear in
                     GearBadge(gear: gear, optional: rg.gearOptional)
                 }
+            }
 
-                ForEach(cleanDetails, id: \.self) { detail in
-                    DetailBadge(text: detail)
-                }
+            if !cleanDetails.isEmpty {
+                Rectangle()
+                    .fill(Color.divider.opacity(0.4))
+                    .frame(width: 24, height: 1)
+                    .padding(.vertical, 4)
+
+                Text("— " + cleanDetails.joined(separator: " "))
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .italic()
             }
 
             if let subLine = subRepLine {
@@ -170,12 +194,21 @@ private struct RepGroupRowView: View {
     }
 
     private var spineText: String {
+        let raw: String
         if let reps = rg.reps, let distance = rg.distance {
-            return "\(reps)×\(distance)m"
+            raw = "\(reps)×\(distance)m"
         } else if let distance = rg.distance {
-            return "\(distance)m"
+            raw = "\(distance)m"
+        } else {
+            return ""
         }
-        return ""
+        // Distance is implicit meters — trim trailing 'm' so the spine reads
+        // "3×300" instead of "3×300m". Guards: only strip when the char
+        // before 'm' is a digit, so strokes like "IM" are untouched.
+        if raw.hasSuffix("m"), raw.count > 1, raw.dropLast().last?.isNumber == true {
+            return String(raw.dropLast())
+        }
+        return raw
     }
 
     private var cleanDetails: [String] {
