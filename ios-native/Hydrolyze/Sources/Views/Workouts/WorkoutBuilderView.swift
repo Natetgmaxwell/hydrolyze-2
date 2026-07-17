@@ -67,13 +67,11 @@ struct WorkoutBuilderView: View {
     @ViewBuilder
     private var scrollableContent: some View {
         if horizontalSizeClass == .regular {
-            GeometryReader { proxy in
-                HStack(spacing: 16) {
-                    inputColumn
-                        .frame(width: max(280, proxy.size.width * 0.42))
-                    previewColumn
-                        .frame(width: max(280, proxy.size.width * 0.58))
-                }
+            HStack(spacing: 16) {
+                inputColumn
+                    .frame(maxWidth: .infinity)
+                previewColumn
+                    .frame(maxWidth: .infinity)
             }
             .padding(16)
         } else {
