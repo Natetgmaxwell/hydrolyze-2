@@ -370,6 +370,18 @@ final class WorkoutBuilderViewModel: ObservableObject {
     private let workoutService = WorkoutService()
     private var debounceTask: Task<Void, Never>?
 
+    private struct CachedParse {
+        let trimmedText: String
+        let workout: ParsedWorkout
+    }
+    private var cache: [String: CachedParse] = [:]  // key: hash of trimmedText
+    private var lastSentText: String = ""
+    private let cacheLimit = 50
+
+    private func cacheKey(for text: String) -> String {
+        String(text.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) })
+    }
+
     func debouncedParse(_ text: String) {
         debounceTask?.cancel()
         guard !text.isEmpty else {
@@ -379,6 +391,17 @@ final class WorkoutBuilderViewModel: ObservableObject {
             isPendingParse = false
             return
         }
+
+        let key = cacheKey(for: text)
+        if let cached = cache[key] {
+            parsedWorkout = cached.workout
+            return
+        }
+
+        if lastSentText == text {
+            return
+        }
+
         let debounceNs: UInt64
         switch text.count {
         case ..<50:  debounceNs = 150_000_000
@@ -402,6 +425,13 @@ final class WorkoutBuilderViewModel: ObservableObject {
         do {
             parsedWorkout = try await workoutService.parseWorkout(text: text)
             parseSuccess = true
+            let key = cacheKey(for: text)
+            cache[key] = CachedParse(trimmedText: text, workout: parsedWorkout!)
+            lastSentText = text
+            if cache.count > cacheLimit {
+                let oldestKey = cache.keys.first!
+                cache.removeValue(forKey: oldestKey)
+            }
         } catch {
             parseError = "Couldn't parse — check your formatting"
             parseSuccess = false
