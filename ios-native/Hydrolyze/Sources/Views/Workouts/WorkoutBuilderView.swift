@@ -265,6 +265,19 @@ struct WorkoutBuilderView: View {
                 Text("⚠ \(error)")
                     .font(.caption)
                     .foregroundColor(Color.accentAmber)
+            } else if viewModel.isPendingParse && !viewModel.isLoading {
+                // Tiny pulse to acknowledge the keystroke landed.
+                Text("Parsing...")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .phaseAnimator(
+                        reduceMotion ? [1.0] : [1.0, 0.7, 1.0],
+                        trigger: viewModel.isPendingParse
+                    ) { content, alpha in
+                        content.opacity(alpha)
+                    } animation: { _ in
+                        .easeInOut(duration: 0.8)
+                    }
             } else if viewModel.isLoading && viewModel.parsedWorkout != nil {
                 // Mid-debounce: parser is working, but the previous
                 // successful parse is still on screen. Show a quiet
@@ -347,6 +360,7 @@ final class WorkoutBuilderViewModel: ObservableObject {
     @Published var parseSuccess: Bool = false
     @Published var savedWorkoutId: String?
     @Published var isFocused: Bool = false
+    @Published var isPendingParse: Bool = false
 
     var workoutId: String?
     var canSave: Bool { parsedWorkout?.sections.isEmpty == false }
@@ -362,11 +376,22 @@ final class WorkoutBuilderViewModel: ObservableObject {
             parsedWorkout = nil
             parseError = nil
             parseSuccess = false
+            isPendingParse = false
             return
         }
+        let debounceNs: UInt64
+        switch text.count {
+        case ..<50:  debounceNs = 150_000_000
+        case 50..<200: debounceNs = 300_000_000
+        default: debounceNs = 500_000_000
+        }
+        isPendingParse = true
         debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await Task.sleep(nanoseconds: 50_000_000)
             guard !Task.isCancelled else { return }
+            try? await Task.sleep(nanoseconds: debounceNs - 50_000_000)
+            guard !Task.isCancelled else { return }
+            isPendingParse = false
             await parse(text)
         }
     }
@@ -381,6 +406,7 @@ final class WorkoutBuilderViewModel: ObservableObject {
             parseError = "Couldn't parse — check your formatting"
             parseSuccess = false
         }
+        isPendingParse = false
         isLoading = false
     }
 
