@@ -54,6 +54,14 @@ struct WorkoutBuilderView: View {
             )
         }
         .task {
+            // Phase 2.7 performance: warm up the parse-workout Edge Function on
+            // first appearance. The function has a ~574ms cold-start on first call
+            // after idle; warming it here means the coach's first keystroke is
+            // served from the warm path. Empty text is a no-op on the server side
+            // but the round-trip still counts as warmup.
+            Task.detached(priority: .background) {
+                try? await viewModel.warmupParseWorkout()
+            }
             if let id = workoutId {
                 await viewModel.loadWorkout(id: id)
             }
@@ -374,6 +382,14 @@ final class WorkoutBuilderViewModel: ObservableObject {
             parseSuccess = false
         }
         isLoading = false
+    }
+
+    func warmupParseWorkout() async {
+        do {
+            _ = try await workoutService.parseWorkout(text: "")
+        } catch {
+            // ignore — this is a warmup, errors don't matter
+        }
     }
 
     /// Remove a single parsed rep group from the local parsedWorkout tree.
