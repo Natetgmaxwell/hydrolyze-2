@@ -23,6 +23,7 @@ struct ActiveTimingSession: Identifiable, Hashable {
 struct TodayView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel = TodayViewModel()
     @State private var animateIn: Bool = false
     @State private var showSessionStart = false
@@ -35,6 +36,38 @@ struct TodayView: View {
     }
 
     var body: some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                iPadLayout
+            } else {
+                phoneLayout
+            }
+        }
+        .fullScreenCover(isPresented: $showSessionStart) {
+            SessionStartView(
+                sessionId: UUID().uuidString,
+                workoutSets: viewModel.todayWorkoutSets,
+                onComplete: { sessionId, workoutSetId in
+                    activeSession = ActiveTimingSession(
+                        id: sessionId,
+                        workoutSetId: workoutSetId
+                    )
+                }
+            )
+        }
+        .fullScreenCover(item: $activeSession) { session in
+            TimingView(sessionId: session.id, workoutSetId: session.workoutSetId)
+        }
+        .onAppear { animateIn = true }
+        .task {
+            await reloadAll(coachId: authManager.coachId)
+        }
+    }
+
+    // MARK: - phone layout (existing compact canvas, sidebar in NavigationSplitView
+    // is hidden on iPhone so we wrap our own NavigationStack + top bar title).
+
+    private var phoneLayout: some View {
         NavigationStack {
             ZStack {
                 Color.bgBase.ignoresSafeArea()
@@ -98,26 +131,122 @@ struct TodayView: View {
                     }
                 }
             }
-            .fullScreenCover(isPresented: $showSessionStart) {
-                SessionStartView(
-                    sessionId: UUID().uuidString,
-                    workoutSets: viewModel.todayWorkoutSets,
-                    onComplete: { sessionId, workoutSetId in
-                        activeSession = ActiveTimingSession(
-                            id: sessionId,
-                            workoutSetId: workoutSetId
-                        )
+        }
+    }
+
+    // MARK: - iPad layout (detail column of NavigationSplitView).
+    // The split view already labels the section in the sidebar, so we
+    // drop the inner NavigationStack/title and stretch to the full
+    // detail canvas with a two-column body: primary content on the
+    // left, quick-actions rail on the right.
+
+    private var iPadLayout: some View {
+        ScrollView {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 24) {
+                    dateSection
+                    if let workout = viewModel.todayWorkout {
+                        VStack(spacing: 12) {
+                            WorkoutCard(
+                                workout: workout,
+                                setCount: viewModel.setCount,
+                                swimmerCount: viewModel.swimmerCount,
+                                onStartSession: { showSessionStart = true }
+                            )
+                            AttendanceBadge(
+                                attendingCount: attendingCount,
+                                totalCount: viewModel.swimmerCount
+                            )
+                            .onTapGesture {
+                                Haptics.selection()
+                                showAttendancePopover = true
+                            }
+                            .popover(isPresented: $showAttendancePopover) {
+                                AttendancePopoverContent(
+                                    entries: attendanceEntries,
+                                    onSetIntent: { swimmerId, intent in
+                                        await setIntent(
+                                            swimmerId: swimmerId,
+                                            intent: intent
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    } else if !viewModel.isLoading {
+                        EmptyStateView()
                     }
-                )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("QUICK ACTIONS")
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textFaint)
+                    VStack(alignment: .leading, spacing: 8) {
+                        if viewModel.todayWorkout != nil {
+                            quickActionRow(
+                                label: "Start Session",
+                                icon: "play.fill",
+                                color: Color.accentCyan
+                            ) {
+                                showSessionStart = true
+                            }
+                        } else {
+                            quickActionRow(
+                                label: "Schedule Workout",
+                                icon: "calendar.badge.plus",
+                                color: Color.accentCyan
+                            ) {
+                                // TODO: present SetScheduleView (WorkoutsListView) — stub
+                            }
+                        }
+                        quickActionRow(
+                            label: "View Swimmers",
+                            icon: "person.2.fill",
+                            color: Color.textMuted
+                        ) {
+                            // TODO: navigate to SwimmersListView — stub
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.bgRaised)
+                    .cornerRadius(12)
+                }
+                .frame(width: 320)
             }
-            .fullScreenCover(item: $activeSession) { session in
-                TimingView(sessionId: session.id, workoutSetId: session.workoutSetId)
+            .padding(24)
+        }
+        .redacted(reason: viewModel.isLoading && viewModel.todayWorkout == nil ? .placeholder : [])
+        .refreshable { await reloadAll(coachId: authManager.coachId) }
+        .tint(Color.accentCyan)
+    }
+
+    @ViewBuilder
+    private func quickActionRow(
+        label: String,
+        icon: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .frame(width: 24)
+                Text(label)
+                    .font(.body)
+                    .foregroundColor(Color.textPrimary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundColor(Color.textFaint)
+                    .font(.caption)
             }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
         }
-        .onAppear { animateIn = true }
-        .task {
-            await reloadAll(coachId: authManager.coachId)
-        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - derived state
