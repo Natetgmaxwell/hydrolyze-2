@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// PHASE 2.X: CoachTab — destinations for the coach surface.
 /// Identity type for the iPad sidebar's selection binding and the
@@ -46,6 +47,7 @@ struct ContentView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var coachTabSelection: CoachTab? = .today
+    @State private var hasRequestedOrientation = false
 
     var body: some View {
         Group {
@@ -66,6 +68,20 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgBase)
+        .onAppear {
+            guard !hasRequestedOrientation,
+                  UIDevice.current.userInterfaceIdiom == .pad,
+                  horizontalSizeClass == .regular,
+                  let windowScene = UIApplication.shared.connectedScenes
+                      .compactMap({ $0 as? UIWindowScene })
+                      .first(where: { $0.activationState == .foregroundActive })
+            else { return }
+
+            hasRequestedOrientation = true
+            windowScene.requestGeometryUpdate(
+                .iOS(interfaceOrientations: .landscape)
+            )
+        }
     }
 
     private var loadingView: some View {

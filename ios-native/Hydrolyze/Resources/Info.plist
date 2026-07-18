@@ -37,14 +37,20 @@
         <string>armv7</string>
     </array>
     <key>UIRequiresFullScreen</key>
-    <!-- The stopwatch must remain full-screen and portrait-locked during a
-         timed set — the coach's eyes stay on the pool, not the device. This
+    <!-- The stopwatch remains full-screen and is portrait-locked by
+         TimingView; other iPad views support portrait and landscape. This
          also silences the Xcode 'All interface orientations must be supported
          unless the app requires full screen' launch-screen warning. -->
     <true/>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
     <key>UIUserInterfaceStyle</key>
     <string>Dark</string>

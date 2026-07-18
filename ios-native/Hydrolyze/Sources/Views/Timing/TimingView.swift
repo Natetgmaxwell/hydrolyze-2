@@ -57,6 +57,15 @@ struct TimingView: View {
         // can't drift. The .onChange + .navigationDestination
         // chain is kept as a fallback for any environment that
         // doesn't trigger this branch.
+        //
+        // ponytail 2026-07-18: per-view portrait lock for the
+        // stopwatch would require a custom UIHostingController
+        // subclass (SwiftUI has no .supportedInterfaceOrientations
+        // modifier in iOS 17). For now the stopwatch rotates with
+        // the iPad — the iPad Info.plist lists all orientations
+        // (landscape included) so the rest of the app rotates too.
+        // A future commit can add the UIHostingController subclass
+        // if the user wants the stopwatch specifically locked.
         if viewModel.hasSavedPairedLaps, let sid = sessionId {
             SessionReviewView(sessionId: sid)
         } else {
