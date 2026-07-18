@@ -135,6 +135,17 @@ final class WorkoutService {
         return parsedWorkout
     }
 
+    /// Synchronous on-device parse path. Delegates to `WorkoutParser`
+    /// (an MVP port of `scripts/parser-bench/engine.ts`). Use this for
+    /// the typical coach input that fits the common case — the result
+    /// is a single section, single named set bundling every extracted
+    /// RepGroup. For inputs that need FBBF rotation, N.X notation,
+    /// same-as-above references, notes-as-labels, or odd/even pairing,
+    /// fall back to the async `parseWorkout(text:)` server path.
+    func parseWorkoutSync(_ text: String) -> ParsedWorkout {
+        return WorkoutParser.parse(text)
+    }
+
     /// Create a single set on a workout.
     func createWorkoutSet(workoutId: String, setData: [String: String]) async throws -> WorkoutSet {
         var combined: [String: String] = ["workout_id": workoutId]

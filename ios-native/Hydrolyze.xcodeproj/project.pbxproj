@@ -37,6 +37,7 @@
 		497C3DC1F2BAF8402869E77C /* SessionStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB7C1706AD3C037674651AD /* SessionStartView.swift */; };
 		4E4C788802BF1959ABFC99A2 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = B785FD52B8AAC2796EF6C35B /* Color+Hex.swift */; };
 		52097E02FF93302A145F9E4F /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCC2E5E797656F432A0858C /* AuthManager.swift */; };
+		54B53CC34EDC25C4E355C112 /* WorkoutParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */; };
 		59078B16E7256A044D2AC09C /* Bundle+AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4355EC298F9F720ABFE4603A /* Bundle+AppInfo.swift */; };
 		64833600ED0701686C6F395D /* SwimmerSheetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */; };
 		64D0C23101DC7F509AF5840D /* SwimmerDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */; };
@@ -113,6 +114,7 @@
 		065431091672032E31212808 /* TimingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimingViewModel.swift; sourceTree = "<group>"; };
 		066524AA52E1B4A8C140F20D /* Enums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Enums.swift; sourceTree = "<group>"; };
 		07BF608CAF3B3D0FCA857BEC /* TimingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimingView.swift; sourceTree = "<group>"; };
+		09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutParser.swift; sourceTree = "<group>"; };
 		0D00A58874D880B534E5AE62 /* ISO8601DateParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ISO8601DateParser.swift; sourceTree = "<group>"; };
 		0FCE58F424FCFC70ABC5440C /* TickMarkCelebrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickMarkCelebrationView.swift; sourceTree = "<group>"; };
 		1077B3502F7320E20680EDEB /* SwimmersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmersListView.swift; sourceTree = "<group>"; };
@@ -381,6 +383,7 @@
 				4511E979EA8A02DFAA772CE6 /* TimingService.swift */,
 				1FFEFCEEA8D2A083A13A7302 /* VolumeButtonService.swift */,
 				5CDEE0BE641DA59BB7648129 /* WaveAllocator.swift */,
+				09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */,
 				CB94379C0848BBB6494DB42D /* WorkoutService.swift */,
 			);
 			path = Services;
@@ -729,6 +732,7 @@
 				B4373B99275F13CC5A37D24D /* WorkoutBuilderView.swift in Sources */,
 				85D16209535C8B195B66E230 /* WorkoutCard.swift in Sources */,
 				49001D80567C85B979548EA9 /* WorkoutDetailView.swift in Sources */,
+				54B53CC34EDC25C4E355C112 /* WorkoutParser.swift in Sources */,
 				12D08494D187B8C9EC30FDF3 /* WorkoutPreview.swift in Sources */,
 				DB651C1FF1EDDB8D12D145B1 /* WorkoutRow.swift in Sources */,
 				9F68BCD7BEFAA7EBA37340D4 /* WorkoutService.swift in Sources */,
