@@ -3,7 +3,17 @@ import Supabase
 
 /// WorkoutService — query layer for workouts, workout_sets, recorded_times.
 final class WorkoutService {
+    private struct CachedParse {
+        let workout: ParsedWorkout
+    }
+
     private let supabase = SupabaseService.shared.client
+    private var parseCache: [String: CachedParse] = [:]
+    private let parseCacheLimit = 50
+
+    private func parseCacheKey(for text: String) -> String {
+        String(text.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) })
+    }
 
     /// Fetch today's scheduled workout (nearest future scheduled, or null if none).
     func fetchTodayWorkout(coachId: String) async throws -> Workout? {
@@ -101,6 +111,11 @@ final class WorkoutService {
 
     /// Call the parse-workout Edge Function to parse workout text.
     func parseWorkout(text: String) async throws -> ParsedWorkout {
+        let cacheKey = parseCacheKey(for: text)
+        if let cached = parseCache[cacheKey] {
+            return cached.workout
+        }
+
         struct ParseRequest: Encodable { let workoutText: String }
         let body = try JSONEncoder().encode(ParseRequest(workoutText: text))
         var request = URLRequest(url: URL(string: "https://flidjtldfvrrntzwtnsq.supabase.co/functions/v1/parse-workout")!)
@@ -112,7 +127,12 @@ final class WorkoutService {
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw NSError(domain: "ParseWorkout", code: (response as? HTTPURLResponse)?.statusCode ?? 500)
         }
-        return try JSONDecoder().decode(ParsedWorkout.self, from: data)
+        let parsedWorkout = try JSONDecoder().decode(ParsedWorkout.self, from: data)
+        parseCache[cacheKey] = CachedParse(workout: parsedWorkout)
+        if parseCache.count > parseCacheLimit, let oldestKey = parseCache.keys.first {
+            parseCache.removeValue(forKey: oldestKey)
+        }
+        return parsedWorkout
     }
 
     /// Create a single set on a workout.
