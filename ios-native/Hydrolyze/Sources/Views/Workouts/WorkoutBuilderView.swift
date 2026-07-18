@@ -420,24 +420,43 @@ final class WorkoutBuilderViewModel: ObservableObject {
     }
 
     func parse(_ text: String) async {
-        isLoading = true
-        parseError = nil
+        // 1. On-device parse first (1-10ms).
+        let syncResult = workoutService.parseWorkoutSync(text)
+        let syncCount = syncResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
+        await MainActor.run {
+            parsedWorkout = syncResult
+            parseError = nil
+            isLoading = true  // keep showing the parsing indicator while we reconcile
+        }
+
+        // 2. Server reconciliation in the background (~200ms warm).
         do {
-            parsedWorkout = try await workoutService.parseWorkout(text: text)
-            parseSuccess = true
+            let serverResult = try await workoutService.parseWorkout(text: text)
+            let serverCount = serverResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
+            // Server is canonical for rep-group count.
+            if serverCount != syncCount {
+                await MainActor.run {
+                    parsedWorkout = serverResult
+                }
+            }
             let key = cacheKey(for: text)
-            cache[key] = CachedParse(trimmedText: text, workout: parsedWorkout!)
+            cache[key] = CachedParse(trimmedText: text, workout: serverResult)
             lastSentText = text
-            if cache.count > cacheLimit {
-                let oldestKey = cache.keys.first!
+            if cache.count > cacheLimit, let oldestKey = cache.keys.first {
                 cache.removeValue(forKey: oldestKey)
             }
+            await MainActor.run {
+                parseSuccess = true
+                isPendingParse = false
+                isLoading = false
+            }
         } catch {
-            parseError = "Couldn't parse — check your formatting"
-            parseSuccess = false
+            await MainActor.run {
+                // Server failed; keep the sync result, clear isLoading.
+                isPendingParse = false
+                isLoading = false
+            }
         }
-        isPendingParse = false
-        isLoading = false
     }
 
     func warmupParseWorkout() async {
