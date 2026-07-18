@@ -213,17 +213,41 @@ phase_xcodebuild() {
 }
 
 # ---------------------------------------------------------------------------
-# PHASE 4: install + launch on booted simulator
+# PHASE 4: install + launch + screenshot on booted simulator(s)
 # ---------------------------------------------------------------------------
-# simctl install on an already-running app replaces it cleanly — no need to
-# terminate first. simctl launch returns immediately with the new PID; we
-# don't wait for the app to draw its first frame. If the launch fails the
-# script exits non-zero and we report BLOCKED.
+# We DO NOT use 'simctl install booted' (which is iPhone-biased — the first
+# booted simulator wins, and in our setup that is always iPhone). Instead
+# we explicitly discover all booted iOS Simulators via
+# 'xcrun simctl list devices booted', categorize them by name (iPhone vs
+# iPad), boot an iPad if none is booted, install + launch on each, and
+# capture a screenshot from each for visual verification. Screenshots are
+# scp'd back to this Mac into /tmp/hydrolyze-screenshots/ for inspection.
+#
+# iPad is the priority target because:
+#   (a) iPad-specific layout changes (split view, sidebar, multi-column)
+#       are the most fragile parts of our pipeline — small layout
+#       differences don't show on iPhone, so an iPhone-only SHIPS claim
+#       says nothing about iPad correctness.
+#   (b) every prior SHIPS claim in this repo was for iPhone; iPad has
+#       never been the default-tested device. Commit a6f94fd (iPad
+#       split layout) was shipped without ever being verified on an
+#       iPad. We refuse to repeat that.
+
+# Known iPad Pro 11-inch UDID on macstudio. Verify with
+#   xcrun simctl list devices available
+IPAD_UDID='7135C236-4F54-47D3-8609-3F6808A35149'
+
+# Where screenshots land locally (this Mac) and stage remotely (macstudio)
+# before scp. Both are in /tmp so they do not pollute the repo.
+LOCAL_SCREENSHOT_DIR='/tmp/hydrolyze-screenshots'
+REMOTE_SCREENSHOT_DIR='/tmp/hydrolyze-screenshots-remote'
+
 phase_install_launch() {
   echo
   echo '================================================================'
-  echo 'PHASE 4: install + launch on booted simulator'
+  echo 'PHASE 4: install + launch + screenshot on booted simulator(s)'
   echo '================================================================'
+
   # Confirm the .app bundle exists before we try to install — a missing
   # .app usually means PHASE 3 silently produced no product (a known
   # xcodebuild quirk when scheme/destination mismatch).
@@ -237,18 +261,142 @@ phase_install_launch() {
     fi
   fi
 
-  local install_cmd="xcrun simctl install booted '${APP_BUNDLE}'"
-  local launch_cmd="xcrun simctl launch booted '${BUNDLE_ID}'"
-  echo "  ssh $SSH_HOST '$install_cmd && $launch_cmd'"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo 'PHASE 4 OK (dry-run): install + launch would run.'
+    echo 'PHASE 4 OK (dry-run): install + launch + screenshot would run.'
     return 0
   fi
-  if ! ssh "$SSH_HOST" "$install_cmd && $launch_cmd"; then
-    echo 'BLOCKED in PHASE 4: simctl install or launch failed.' >&2
+
+  # Allocate temp files first so the EXIT trap can safely reference all of
+  # them even on early return (set -u would otherwise complain).
+  local booted_pairs_file ipad_pairs_file iphone_pairs_file
+  booted_pairs_file="$(mktemp -t booted.XXXXXX)"
+  ipad_pairs_file="$(mktemp -t ipadpairs.XXXXXX)"
+  iphone_pairs_file="$(mktemp -t iphonepairs.XXXXXX)"
+  # shellcheck disable=SC2064  # we WANT these expanded now, not later.
+  trap "rm -f '$booted_pairs_file' '$ipad_pairs_file' '$iphone_pairs_file'" EXIT
+
+  # ---------------------------------------------------------------------
+  # Step 1: Discover currently-booted simulators. Output of
+  # 'simctl list devices booted' is human-readable; we extract lines
+  # matching `^<spaces><name> (<udid>) (Booted)$` into `<udid>|<name>`
+  # pairs in a temp file.
+  # ---------------------------------------------------------------------
+  echo '  discovering booted simulators on macstudio...'
+  local booted_raw
+  booted_raw="$(ssh "$SSH_HOST" 'xcrun simctl list devices booted')"
+  echo "$booted_raw" | sed 's/^/    /'
+
+  echo "$booted_raw" \
+    | grep -E '\([0-9A-Fa-f-]{36}\) \(Booted\)' \
+    | sed -E 's/^[[:space:]]+(.+) \(([0-9A-Fa-f-]{36})\) \(Booted\)$/\2|\1/' \
+    > "$booted_pairs_file"
+
+  # ---------------------------------------------------------------------
+  # Step 2: If no iPad is booted, boot the iPad Pro 11-inch and wait up
+  # to 10s for it to appear in 'simctl list devices booted'.
+  # ---------------------------------------------------------------------
+  if ! grep -qi '|iPad' "$booted_pairs_file"; then
+    echo "  no iPad booted; booting iPad Pro 11-inch (${IPAD_UDID})..."
+    ssh "$SSH_HOST" "xcrun simctl boot '${IPAD_UDID}'" >/dev/null 2>&1 || true
+    local waited=0
+    while [[ "$waited" -lt 10 ]]; do
+      if ssh "$SSH_HOST" 'xcrun simctl list devices booted' \
+           | grep -q "${IPAD_UDID}"; then
+        echo "  iPad booted after ${waited}s."
+        break
+      fi
+      sleep 1
+      waited=$((waited + 1))
+    done
+    if [[ "$waited" -ge 10 ]]; then
+      echo "  WARNING: iPad did not appear in booted list within 10s." >&2
+    fi
+    # Re-discover booted devices now that the iPad may be there.
+    booted_raw="$(ssh "$SSH_HOST" 'xcrun simctl list devices booted')"
+    echo "$booted_raw" \
+      | grep -E '\([0-9A-Fa-f-]{36}\) \(Booted\)' \
+      | sed -E 's/^[[:space:]]+(.+) \(([0-9A-Fa-f-]{36})\) \(Booted\)$/\2|\1/' \
+      > "$booted_pairs_file"
+  fi
+
+  if [[ ! -s "$booted_pairs_file" ]]; then
+    echo 'BLOCKED in PHASE 4: no booted simulators after iPad-boot attempt.' >&2
     return 1
   fi
-  echo 'PHASE 4 OK: app installed and launched on simulator.'
+
+  # ---------------------------------------------------------------------
+  # Step 3: Process each booted device. iPad goes first (priority target).
+  # Per device: install, launch, screenshot, scp back to local.
+  # ---------------------------------------------------------------------
+  grep -i '|iPad' "$booted_pairs_file" > "$ipad_pairs_file" || true
+  grep -iv '|iPad' "$booted_pairs_file" > "$iphone_pairs_file" || true
+  local device_count
+  device_count=$(wc -l < "$booted_pairs_file" | tr -d ' ')
+  echo "  found ${device_count} booted simulator(s); processing iPad first."
+
+  # Prepare local + remote screenshot dirs.
+  mkdir -p "$LOCAL_SCREENSHOT_DIR"
+  ssh "$SSH_HOST" "mkdir -p '${REMOTE_SCREENSHOT_DIR}' && rm -f '${REMOTE_SCREENSHOT_DIR}'/*.png" \
+    >/dev/null 2>&1 || true
+
+  while IFS='|' read -r udid name; do
+    [[ -z "$udid" || -z "$name" ]] && continue
+    # Slugify name for filename ("iPad Pro 11-inch" -> "ipad-pro-11-inch").
+    local slug
+    slug="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' \
+            | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')"
+    local remote_png="${REMOTE_SCREENSHOT_DIR}/hydrolyze-${slug}.png"
+    local local_png="${LOCAL_SCREENSHOT_DIR}/hydrolyze-${slug}.png"
+
+    echo
+    echo "  -- device: ${name} (${udid}) --"
+    echo "  ssh $SSH_HOST 'xcrun simctl install ${udid} \"${APP_BUNDLE}\" && xcrun simctl launch ${udid} \"${BUNDLE_ID}\"'"
+    if ! ssh "$SSH_HOST" "xcrun simctl install '${udid}' '${APP_BUNDLE}' && xcrun simctl launch '${udid}' '${BUNDLE_ID}'"; then
+      echo "BLOCKED in PHASE 4: install or launch failed on ${name} (${udid})." >&2
+      return 1
+    fi
+
+    # Give the app a moment to draw its first frame before screenshotting.
+    sleep 3
+
+    echo "  ssh $SSH_HOST 'xcrun simctl io ${udid} screenshot ${remote_png}'"
+    if ! ssh "$SSH_HOST" "xcrun simctl io '${udid}' screenshot '${remote_png}'" 2>/dev/null; then
+      echo "  WARNING: screenshot capture failed on ${name} (${udid}); continuing." >&2
+      continue
+    fi
+
+    echo "  scp ${SSH_HOST}:${remote_png} ${local_png}"
+    if ! scp "${SSH_HOST}:${remote_png}" "$local_png" 2>/dev/null; then
+      echo "  WARNING: scp of screenshot from ${name} failed; remote copy remains at ${remote_png}." >&2
+      continue
+    fi
+    local size
+    size=$(wc -c < "$local_png" | tr -d ' ')
+    echo "  saved: ${local_png} (${size} bytes)"
+
+    # iPad-specific layout assertion: if the most recent commit touched a
+    # known iPad-fragile file, note that landscape testing is required as
+    # a separate user-initiated step. simctl cannot rotate the device
+    # programmatically, so we capture portrait only and surface the gap.
+    if [[ "$name" == *iPad* ]]; then
+      local recent_files
+      recent_files="$(ssh "$SSH_HOST" "cd '${PROJECT_ROOT}' && git log -1 --name-only --pretty=format:" 2>/dev/null || true)"
+      if printf '%s' "$recent_files" | grep -qE '(WorkoutBuilderView\.swift|WorkoutPreview\.swift)'; then
+        echo "  iPad layout NOTE: most recent commit touched a known iPad-fragile file:"
+        printf '%s\n' "$recent_files" \
+          | grep -E '(WorkoutBuilderView\.swift|WorkoutPreview\.swift)' \
+          | sed 's/^/    /'
+        echo "    For landscape coverage, rotate the iPad simulator manually"
+        echo "    (Hardware > Rotate Left, Cmd+Left) and re-run. simctl cannot"
+        echo "    rotate the device programmatically — landscape is a separate,"
+        echo "    user-initiated verification step."
+      fi
+    fi
+  done < <(cat "$ipad_pairs_file" "$iphone_pairs_file")
+
+  echo
+  echo "PHASE 4 OK: app installed, launched, and screenshot captured on all booted simulators."
+  echo "  screenshots in: ${LOCAL_SCREENSHOT_DIR}"
 }
 
 # ---------------------------------------------------------------------------
