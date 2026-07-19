@@ -123,6 +123,8 @@ const STROKE_PATTERNS: Array<[RegExp, Stroke]> = [
   [/\b(?:i\.?m\.?|individual\s+medley|medley)\b/i, "IM"],
   [/\b(?:form|stroke\s+(?:work|set|drill))\b/i, "Form"],
   [/\b(?:pull)\b/i, "Pull"],
+  [/\b(?:kick|kick\s+drill|flutter\s+kick|flutter|dolphin\s+kick)\b/i, "Kick"],
+  [/\b(?:drill)\b/i, "Drill"],
   [/\b(?:choice|free[\s-]?choice)\b/i, "Choice"],
 ];
 
@@ -973,6 +975,18 @@ export function parseWorkoutV2(input: string): Workout {
         const STROKE_RE = /(?:free|back|breast|fly|im|kick|pull|choice|form)/i;
         const allSetMatches = [...line.text.matchAll(new RegExp("\\b(\\d+)\\s*m?\\s+(?=" + STROKE_RE.source + ")", "gi"))];
         if (allSetMatches.length > 1) {
+          // ponytail (autoresearch iter 7, 2026-07-19): bugfix — the first
+          // rg was parsed from `rest` (the full line text), so its stroke
+          // came from parseStroke() matching the LAST stroke word in the
+          // line. Re-parse the first segment (text BEFORE match[1]) to
+          // recover the correct first-set stroke, then overwrite rg.stroke.
+          // Other rg fields (reps/distance/interval) are correct as-is.
+          const firstStart = allSetMatches[0].index!;
+          const firstEnd = allSetMatches[1].index!;
+          const firstReParse = parseRepGroup(line.text.slice(firstStart, firstEnd));
+          if (firstReParse && firstReParse.stroke) {
+            rg.stroke = firstReParse.stroke;
+          }
           for (let mi = 1; mi < allSetMatches.length; mi++) {
             const m = allSetMatches[mi];
             const subRep = parseRepGroup(line.text.slice(m.index!));
