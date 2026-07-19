@@ -304,6 +304,15 @@ function extractLabel(text: string): { label: string; rest: string } {
   if (setIdx === 0) {
     return { label: "", rest: text };
   }
+  // ponytail (autoresearch iter 4, 2026-07-19): no set pattern
+  // in the line. The previous behavior returned { label: text, rest: "" }
+  // which funneled every plain-text line into the "label-only" branch
+  // (and the free-text note branch never fired). Return the line as
+  // 'rest' with an empty label so the new free-text-note attachment
+  // can pick it up.
+  if (setIdx === -1) {
+    return { label: "", rest: text };
+  }
   return { label: text, rest: "" };
 }
 
@@ -495,11 +504,34 @@ function extractInlineNote(text: string): {
   cleaned: string;
   note: string | null;
 } {
-  const m = text.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
-  if (!m) return { cleaned: text, note: null };
-  const note = m[2].trim();
-  const before = m[1].trim();
-  return { cleaned: before, note };
+  // First check for parenthetical notes like "(focus on form)"
+  const paren = text.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (paren) {
+    return { cleaned: paren[1].trim(), note: paren[2].trim() };
+  }
+  // ponytail (autoresearch iter 3, 2026-07-19): also catch
+  // trailing natural-language notes like "fast for time",
+  // "for time", "as fast as possible", "descend 1-4", "no breath",
+  // "kick drill on board". These come AFTER the set definition
+  // (reps, distance, stroke, interval) and aren't (parenthesized).
+  // Heuristic: a trailing token sequence of 2+ words that doesn't
+  // start with a known stroke word, gear word, or intensity word.
+  //
+  // Examples:
+  //   "4 x 50 free @ 1:00 fast for time"          -> note="fast for time"
+  //   "1 x 400 FBFB fast for time"                -> note="fast for time"
+  //   "8 x 50 free descend 1-4"                   -> note="descend 1-4"
+  //   "4 x 100 free no breath"                    -> note="no breath"
+  //
+  // We split on the FIRST set's tail (after @interval) and look for
+  // any trailing 2+ word sequence.
+  const trailing = text.match(
+    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*[-–]\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke)\s*$/i
+  );
+  if (trailing) {
+    return { cleaned: text.slice(0, trailing.index!).trim(), note: trailing[0].trim() };
+  }
+  return { cleaned: text, note: null };
 }
 
 // ─── Rep pattern resolution ───────────────────────────────────────────────────
@@ -528,6 +560,30 @@ function extractMiniNote(chunk: string): {
   const m = chunk.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
   if (!m) return { cleaned: chunk, note: undefined };
   return { cleaned: m[1].trim(), note: m[2].trim() };
+}
+
+// ponytail (autoresearch iter 4, 2026-07-19): extract a
+// free-text note from a line that has NO rep/distance pattern.
+// Returns the note text or null if the line is empty/header/etc.
+function parseFreeTextNote(text: string): string | null {
+  const trimmed = text.trim();
+  // Skip empty or label-style lines (we don't want to attach them
+  // as notes to a previous set)
+  if (trimmed.length === 0) return null;
+  if (/^[A-Z][A-Z0-9 \-/&]+$/.test(trimmed)) return null; // ALL-CAPS header
+  // Free-text note patterns:
+  //   "fast for time", "for time", "as fast as possible"
+  //   "descend 1-4" (or 1 to 4)
+  //   "no breath" / "no breathing"
+  //   "kick drill on board" / "board kicks"
+  //   "side stroke"
+  //   "build to fast" / "build to sprint"
+  if (
+    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*(?:-|to)\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke|build\s+to\s+(?:fast|sprint|max))\b/i.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return null;
 }
 
 function extractPacing(text: string): {
@@ -916,6 +972,26 @@ export function parseWorkoutV2(input: string): Workout {
 
       const rd = parseRepDist(rest);
       if (rd.reps === null && rd.distance === null) {
+        // ponytail (autoresearch iter 4, 2026-07-19): a bare
+        // "fast for time" / "for time" / "no breath" line (no reps,
+        // no distance) should be attached to the PREVIOUS rep
+        // group as a note. Without this, the "1 x 400 FBFB" set
+        // on one line and "fast for time" on the next lose the
+        // note attribution.
+        const freeTextNote = parseFreeTextNote(line.text);
+        if (freeTextNote) {
+          // Find the last rep group across all namedSets and attach
+          for (let si = namedSets.length - 1; si >= 0; si--) {
+            const ns = namedSets[si];
+            if (ns.repGroups.length > 0) {
+              const lastRg = ns.repGroups[ns.repGroups.length - 1];
+              if (!lastRg.note) {
+                lastRg.note = freeTextNote;
+              }
+              break;
+            }
+          }
+        }
         pendingLabel = null;
         i++;
         continue;
