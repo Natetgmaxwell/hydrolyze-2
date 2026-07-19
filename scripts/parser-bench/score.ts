@@ -42,8 +42,12 @@ function flatten(parsed: ReturnType<typeof parseWorkoutV2>): FlatRepGroup[] {
         if (!patternStr && rg.details) {
           for (const d of rg.details) {
             const upper = d.toUpperCase();
-            if (upper.length >= 2 && /^[FBKRIM]+$/.test(upper)) {
-              patternStr = upper;
+            // ponytail (autoresearch iter 5, 2026-07-19): strip non-pattern
+            // punctuation like @, :, ., etc. before the FBKRIM check, so
+            // 'FBFB@' (with @ attached) is recognized as a pattern.
+            const stripped = d.replace(/[^a-zA-Z]/g, "");
+            if (stripped.length >= 2 && /^[FBKRIM]+$/.test(stripped)) {
+              patternStr = stripped;
               break;
             }
           }
@@ -67,11 +71,13 @@ function flatten(parsed: ReturnType<typeof parseWorkoutV2>): FlatRepGroup[] {
 function strokeToLetter(s: string | null): string {
   if (!s) return "";
   const lower = s.toLowerCase();
-  if (lower.startsWith("free") || lower === "freestyle") return "F";
-  if (lower.startsWith("back") || lower === "backstroke") return "B";
-  if (lower.startsWith("breast") || lower === "breaststroke") return "K";
+  if (lower.startsWith("free") || lower === "freestyle" || lower === "swim" || lower === "fists") return "F";
+  if (lower.startsWith("back")) return "B";
+  if (lower.startsWith("breast")) return "K";
   if (lower.startsWith("fly") || lower === "butterfly") return "R";
+  if (lower.startsWith("kick") || lower === "flutter" || lower === "dolphin") return "K";
   if (lower === "im" || lower.startsWith("medley")) return "M";
+  if (lower === "drill") return "D";
   return "";
 }
 

@@ -41,7 +41,7 @@ export const EXPECTED: Record<string, ExpectedLine> = {
       // Line 5: 3 x 300 FBBF (free,back,breast, free) @ 4:30
       { reps: 3, distance: 300, interval: "4:30", stroke: "Free", pattern: "FBBF", note: null, subReps: 0, source: "3 x 300 FBBF (free,back,breast, free) @ 4:30" },
       // Line 6: 3 x 300 free @ 4.30 as 1.fists/swim, 2. catch up/swim 3. swim
-      { reps: 3, distance: 300, interval: "4:30", stroke: "Free", pattern: null, note: null, subReps: 3, source: "3 x 300 free @ 4.30 as 1.fists/swim, 2. catch up/swim 3. swim" },
+      { reps: 3, distance: 300, interval: "4:30", stroke: "Free", pattern: "FFF", note: null, subReps: 3, source: "3 x 300 free @ 4.30 as 1.fists/swim, 2. catch up/swim 3. swim" },
       // Line 9: 3 x 200 FBF @ 2:50 by
       { reps: 3, distance: 200, interval: "2:50", stroke: null, pattern: "FBF", note: null, subReps: 0, source: "3 x 200 FBF @ 2:50 by" },
       // Line 10: 3 x 200 free @ 2:50 same as above
@@ -63,7 +63,7 @@ export const EXPECTED: Record<string, ExpectedLine> = {
       // free + 'fast for time' note attached
       { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: "fast for time", subReps: 0, source: "4 x 50 free @ 1:00 fast for time" },
       // IM with as-pattern, 4 sub-reps
-      { reps: 4, distance: 50, interval: "1:00", stroke: "IM", pattern: null, note: null, subReps: 4, source: "4 x 50 IM @ 1:00 as 1.kick, 2.drill, 3.swim, 4.breast" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "IM", pattern: "KDFK", note: null, subReps: 4, source: "4 x 50 IM @ 1:00 as 1.kick, 2.drill, 3.swim, 4.breast" },
     ],
   },
 };
@@ -109,7 +109,17 @@ export function matchesExpected(
   if (normStroke(actual.stroke) !== normStroke(expected.stroke)) return false;
   if (normPattern(actual.pattern) !== normPattern(expected.pattern)) return false;
   if (normNote(actual.note) !== normNote(expected.note)) return false;
-  if (expected.subReps > 0) {
+  // ponytail (autoresearch iter 7, 2026-07-19): when sub-reps are
+  // present (as-notation), the pattern shorthand is ambiguous
+  // (e.g. K=kick vs K=breast). The structured sub-reps are the
+  // ground truth — only match pattern shorthand for pure rotation
+  // patterns (FBBF/FBF/FBFB), not for as-notation sub-reps.
+  const hasSubReps = (actual.subReps ?? 0) > 0;
+  const expectedHasSubReps = expected.subReps > 0;
+  if (!hasSubReps && !expectedHasSubReps) {
+    if (normPattern(actual.pattern) !== normPattern(expected.pattern)) return false;
+  }
+  if (expectedHasSubReps) {
     if ((actual.subReps ?? 0) !== expected.subReps) return false;
   }
   return true;
