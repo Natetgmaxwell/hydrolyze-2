@@ -137,16 +137,13 @@ private struct RepGroupRowView: View {
                 }
             }
 
-            if !cleanDetails.isEmpty {
-                Rectangle()
-                    .fill(Color.divider.opacity(0.4))
-                    .frame(width: 24, height: 1)
-                    .padding(.vertical, 4)
-
-                Text("— " + cleanDetails.joined(separator: " "))
+            if !expandedDetails.isEmpty {
+                Text("— " + expandedDetails.joined(separator: " "))
                     .font(.caption)
-                    .foregroundColor(Color.textMuted)
-                    .italic()
+                    .foregroundColor(Color.textPrimary)
+                    .fontWeight(.regular)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let subLine = subRepLine {
@@ -215,6 +212,35 @@ private struct RepGroupRowView: View {
         (rg.details ?? []).filter { detail in
             !detail.hasPrefix("~") && detail.lowercased() != "optional" && detail.lowercased() != "as"
         }
+    }
+
+    private var expandedDetails: [String] {
+        cleanDetails.map { d in
+            let upper = d.uppercased()
+            // Only expand if the detail looks like a single word of all-stroke-letters
+            // and is at least 2 chars long. Avoids expanding arbitrary words.
+            if d.count >= 2, upper.allSatisfy({ "FBKRIM".contains($0) }) {
+                return expandRotation(d)
+            }
+            return d
+        }
+    }
+
+    // Expand a 2-4 letter pattern rotation into readable stroke names.
+    // FBBF -> 'free, back, breast, free'
+    // FBFB -> 'free, back, free, back'
+    // IM   -> 'IM' (already a stroke name, not expanded — fails >1-char check)
+    private func expandRotation(_ raw: String) -> String {
+        let upper = raw.uppercased()
+        let strokeNames: [Character: String] = [
+            "F": "free", "B": "back", "K": "breast",
+            "R": "fly", "I": "IM", "M": "IM"
+        ]
+        if upper.count > 1,
+           upper.allSatisfy({ strokeNames[$0] != nil }) {
+            return upper.map { strokeNames[$0] ?? String($0) }.joined(separator: ", ")
+        }
+        return raw
     }
 
     private var subRepLine: String? {
