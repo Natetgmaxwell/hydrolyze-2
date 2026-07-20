@@ -54,32 +54,146 @@ enum WorkoutParser {
     // MARK: - Per-line RepGroup extraction
 
     private static func parseRepGroup(from line: String) -> ParsedRepGroup? {
-        let rd = parseRepDist(line)
+        let inlineNote = extractInlineNote(line)
+        let text = inlineNote.cleaned
+        let rd = parseRepDist(text)
         if rd.reps == nil && rd.distance == nil { return nil }
 
-        let stroke = parseStroke(line)
-        let interval = parseInterval(line)
-        let intensity = parseIntensity(line)
-        let pacing = parsePacing(line)
-        let gear = parseGear(line)
-        let gearOptional = gear != nil && isOptional(line)
+        let preAsText: String
+        if let asRange = text.range(of: #"\bas[\s:]"#, options: .regularExpression) {
+            preAsText = String(text[..<asRange.lowerBound])
+        } else {
+            preAsText = text
+        }
+        let stroke = parseStroke(preAsText)
+        let interval = parseInterval(text)
+        let intensity = parseIntensity(text)
+        let pacing = parsePacing(text)
+        let gear = parseGear(text)
+        let gearOptional = gear != nil && isOptional(text)
+
+        let asRegex = try! NSRegularExpression(pattern: #"\bas[\s:]+(.+)$"#, options: [.caseInsensitive])
+        let textRange = NSRange(text.startIndex..., in: text)
+        let asMatch = asRegex.firstMatch(in: text, options: [], range: textRange)
+        var pattern: [ParsedRep] = []
+        var patternType: String?
+        var parsedIntensity = intensity
+        if let asMatch,
+           let asTextRange = Range(asMatch.range(at: 1), in: text) {
+            pattern = parseSubReps(String(text[asTextRange]))
+            parsedIntensity = parseIntensity(preAsText)
+            if !pattern.isEmpty {
+                patternType = "simple"
+            }
+        }
+
+        let rotationMatch = ROTATION_RE.firstMatch(in: text, options: [], range: textRange)
+        if asMatch == nil, let rotationMatch,
+           let rotationRange = Range(rotationMatch.range, in: text) {
+            let rot = String(text[rotationRange]).uppercased()
+            let strokeMap: [Character: String] = ["F": "Free", "B": "Back", "K": "Breast", "R": "Fly", "I": "IM", "M": "IM"]
+            var subReps: [ParsedRep] = []
+            for ch in rot {
+                if let rotationStroke = strokeMap[ch] {
+                    subReps.append(.simple(ParsedSimpleRep(type: "simple", meters: rd.distance ?? 0, stroke: rotationStroke, note: nil, intensity: nil, pacing: nil)))
+                }
+            }
+            if !subReps.isEmpty {
+                pattern = subReps
+                patternType = "simple"
+            }
+        }
 
         return ParsedRepGroup(
             reps: rd.reps,
             distance: rd.distance,
             stroke: stroke,
             interval: interval,
-            intensity: intensity,
+            intensity: parsedIntensity,
             pacing: pacing,
-            pattern: [],
-            patternType: nil,
+            pattern: pattern,
+            patternType: patternType,
             connectors: nil,
-            note: nil,
+            note: inlineNote.note,
             gear: gear,
             gearOptional: gearOptional,
             descend: nil,
             details: nil
         )
+    }
+
+    private static func extractInlineNote(_ text: String) -> (cleaned: String, note: String?) {
+        let textRange = NSRange(text.startIndex..., in: text)
+        let parentheticalRegex = try! NSRegularExpression(pattern: #"^(.+?)\s*\(([^)]+)\)\s*$"#)
+        if let match = parentheticalRegex.firstMatch(in: text, options: [], range: textRange),
+           let cleanedRange = Range(match.range(at: 1), in: text),
+           let noteRange = Range(match.range(at: 2), in: text) {
+            return (String(text[cleanedRange]).trimmingCharacters(in: .whitespaces), String(text[noteRange]).trimmingCharacters(in: .whitespaces))
+        }
+
+        let trailingRegex = try! NSRegularExpression(pattern: #"\b(?:fast\s+for\s+time|for\s+time|send[\s-]+off|(?:on[\s:]+(\d+:\d+)\s*)?race\s*pace|build\s+to\s+(?:fast|sprint|max)|negative\s+split(?:\s+1st\s+half\s+faster)?|hold[\s-]+best[\s-]+average|strong\s+finish|no\s+breath(?:ing)?)\b[\s.,;:@\d]*(?:\s*@?\s*\d+:\d+(?:\.\d+)?)?\s*$"#, options: [.caseInsensitive])
+        let trailingRange = trailingRegex.rangeOfFirstMatch(in: text, options: [], range: textRange)
+        guard trailingRange.location != NSNotFound else {
+            return (text, nil)
+        }
+
+        let trailingText = (text as NSString).substring(with: trailingRange)
+        var capturedInterval: String?
+        let capturedRange = trailingRange.length > 0 ? trailingRegex.firstMatch(in: text, options: [], range: textRange)?.range(at: 1) : nil
+        if let capturedRange,
+           capturedRange.location != NSNotFound {
+            capturedInterval = (text as NSString).substring(with: capturedRange)
+        }
+
+        let trailingEndRegex = try! NSRegularExpression(pattern: #"\s*@?\s*(\d+:\d+(?:\.\d+)?)\s*$"#)
+        let trailingTextRange = NSRange(trailingText.startIndex..., in: trailingText)
+        var noteText = trailingEndRegex.stringByReplacingMatches(in: trailingText, options: [], range: trailingTextRange, withTemplate: "")
+        let intervalInTrailing: String?
+        if let capturedInterval {
+            noteText = noteText.replacingOccurrences(of: capturedInterval, with: "")
+            noteText = noteText.replacingOccurrences(of: #"^on\s+"#, with: "", options: .regularExpression)
+            intervalInTrailing = capturedInterval
+        } else {
+            noteText = noteText.replacingOccurrences(of: #"^on\s+"#, with: "", options: .regularExpression)
+            if let intervalMatch = trailingEndRegex.firstMatch(in: trailingText, options: [], range: trailingTextRange),
+               let intervalRange = Range(intervalMatch.range(at: 1), in: trailingText) {
+                intervalInTrailing = String(trailingText[intervalRange])
+            } else {
+                intervalInTrailing = nil
+            }
+        }
+
+        noteText = noteText.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        let intervalSuffix = intervalInTrailing.map { " @ \($0)" } ?? ""
+        let prefixRange = NSRange(location: 0, length: trailingRange.location)
+        let prefix = (text as NSString).substring(with: prefixRange).trimmingCharacters(in: .whitespaces)
+        let cleaned = (prefix + intervalSuffix).trimmingCharacters(in: .whitespaces)
+        return (cleaned, noteText.isEmpty ? nil : noteText)
+    }
+
+    private static func parseSubReps(_ text: String) -> [ParsedRep] {
+        let asNotationRegex = try! NSRegularExpression(pattern: #"^(\d+)\.\s*(\S+(?:\s+\S+)?)(?:/(?:swim|s))?"#, options: [.caseInsensitive])
+        let textRange = NSRange(text.startIndex..., in: text)
+        guard let match = asNotationRegex.firstMatch(in: text, options: [], range: textRange),
+              let strokeRange = Range(match.range(at: 2), in: text),
+              let stroke = parseStroke(String(text[strokeRange])) else {
+            return []
+        }
+
+        var subReps: [ParsedRep] = [
+            .simple(ParsedSimpleRep(type: "simple", meters: 0, stroke: stroke, note: nil, intensity: nil, pacing: nil))
+        ]
+        let restLocation = match.range.location + match.range.length
+        let restRange = NSRange(location: restLocation, length: text.utf16.count - restLocation)
+        let moreRegex = try! NSRegularExpression(pattern: #"(\d+)\.\s*(\S+(?:\s+\S+)?)(?:/(?:swim|s))?"#, options: [.caseInsensitive])
+        for moreMatch in moreRegex.matches(in: text, options: [], range: restRange) {
+            guard let strokeRange = Range(moreMatch.range(at: 2), in: text),
+                  let stroke = parseStroke(String(text[strokeRange])) else {
+                continue
+            }
+            subReps.append(.simple(ParsedSimpleRep(type: "simple", meters: 0, stroke: stroke, note: nil, intensity: nil, pacing: nil)))
+        }
+        return subReps
     }
 
     // MARK: - normalize
@@ -123,13 +237,15 @@ enum WorkoutParser {
     // MARK: - parseStroke
 
     private static let strokePatterns: [(String, String)] = [
-        (#"\b(?:freestyle|free|crawl|front\s*crawl)\b"#, "Free"),
+        (#"\b(?:freestyle|free|crawl|front\s*crawl|fists?|catch[\s-]?up|swim)\b"#, "Free"),
         (#"\b(?:backstroke|back)\b"#, "Back"),
         (#"\b(?:breaststroke|breast)\b"#, "Breast"),
         (#"\b(?:butterfly|fly|butter)\b"#, "Fly"),
         (#"\b(?:i\.?m\.?|individual\s+medley|medley)\b"#, "IM"),
         (#"\b(?:form|stroke\s+(?:work|set|drill))\b"#, "Form"),
         (#"\b(?:pull)\b"#, "Pull"),
+        (#"\b(?:kick|kick\s+drill|flutter\s+kick|flutter|dolphin\s+kick)\b"#, "Kick"),
+        (#"\b(?:drill)\b"#, "Drill"),
         (#"\b(?:choice|free[\s-]?choice)\b"#, "Choice"),
     ]
 
@@ -298,6 +414,8 @@ enum WorkoutParser {
     }
 
     // MARK: - Constants
+
+    private static let ROTATION_RE = try! NSRegularExpression(pattern: #"\b[FBKR]{2,}\b"#)
 
     private static let knownDistances: Set<Int> = [
         15, 25, 50, 75, 100, 125, 150, 200, 300, 400, 500, 600, 800, 1000, 1500, 1650,
