@@ -109,13 +109,15 @@ interface Workout {
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 const STROKE_PATTERNS: Array<[RegExp, Stroke]> = [
-  [/\b(?:freestyle|free|crawl|front\s*crawl)\b/i, "Free"],
+  [/\b(?:freestyle|free|crawl|front\s*crawl|fists?|catch[\s-]?up|swim)\b/i, "Free"],
   [/\b(?:backstroke|back)\b/i, "Back"],
   [/\b(?:breaststroke|breast)\b/i, "Breast"],
   [/\b(?:butterfly|fly|butter)\b/i, "Fly"],
   [/\b(?:i\.?m\.?|individual\s+medley|medley)\b/i, "IM"],
   [/\b(?:form|stroke\s+(?:work|set|drill))\b/i, "Form"],
   [/\b(?:pull)\b/i, "Pull"],
+  [/\b(?:kick|kick\s+drill|flutter\s+kick|flutter|dolphin\s+kick)\b/i, "Kick"],
+  [/\b(?:drill)\b/i, "Drill"],
   [/\b(?:choice|free[\s-]?choice)\b/i, "Choice"],
 ];
 
@@ -521,6 +523,21 @@ function extractMiniNote(chunk: string): {
   return { cleaned: m[1].trim(), note: m[2].trim() };
 }
 
+// ponytail (autoresearch iter 4, 2026-07-19): extract a
+// free-text note from a line that has NO rep/distance pattern.
+// Returns the note text or null if the line is empty/header/etc.
+function parseFreeTextNote(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return null;
+  if (/^[A-Z][A-Z0-9 \-/&]+$/.test(trimmed)) return null; // ALL-CAPS header
+  if (
+    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*(?:-|to)\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke|build\s+to\s+(?:fast|sprint|max))\b/i.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return null;
+}
+
 function extractPacing(text: string): {
   cleaned: string;
   pacing: string | undefined;
@@ -559,6 +576,50 @@ function parseSubReps(text: string): SubRep[] {
 
   const { cleaned, pacing } = extractPacing(text);
   const { cleaned: cleaned2, note } = extractMiniNote(cleaned);
+
+  // ponytail (autoresearch iter 7, 2026-07-19): handle the
+  // "as N.stroke[/swim]" notation. Examples:
+  //   "1.fists/swim"   -> 1 sub-rep with stroke="Free" (fists)
+  //   "2. catch up/swim" -> 1 sub-rep with stroke="Free" (catch up)
+  //   "3. swim"        -> 1 sub-rep with stroke="Free"
+  //   "1.kick"         -> 1 sub-rep with stroke="Kick"
+  //   "2.drill"        -> 1 sub-rep with stroke="Drill"
+  // The format is "<digits>.<word or phrase>[/<swim>]" where the word
+  // is a stroke descriptor. We extract the FIRST "<digits>.<words>"
+  // segment, then look for the next one with a separate regex.
+  const firstAsMatch = cleaned2.match(/^(\d+)\.\s*(\S+(?:\s+\S+)?)(?:\/(?:swim|s))?/i);
+  if (firstAsMatch) {
+    const stroke = parseStroke(firstAsMatch[2]);
+    if (stroke !== null) {
+      const subReps: SubRep[] = [
+        {
+          type: "simple",
+          meters: 0,
+          stroke,
+          note: undefined,
+          pacing: pacing ?? undefined,
+        },
+      ];
+      const rest = cleaned2.slice(firstAsMatch[0].length);
+      const moreMatches = [...rest.matchAll(/(\d+)\.\s*(\S+(?:\s+\S+)?)(?:\/(?:swim|s))?/gi)];
+      for (const m of moreMatches) {
+        const s = parseStroke(m[2]);
+        if (s !== null) {
+          subReps.push({
+            type: "simple",
+            meters: 0,
+            stroke: s,
+            note: undefined,
+            pacing: pacing ?? undefined,
+          });
+        }
+      }
+      if (subReps.length > 0) {
+        return subReps;
+      }
+    }
+  }
+
   const simpleMatch = cleaned2.match(/^(\d+)\s+(.+)$/);
   if (simpleMatch) {
     const meters = parseIntSafe(simpleMatch[1]);
@@ -606,7 +667,13 @@ function parseRepGroup(lineText: string): RepGroup | null {
   const rd = parseRepDist(text);
   if (rd.reps === null && rd.distance === null) return null;
 
-  const stroke = parseStroke(text);
+  // ponytail (autoresearch iter 7, 2026-07-19): when there's an
+  // "as" notation, the parent's stroke should be parsed from the
+  // part BEFORE "as" — otherwise the as-notation's sub-rep strokes
+  // (kick, drill, swim, breast) would override the nominal stroke
+  // (e.g. IM in "4 x 50 IM @ 1:00 as 1.kick, 2.drill, ...").
+  const preAsText = text.match(/as[\s:]/i) ? text.split(/as[\s:]/i)[0] : text;
+  const stroke = parseStroke(preAsText);
   const interval = parseInterval(text);
 
   const pacingMatch = text.match(/\b(build|smooth|strong|moderate)\b/i);
@@ -761,6 +828,37 @@ function parseRepGroup(lineText: string): RepGroup | null {
     };
   });
 
+  // ponytail (autoresearch iter 6, 2026-07-19): detect a pure
+  // pattern rotation in the line text and turn it into structured
+  // sub-reps. Examples:
+  //   "3 x 300 FBBF @ 4:30"          -> pattern: [Free, Back, Breast, Free]
+  //   "3 x 100 FBFB@ 1.20"           -> pattern: [Free, Back, Free, Back]
+  //   "3 x 200 FBF @ 2:50 by"        -> pattern: [Free, Back, Free]
+  // Previously FBBF/FBF/FBFB ended up in details, not in pattern,
+  // which meant same-as-above inheritance couldn't see the pattern.
+  const ROTATION_RE = /\b([FBKRIM]{2,})\b/;
+  const rotationMatch = text.match(ROTATION_RE);
+  if (!asMatch && rotationMatch) {
+    const rot = rotationMatch[1].toUpperCase();
+    const subRepsFromRotation: SubRep[] = [];
+    for (const ch of rot) {
+      const strokeMap: Record<string, string> = {
+        F: "Free", B: "Back", K: "Breast", R: "Fly", I: "IM", M: "IM"
+      };
+      subRepsFromRotation.push({
+        type: "simple",
+        meters: rd.distance ?? 0,
+        stroke: strokeMap[ch] ?? null,
+        note: undefined,
+        pacing: undefined,
+      });
+    }
+    if (subRepsFromRotation.length > 0) {
+      subReps = subRepsFromRotation;
+      patternType = "simple";
+    }
+  }
+
   return {
     reps: rd.reps,
     distance: rd.distance,
@@ -907,6 +1005,25 @@ function parseWorkoutV2(input: string): Workout {
 
       const rd = parseRepDist(rest);
       if (rd.reps === null && rd.distance === null) {
+        // ponytail (autoresearch iter 4, 2026-07-19): a bare
+        // "fast for time" / "for time" / "no breath" line (no reps,
+        // no distance) should be attached to the PREVIOUS rep
+        // group as a note. Without this, the "1 x 400 FBFB" set
+        // on one line and "fast for time" on the next lose the
+        // note attribution.
+        const freeTextNote = parseFreeTextNote(line.text);
+        if (freeTextNote) {
+          for (let si = namedSets.length - 1; si >= 0; si--) {
+            const ns = namedSets[si];
+            if (ns.repGroups.length > 0) {
+              const lastRg = ns.repGroups[ns.repGroups.length - 1];
+              if (!lastRg.note) {
+                lastRg.note = freeTextNote;
+              }
+              break;
+            }
+          }
+        }
         pendingLabel = null;
         i++;
         continue;
