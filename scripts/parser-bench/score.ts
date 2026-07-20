@@ -81,6 +81,68 @@ function strokeToLetter(s: string | null): string {
   return "";
 }
 
+function normInterval(s: string | null): string {
+  if (s == null) return "";
+  return s.replace(".", ":").replace(/^0+(\d)/, "$1");
+}
+
+function tokenizeSource(s: string): Set<string> {
+  return new Set(
+    (s || "").toLowerCase().split(/\W+/).filter((t) => t.length > 1),
+  );
+}
+
+function sourceSimilarity(a: string, b: string): number {
+  const ta = tokenizeSource(a);
+  if (ta.size === 0) return 0;
+  const tb = tokenizeSource(b);
+  let common = 0;
+  for (const t of ta) if (tb.has(t)) common++;
+  return common;
+}
+
+function matchesTriple(
+  actual: { reps: number | null; distance: number | null; interval: string | null },
+  expected: { reps: number; distance: number; interval: string | null },
+): boolean {
+  if (actual.reps == null || actual.distance == null) return false;
+  if (Math.abs(actual.reps - expected.reps) > 1) return false;
+  if (actual.distance !== expected.distance) return false;
+  if (normInterval(actual.interval) !== normInterval(expected.interval)) return false;
+  return true;
+}
+
+function unmatchedIndices(
+  pool: FlatRepGroup[],
+  matched: Set<number>,
+  predicate: (rg: FlatRepGroup) => boolean,
+): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < pool.length; i++) {
+    if (matched.has(i)) continue;
+    if (predicate(pool[i])) out.push(i);
+  }
+  return out;
+}
+
+function pickBySourceSimilarity(
+  expectedSource: string,
+  pool: FlatRepGroup[],
+  candidates: number[],
+): number {
+  let bestIdx = candidates[0];
+  let bestSim = sourceSimilarity(expectedSource, pool[bestIdx].source);
+  for (let k = 1; k < candidates.length; k++) {
+    const idx = candidates[k];
+    const sim = sourceSimilarity(expectedSource, pool[idx].source);
+    if (sim > bestSim || (sim === bestSim && idx < bestIdx)) {
+      bestSim = sim;
+      bestIdx = idx;
+    }
+  }
+  return bestIdx;
+}
+
 function scoreInput(inputFile: string): unknown {
   const text = fs.readFileSync(inputFile, "utf8");
   const parsed = parseWorkoutV2(text);
@@ -94,21 +156,29 @@ function scoreInput(inputFile: string): unknown {
     };
   }
 
-  // Greedy match: for each expected, find first actual that matches
+  // Match each expected against an actual using a tiered strategy:
+  //   1. Prefer matchesExpected candidates, ranked by source-text similarity
+  //      (token overlap between expected.source and actual.source).
+  //   2. Fall back to a looser reps+distance+interval triple match when
+  //      matchesExpected yields nothing (e.g. notes parsed differently or
+  //      pattern shorthand differs for as-notation sub-reps).
+  //   3. If still ambiguous, pick the first available actual (greedy).
   const matched = new Set<number>();
   const matches: Array<{ expected: (typeof expected)["repGroups"][0]; actual: FlatRepGroup | null }> = [];
   for (const exp of expected.repGroups) {
-    let found = -1;
-    for (let i = 0; i < allRGs.length; i++) {
-      if (matched.has(i)) continue;
-      if (matchesExpected(allRGs[i], exp)) {
-        found = i;
-        break;
+    const strictIdx = unmatchedIndices(allRGs, matched, (a) => matchesExpected(a, exp));
+    let chosen: number | null = null;
+    if (strictIdx.length > 0) {
+      chosen = pickBySourceSimilarity(exp.source, allRGs, strictIdx);
+    } else {
+      const tripleIdx = unmatchedIndices(allRGs, matched, (a) => matchesTriple(a, exp));
+      if (tripleIdx.length > 0) {
+        chosen = pickBySourceSimilarity(exp.source, allRGs, tripleIdx);
       }
     }
-    if (found >= 0) {
-      matched.add(found);
-      matches.push({ expected: exp, actual: allRGs[found] });
+    if (chosen !== null) {
+      matched.add(chosen);
+      matches.push({ expected: exp, actual: allRGs[chosen] });
     } else {
       matches.push({ expected: exp, actual: null });
     }

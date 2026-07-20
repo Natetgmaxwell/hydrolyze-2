@@ -536,7 +536,7 @@ function extractInlineNote(text: string): {
   // We split on the FIRST set's tail (after @interval) and look for
   // any trailing 2+ word sequence.
   const trailing = text.match(
-    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*(?:-|to)\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke|build\s+to\s+(?:fast|sprint|max)|negative\s+split(?:\s+1st\s+half\s+faster)?|1st\s+half\s+faster|2nd\s+half\s+faster|hold[\s-]+best[\s-]+average|on\s+\d+:?\d*\s*race\s*pace|send[\s-]+off|strong\s+finish|odds\s+build\s+even\s+fast|fast\s+from\s+the\s+gun)\b[\s.,;:@\d]*(?:\s*@?\s*\d+:\d+(?:\.\d+)?)?\s*$/i
+    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*(?:-|to)\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke|build\s+to\s+(?:fast|sprint|max)|negative\s+split(?:\s+1st\s+half\s+faster)?|1st\s+half\s+faster|2nd\s+half\s+faster|hold[\s-]+best[\s-]+average|(?:on[\s:]+(\d+:\d+)\s*)?race\s*pace|send[\s-]+off|strong\s+finish|odds\s+build\s+even\s+fast|fast\s+from\s+the\s+gun)\b[\s.,;:@\d]*(?:\s*@?\s*\d+:\d+(?:\.\d+)?)?\s*$/i
   );
   if (trailing) {
     // ponytail (opus-2, 2026-07-19): re-attach a trailing interval
@@ -544,9 +544,24 @@ function extractInlineNote(text: string): {
     // match consumed both the note phrase AND the interval; we
     // need the interval back in cleaned.
     const trailingText = trailing[0];
-    const intervalInTrailing = trailingText.match(/\s*@?\s*(\d+:\d+(?:\.\d+)?)\s*$/);
-    const noteText = trailingText.replace(/\s*@?\s*\d+:\d+(?:\.\d+)?\s*$/, "").trim();
-    const intervalSuffix = intervalInTrailing ? " @ " + intervalInTrailing[1] : "";
+const capturedInterval = trailing?.[1];  // capture group 1 (e.g. "1:30" from "on 1:30 race pace")
+const intervalInTrailing = capturedInterval || trailingText.match(/\s*@?\s*(\d+:\d+(?:\.\d+)?)\s*$/)?.[1];
+    const noteText = (() => {
+      let n = trailingText;
+      // ponytail (opus-2 fix, 2026-07-19): strip a trailing interval
+      // (e.g. "send-off 1:20" -> "send-off") AND a captured interval
+      // anywhere in the trailing (e.g. "on 1:30 race pace" -> "race
+      // pace"). The captured-interval case has the interval in the
+      // MIDDLE of trailing, not at the end.
+      n = n.replace(/\s*@?\s*\d+:\d+(?:\.\d+)?\s*$/, "");
+      if (capturedInterval) {
+        n = n.replace(capturedInterval, "").replace(/^on\s+/, "");
+      } else {
+        n = n.replace(/^on\s+/, "");
+      }
+      return n.replace(/\s+/g, " ").trim();
+    })();
+    const intervalSuffix = intervalInTrailing ? " @ " + intervalInTrailing : "";
     return {
       cleaned: (text.slice(0, trailing.index!).trim() + intervalSuffix).trim(),
       note: noteText || trailingText.trim()
@@ -899,11 +914,11 @@ function parseRepGroup(lineText: string): RepGroup | null {
   //   "3 x 200 FBF @ 2:50 by"        -> pattern: [Free, Back, Free]
   // Previously FBBF/FBF/FBFB ended up in details, not in pattern,
   // which meant same-as-above inheritance couldn't see the pattern.
-  const ROTATION_RE = /\b([FBKRIM]{2,})\b/;
+  const ROTATION_RE = /\b[FBKR]{2,}\b/;
   const rotationMatch = text.match(ROTATION_RE);
   if (!asMatch && rotationMatch) {
     // Pick the first rotation match (capture group 1)
-    const rot = rotationMatch[1].toUpperCase();
+    const rot = rotationMatch[0].toUpperCase();
     const subRepsFromRotation: SubRep[] = [];
     for (const ch of rot) {
       const strokeMap: Record<string, string> = {
