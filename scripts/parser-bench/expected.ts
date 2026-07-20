@@ -65,7 +65,52 @@ export const EXPECTED: Record<string, ExpectedLine> = {
       // IM with as-pattern, 4 sub-reps
       { reps: 4, distance: 50, interval: "1:00", stroke: "IM", pattern: "KDFK", note: null, subReps: 4, source: "4 x 50 IM @ 1:00 as 1.kick, 2.drill, 3.swim, 4.breast" },
     ],
+  },  'real-input-3.txt': {
+    notes: [
+      "1500 free",
+      "200 easy",
+    ],
+    repGroups: [
+      // === Race-pace + send-offs ===
+      { reps: 4, distance: 50, interval: "0:30", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 free @ 0:30 race pace" },
+      { reps: 1, distance: 200, interval: "1:30", stroke: "Free", pattern: null, note: "race pace", subReps: 0, source: "200 free on 1:30 race pace" },
+      { reps: 3, distance: 100, interval: "1:20", stroke: "Free", pattern: null, note: "send-off", subReps: 0, source: "3 x 100 free send-off 1:20" },
+      // === Negative split + build ===
+      { reps: 1, distance: 400, interval: null, stroke: "Free", pattern: null, note: "negative split, 1st half faster", subReps: 0, source: "400 free negative split, 1st half faster" },
+      { reps: 1, distance: 200, interval: null, stroke: "Free", pattern: null, note: "build to fast", subReps: 0, source: "200 free build to fast" },
+      // === Descend + as-pattern ===
+      { reps: 4, distance: 100, interval: null, stroke: "Free", pattern: null, note: "descend 1-4", subReps: 0, source: "4 x 100 free descend 1-4" },
+      { reps: 3, distance: 200, interval: null, stroke: "IM", pattern: null, note: null, subReps: 4, source: "3 x 200 IM as 1.kick, 2.drill, 3.swim, 4.breast" },
+      { reps: 8, distance: 50, interval: "0:45", stroke: "Free", pattern: null, note: "hold best average", subReps: 0, source: "8 x 50 free @ 0:45 hold best average" },
+      // === Gear sets ===
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 free pull @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 free paddles @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 free pull buoy @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Fly", pattern: null, note: null, subReps: 0, source: "4 x 50 fly kickboard @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 free snorkel @ 1:00" },
+      // === Drills ===
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 catch-up drill @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 fist drill @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Drill", pattern: null, note: null, subReps: 0, source: "4 x 50 single arm drill @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Kick", pattern: null, note: null, subReps: 0, source: "4 x 50 vertical kick @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 free kick drill on board @ 1:00" },
+      // === IM + breath ===
+      { reps: 4, distance: 100, interval: "1:30", stroke: "IM", pattern: null, note: null, subReps: 0, source: "4 x 100 IM @ 1:30" },
+      { reps: 4, distance: 50, interval: null, stroke: "Free", pattern: null, note: "no breath", subReps: 0, source: "4 x 50 free no breath" },
+      { reps: 4, distance: 25, interval: null, stroke: "Free", pattern: null, note: "no breathing", subReps: 0, source: "4 x 25 free no breathing" },
+      // === Round numbers + large distances ===
+      { reps: 1, distance: 400, interval: "5:30", stroke: "Free", pattern: null, note: null, subReps: 0, source: "400 free @ 5:30" },
+      { reps: 1, distance: 800, interval: "12:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "800 free @ 12:00" },
+      // === Multi-distance sets ===
+      { reps: 4, distance: 200, interval: "0:45", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 200s, 4 x 50s free @ 0:45" },
+      // === Section headers ===
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, source: "WARM UP -> 4 x 50 free @ 1:00" },
+      { reps: 1, distance: 200, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "WARM UP -> 200 easy" },
+      { reps: 4, distance: 100, interval: "1:30", stroke: "Free", pattern: null, note: null, subReps: 0, source: "MAIN SET -> 4 x 100 free @ 1:30" },
+      { reps: 1, distance: 200, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "COOL DOWN -> 200 easy" },
+    ],
   },
+
 };
 
 // Normalize interval: "1.20" <-> "1:20", trim leading zero

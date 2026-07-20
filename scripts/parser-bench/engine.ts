@@ -132,11 +132,17 @@ const GEAR_PATTERNS: Array<[RegExp, string]> = [
   [/\bfins\b/i, "fins"],
   [/\bflippers\b/i, "fins"],
   [/\bpaddles?\b/i, "paddles"],
-  [/\bpull[\s-]?buoy\b/i, "pull_buoy"],
-  [/\bbuoy\b(?!\s*rate)/i, "pull_buoy"],
+  // ponytail (opus-1, 2026-07-19): consolidate pull_buoy / buoy into
+  // a single match. The previous "buoy" fallback matched "pull buoy"
+  // twice (once via the pull[\s-]?buoy pattern, once via bare buoy).
+  [/\b(?:pull[\s-]?buoy|buoy)\b/i, "pull_buoy"],
   [/\bkickboard\b/i, "kickboard"],
+  // ponytail (opus-1): consolidate kick\s*board into the main
+  // kickboard match to avoid duplicate matches.
   [/\bkick\s*board\b/i, "kickboard"],
   [/\bdrag\s*suit\b/i, "dragSuit"],
+  // ponytail (opus-1): snorkel (a common gear for breathing drills).
+  [/\bsnorkel\b/i, "snorkel"],
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -491,9 +497,13 @@ function parseStroke(text: string): Stroke | null {
 // ─── Gear ────────────────────────────────────────────────────────────────────
 
 function parseGear(text: string): string[] | null {
+  // ponytail (opus-1, 2026-07-19): dedup detected gear. The
+  // GEAR_PATTERNS array may have multiple regexes that match the
+  // same text (e.g. "kickboard" and "kick\s*board" both match
+  // "kickboard"). Without dedup, gear: ["kickboard","kickboard"].
   const detected: string[] = [];
   for (const [re, gear] of GEAR_PATTERNS) {
-    if (re.test(text)) detected.push(gear);
+    if (re.test(text) && !detected.includes(gear)) detected.push(gear);
   }
   return detected.length > 0 ? detected : null;
 }
@@ -526,10 +536,21 @@ function extractInlineNote(text: string): {
   // We split on the FIRST set's tail (after @interval) and look for
   // any trailing 2+ word sequence.
   const trailing = text.match(
-    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*[-–]\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke)\s*$/i
+    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*(?:-|to)\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke|build\s+to\s+(?:fast|sprint|max)|negative\s+split(?:\s+1st\s+half\s+faster)?|1st\s+half\s+faster|2nd\s+half\s+faster|hold[\s-]+best[\s-]+average|on\s+\d+:?\d*\s*race\s*pace|send[\s-]+off|strong\s+finish|odds\s+build\s+even\s+fast|fast\s+from\s+the\s+gun)\b[\s.,;:@\d]*(?:\s*@?\s*\d+:\d+(?:\.\d+)?)?\s*$/i
   );
   if (trailing) {
-    return { cleaned: text.slice(0, trailing.index!).trim(), note: trailing[0].trim() };
+    // ponytail (opus-2, 2026-07-19): re-attach a trailing interval
+    // to cleaned so parseInterval can still find it. The trailing
+    // match consumed both the note phrase AND the interval; we
+    // need the interval back in cleaned.
+    const trailingText = trailing[0];
+    const intervalInTrailing = trailingText.match(/\s*@?\s*(\d+:\d+(?:\.\d+)?)\s*$/);
+    const noteText = trailingText.replace(/\s*@?\s*\d+:\d+(?:\.\d+)?\s*$/, "").trim();
+    const intervalSuffix = intervalInTrailing ? " @ " + intervalInTrailing[1] : "";
+    return {
+      cleaned: (text.slice(0, trailing.index!).trim() + intervalSuffix).trim(),
+      note: noteText || trailingText.trim()
+    };
   }
   return { cleaned: text, note: null };
 }
@@ -578,8 +599,12 @@ function parseFreeTextNote(text: string): string | null {
   //   "kick drill on board" / "board kicks"
   //   "side stroke"
   //   "build to fast" / "build to sprint"
+  // ponytail (opus-2, 2026-07-19): expanded to cover more real
+  // coach shorthand. Each pattern matches a phrase the coach
+  // writes as a free-text annotation. We capture the whole line
+  // as the note (so the original wording is preserved).
   if (
-    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*(?:-|to)\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke|build\s+to\s+(?:fast|sprint|max))\b/i.test(trimmed)
+    /\b(?:fast\s+for\s+time|for\s+time|as\s+fast\s+as\s+possible|descend\s+\d+\s*(?:-|to)\s*\d+|no\s+breath(?:ing)?|kick\s+drill(?:\s+on\s+board)?|board(?:\s+kicks)?|side\s+stroke|build\s+to\s+(?:fast|sprint|max)|negative\s+split(?:\s+1st\s+half\s+faster)?|1st\s+half\s+faster|2nd\s+half\s+faster|hold[\s-]+best[\s-]+average|on\s+\d+:?\d*\s*race\s*pace|send[\s-]+off|strong\s+finish|odds\s+build\s+even\s+fast|fast\s+from\s+the\s+gun)\b/i.test(trimmed)
   ) {
     return trimmed;
   }
@@ -759,6 +784,18 @@ function parseRepGroup(lineText: string): RepGroup | null {
       /\b(?:easy|moderate|aerobic|threshold|sprint|descend|negative[\s-]?split|race[\s-]?pace|hard|maximum|vo2)\b/gi,
       "",
     );
+    // ponytail (opus-1, 2026-07-19): strip detected gear words from
+    // the details leftover so they don't appear twice (once in
+    // rg.gear, once in rg.details). Build a single union regex from
+    // all GEAR_PATTERNS' first-capture-group alternatives.
+    const gearAlternatives = GEAR_PATTERNS
+      .map(([re]) => {
+        // Convert /(?:foo|bar)/i to (?:foo|bar)
+        const src = re.source.replace(/^\(\?:/, "").replace(/\)$/, "");
+        return src;
+      })
+      .join("|");
+    t = t.replace(new RegExp("\\b(?:" + gearAlternatives + ")\\b", "gi"), "");
     t = t.replace(/[~]?\d+\s*[-–]\s*\d+\s*%/gi, "");
     t = t.replace(/[~]?\d+\s*%/gi, "");
     // ponytail (autoresearch iter 5, 2026-07-17): treat '/' as a
