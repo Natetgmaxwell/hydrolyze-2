@@ -433,8 +433,12 @@ final class WorkoutBuilderViewModel: ObservableObject {
         do {
             let serverResult = try await workoutService.parseWorkout(text: text)
             let serverCount = serverResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
-            // Server is canonical for rep-group count.
-            if serverCount != syncCount {
+            // Server is canonical — always prefer its output when it produced
+            // anything. The on-device parser is a latency-hiding placeholder;
+            // it can produce the same rep-group COUNT but with worse fields
+            // (missing stroke, wrong interval, no note). Only fall back to
+            // the sync result when the server returned nothing.
+            if serverCount > 0 {
                 await MainActor.run {
                     parsedWorkout = serverResult
                 }
