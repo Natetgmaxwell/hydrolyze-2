@@ -827,29 +827,6 @@ function parseRepGroup(lineText: string): RepGroup | null {
     }
   }
 
-  // Cast SubRep[] to Rep[]
-  const reps: Rep[] = subReps.map((s) => {
-    if (s.type === "drill_swim") {
-      return {
-        type: "drill_swim" as const,
-        drillMeters: s.drillMeters,
-        swimMeters: s.swimMeters,
-        drillStroke: s.drillStroke,
-        swimStroke: s.swimStroke,
-      };
-    }
-    if (s.type === "odd_even") {
-      return { type: "odd_even" as const, odd: s.odd, even: s.even };
-    }
-    return {
-      type: "simple" as const,
-      meters: s.meters,
-      stroke: s.stroke,
-      note: s.note,
-      pacing: s.pacing,
-      intensity: (s as { intensity?: ParsedIntensity }).intensity,
-    };
-  });
 
   // ponytail (autoresearch iter 6, 2026-07-19): detect a pure
   // pattern rotation in the line text and turn it into structured
@@ -894,7 +871,33 @@ function parseRepGroup(lineText: string): RepGroup | null {
     gearOptional,
     descend,
     details,
-    pattern: reps,
+    // ponytail (autoresearch 2026-07-21): the previous code used a stale
+    // `reps` const that was mapped from subReps BEFORE the rotation
+    // block had a chance to populate it. That meant FBBF/FBF/FBFB
+    // patterns rendered as `pattern: []` in production. Now we map
+    // subReps at return time so rotation-set values are included.
+    pattern: subReps.map((s) => {
+      if (s.type === "drill_swim") {
+        return {
+          type: "drill_swim" as const,
+          drillMeters: s.drillMeters,
+          swimMeters: s.swimMeters,
+          drillStroke: s.drillStroke,
+          swimStroke: s.swimStroke,
+        };
+      }
+      if (s.type === "odd_even") {
+        return { type: "odd_even" as const, odd: s.odd, even: s.even };
+      }
+      return {
+        type: "simple" as const,
+        meters: s.meters,
+        stroke: s.stroke,
+        note: s.note,
+        pacing: s.pacing,
+        intensity: (s as { intensity?: ParsedIntensity }).intensity,
+      };
+    }),
     patternType: subReps.length > 0 ? (patternType ?? "simple") : null,
     connectors: [],
   };
