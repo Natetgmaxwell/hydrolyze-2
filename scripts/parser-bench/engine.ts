@@ -235,13 +235,40 @@ const SECTION_HEADERS = new Set([
 function isSectionHeader(line: RawLine): boolean {
   if (line.isBlank) return false;
   const t = normalize(line.text);
-  const words = t.split(/\s+/);
-  if (words.length > 4) return false;
-  if (/\d/.test(t)) return false;
-  if (/\d+\s*[x×]\s*\d+/.test(t)) return false;
-  if (/^\d+\s/.test(t)) return false;
-  if (/[–—-]/.test(t)) return false;
+  // ponytail (autoresearch iter 10, 2026-07-22): rewrite to match
+  // real coach section headers. The previous version rejected any
+  // line containing a digit or em-dash, which kills every race-prep
+  // header ("Pool warm-up — 1,000m", "Main set A — 100/200m
+  // swimmers", "Part 1: Race-segment 75s — 900m", "Main set — 2,600m")
+  // — they all have digits and em-dashes. Allow them.
+  if (/\d+\s*[x×]\s*\d+/.test(t)) return false; // set line
+  if (/^\d+\s/.test(t)) return false; // starts with a number
+  if (/^odds?\s*:/i.test(t)) return false; // odd: / odds:
+  if (/^evens?\s*:/i.test(t)) return false;
+  if (/^\d+\.\s/.test(t)) return false; // numbered list "1. foo"
+  // Filter out interval/annotation lines like "@ 1:30", "@ :45"
+  if (/^@\s/.test(t)) return false;
+  const words = t.split(/\s+/).filter((w) => w.length > 0);
+  if (words.length === 0 || words.length > 10) return false;
+  // Pattern: "Name — Nm" or "Name — description" with em-dash.
+  // Coaches use this for: "Pool warm-up — 1,000m",
+  // "Race activation — 400m", "Main set A — 100/200m swimmers",
+  // "Part 1: Race-segment 75s — 900m", "Warm-down — 500m".
+  const emDashMatch = t.match(/^([\w\s\-:/]+?)\s+—\s+(.+)$/);
+  if (emDashMatch) {
+    const left = emDashMatch[1].trim();
+    if (left.length >= 3 && !/\d+\s*[x×]/.test(left)) {
+      return true;
+    }
+  }
+  // Pattern: "Part N: Title" — round markers
+  if (/^part\s+\d+\s*:/i.test(t)) return true;
+  // Pattern: "Two rounds:", "Three rounds:", "One round:"
+  if (/^(two|three|four|five|one)\s+rounds?\s*:/i.test(t)) return true;
+  // Legacy: bare keywords like "warm up", "main set", "cool down"
   if (SECTION_HEADERS.has(t)) return true;
+  // Title-cased multi-word line without set pattern.
+  // "Open-water variation", "Main set B — 200/400m swimmers".
   const strokeWords = new Set([
     "free",
     "back",
@@ -253,20 +280,28 @@ function isSectionHeader(line: RawLine): boolean {
     "easy",
     "warm",
     "cool",
+    "down",
+    "set",
+    "build",
+    "descend",
+    "max",
+    "rest",
+    "hold",
+    "race",
+    "pace",
+    "round",
+    "meters",
   ]);
-  if (
-    words.every(
-      (w) => w.length > 0 && w[0] === w[0].toUpperCase() && !strokeWords.has(w),
-    )
-  ) {
-    return words.length <= 3;
-  }
+  // Filter out words that start with "@" or are pure punctuation
+  const meaningfulWords = words.filter((w) => /^[A-Za-z0-9]/.test(w));
+  if (meaningfulWords.length === 0) return false;
+  const titleCased = meaningfulWords.every(
+    (w) =>
+      /^[A-Z0-9\d,/:]+$/.test(w) ||
+      (w[0] === w[0].toUpperCase() && !strokeWords.has(w.toLowerCase())),
+  );
+  if (titleCased && meaningfulWords.length <= 8) return true;
   return false;
-}
-
-interface SectionBlock {
-  title: string | null;
-  lines: RawLine[];
 }
 
 function detectSections(tokens: RawLine[]): SectionBlock[] {
