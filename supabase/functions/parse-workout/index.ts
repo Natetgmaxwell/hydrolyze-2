@@ -842,15 +842,38 @@ function parseRepGroup(lineText: string): RepGroup | null {
       drillM = Math.floor((rd.distance ?? 0) / 2);
       swimM = (rd.distance ?? 0) - drillM;
     }
-    subReps = [
-      {
+    const drillSwimIdx = text.search(
+      /(?:drill|dr|catch[\s-]?up|catchup)\s*[\/+]\s*(?:swim|s)/i,
+    );
+    const trailing = drillSwimIdx >= 0 ? text.slice(drillSwimIdx) : "";
+    const numberedEntries: Array<{ num: number; stroke: string }> = [];
+    const entryRegex = /(\d+)\s*\.?\s+([^\d][^\d]*?)(?=\s*\d+\s*\.?\s|\s*@|\s*$)/g;
+    let em: RegExpExecArray | null;
+    while ((em = entryRegex.exec(trailing)) !== null) {
+      const num = parseIntSafe(em[1]);
+      if (num === null) continue;
+      numberedEntries.push({ num, stroke: em[2].trim() });
+    }
+    const useNumberedList = numberedEntries.length >= 2;
+    if (useNumberedList) {
+      subReps = numberedEntries.map((e) => ({
         type: "drill_swim",
         drillMeters: drillM,
         swimMeters: swimM,
-        drillStroke,
+        drillStroke: parseStroke(e.stroke),
         swimStroke,
-      },
-    ];
+      }));
+    } else {
+      subReps = [
+        {
+          type: "drill_swim",
+          drillMeters: drillM,
+          swimMeters: swimM,
+          drillStroke,
+          swimStroke,
+        },
+      ];
+    }
     patternType = "drill_swim";
   }
 
