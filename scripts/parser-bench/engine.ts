@@ -191,7 +191,24 @@ interface RawLine {
 }
 
 function tokenize(input: string): RawLine[] {
-  const lines = input.split("\n");
+  // ponytail (autoresearch iter 9, 2026-07-22): strip markdown
+  // formatting BEFORE tokenizing so coaches can paste a full
+  // workout with # / ## headers, --- separators, * bullets, and
+  // indented sub-bullets. The parser was built for plain text;
+  // without this, raw markdown input returns 0 repGroups.
+  const cleaned = input
+    // strip horizontal-rule separators (---, ***, ___ on own line)
+    .replace(/^\s*(?:[-*_]\s*){3,}$/gm, "")
+    // strip heading hashes: "# Title", "## Title", etc.
+    .replace(/^\s*#{1,6}\s+/gm, "")
+    // strip bullet markers at line start: "* ", "- ", "+ ", "1. "
+    .replace(/^\s*(?:[*+\-]|\d+\.)\s+/gm, "")
+    // strip bold/italic markdown: **text**, *text*, __text__, _text_
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, "$1")
+    .replace(/(?<!_)_(?!_)([^_]+)_(?!_)/g, "$1");
+  const lines = cleaned.split("\n");
   return lines.map((text, index) => ({
     text: text.trim(),
     index,
