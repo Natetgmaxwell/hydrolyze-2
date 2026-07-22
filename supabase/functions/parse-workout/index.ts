@@ -576,6 +576,13 @@ function extractPacing(text: string): {
 }
 
 function parseSubReps(text: string): SubRep[] {
+  // ponytail (opus-3, 2026-07-22): handle the implicit-split case
+  // "drill/swim" without explicit meters. The user's input "6 x 50
+  // drill/swim" was parsing as plain Free with no sub-rep breakdown
+  // because the original regex required explicit "25 drill / 25 swim"
+  // meters. Now we detect "drill/swim" (no numbers) and return a
+  // drill_swim sub-rep with null meters; the caller fills them in
+  // from the parent rep distance.
   const drillSwimMatch = text.match(
     /(\d+)\s*(?:drill|dr)\s*[\/+]\s*(\d+)\s*(?:swim|s)/i,
   );
@@ -596,51 +603,21 @@ function parseSubReps(text: string): SubRep[] {
       ];
     }
   }
-
-  const { cleaned, pacing } = extractPacing(text);
-  const { cleaned: cleaned2, note } = extractMiniNote(cleaned);
-
-  // ponytail (autoresearch iter 7, 2026-07-19): handle the
-  // "as N.stroke[/swim]" notation. Examples:
-  //   "1.fists/swim"   -> 1 sub-rep with stroke="Free" (fists)
-  //   "2. catch up/swim" -> 1 sub-rep with stroke="Free" (catch up)
-  //   "3. swim"        -> 1 sub-rep with stroke="Free"
-  //   "1.kick"         -> 1 sub-rep with stroke="Kick"
-  //   "2.drill"        -> 1 sub-rep with stroke="Drill"
-  // The format is "<digits>.<word or phrase>[/<swim>]" where the word
-  // is a stroke descriptor. We extract the FIRST "<digits>.<words>"
-  // segment, then look for the next one with a separate regex.
-  const firstAsMatch = cleaned2.match(/^(\d+)\.\s*(\S+(?:\s+\S+)?)(?:\/(?:swim|s))?/i);
-  if (firstAsMatch) {
-    const stroke = parseStroke(firstAsMatch[2]);
-    if (stroke !== null) {
-      const subReps: SubRep[] = [
-        {
-          type: "simple",
-          meters: 0,
-          stroke,
-          note: undefined,
-          pacing: pacing ?? undefined,
-        },
-      ];
-      const rest = cleaned2.slice(firstAsMatch[0].length);
-      const moreMatches = [...rest.matchAll(/(\d+)\.\s*(\S+(?:\s+\S+)?)(?:\/(?:swim|s))?/gi)];
-      for (const m of moreMatches) {
-        const s = parseStroke(m[2]);
-        if (s !== null) {
-          subReps.push({
-            type: "simple",
-            meters: 0,
-            stroke: s,
-            note: undefined,
-            pacing: pacing ?? undefined,
-          });
-        }
-      }
-      if (subReps.length > 0) {
-        return subReps;
-      }
-    }
+  const implicitDrillSwim = text.match(
+    /(?:drill|dr)\s*[\/+]\s*(?:swim|s)\b/i,
+  );
+  if (implicitDrillSwim) {
+    const drillStroke = parseStroke(text.replace(/swim/i, ""));
+    const swimStroke = parseStroke(text);
+    return [
+      {
+        type: "drill_swim",
+        drillMeters: null,
+        swimMeters: null,
+        drillStroke,
+        swimStroke,
+      },
+    ];
   }
 
   const simpleMatch = cleaned2.match(/^(\d+)\s+(.+)$/);
@@ -827,6 +804,55 @@ function parseRepGroup(lineText: string): RepGroup | null {
     }
   }
 
+
+  // ponytail (opus-3, 2026-07-22): detect a drill/swim split
+  // (explicit meters like "25 drill/25 swim", or implicit like
+  // "drill/swim" / "catch-up/swim") and turn it into a drill_swim
+  // sub-rep. Two forms:
+  //   1. Explicit: "(\d+)\s*(?:drill|dr)\s*[\/+]\s*(\d+)\s*(?:swim|s)"
+  //      -> use those meters directly
+  //   2. Implicit: "(?:drill|dr|catch[\s-]?up)\s*[\/+]\s*(?:swim|s)"
+  //      -> split parent rep distance 50/50
+  const drillSwimExplicit = text.match(
+    /(\d+)\s*(?:drill|dr)\s*[\/+]\s*(\d+)\s*(?:swim|s)\b/i,
+  );
+  const drillSwimImplicit = text.match(
+    /(?:drill|dr|catch[\s-]?up|catchup)\s*[\/+]\s*(?:swim|s)\b/i,
+  );
+  const drillSwimMatch = drillSwimExplicit || drillSwimImplicit;
+  if (drillSwimMatch && !asMatch) {
+    const drillStroke = parseStroke(
+      text.replace(
+        /(\d+\s*)?(?:drill|dr|catch[\s-]?up|catchup)\s*[\/+]\s*(\d+\s*)?(?:swim|s)\b/i,
+        "",
+      ),
+    );
+    const swimStroke = parseStroke(
+      text.replace(
+        /(\d+\s*)?(?:drill|dr|catch[\s-]?up|catchup)\s*[\/+]\s*(\d+\s*)?(?:swim|s)\b/i,
+        "free",
+      ),
+    );
+    let drillM: number;
+    let swimM: number;
+    if (drillSwimExplicit) {
+      drillM = parseIntSafe(drillSwimExplicit[1]) ?? 0;
+      swimM = parseIntSafe(drillSwimExplicit[2]) ?? 0;
+    } else {
+      drillM = Math.floor((rd.distance ?? 0) / 2);
+      swimM = (rd.distance ?? 0) - drillM;
+    }
+    subReps = [
+      {
+        type: "drill_swim",
+        drillMeters: drillM,
+        swimMeters: swimM,
+        drillStroke,
+        swimStroke,
+      },
+    ];
+    patternType = "drill_swim";
+  }
 
   // ponytail (autoresearch iter 6, 2026-07-19): detect a pure
   // pattern rotation in the line text and turn it into structured
