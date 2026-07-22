@@ -65,7 +65,78 @@ export const EXPECTED: Record<string, ExpectedLine> = {
       // IM with as-pattern, 4 sub-reps
       { reps: 4, distance: 50, interval: "1:00", stroke: "IM", pattern: "KDFK", note: null, subReps: 4, source: "4 x 50 IM @ 1:00 as 1.kick, 2.drill, 3.swim, 4.breast" },
     ],
-  },  'real-input-3.txt': {
+  },  'real-input-4.txt': {
+    notes: [
+      "Pool warm-up race-prep clean tests",
+    ],
+    repGroups: [
+      // === Single-rep, no x separator (input line 1) ===
+      { reps: 1, distance: 300, interval: null, stroke: "Choice", pattern: null, note: null, subReps: 0, source: "300m choice" },
+      // === as Ndm drill + Ndm swim (input line 2) — sub-reps not yet emitted ===
+      { reps: 4, distance: 50, interval: "1:00", stroke: null, pattern: null, note: null, subReps: 0, source: "4 × 50m as 25m drill + 25m swim" },
+      // === kick + pace split (input line 3) ===
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Kick", pattern: null, note: null, subReps: 0, source: "4 × 50m kick as 25m strong + 25m easy" },
+      // === as descriptive note (input line 4) ===
+      { reps: 4, distance: 50, interval: "1:10", stroke: null, pattern: null, note: null, subReps: 0, source: "4 × 50m as last 15m fast" },
+      // === build to race tempo @ :40 (input line 5) ===
+      { reps: 4, distance: 25, interval: "0:40", stroke: null, pattern: null, note: null, subReps: 0, source: "4 × 25m build to race tempo" },
+      // === Single-rep: 100m easy (input line 6) ===
+      { reps: 1, distance: 100, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "100m easy" },
+      // === fast breakout to 15m @ :45 (input line 7) ===
+      { reps: 1, distance: 25, interval: "0:45", stroke: null, pattern: null, note: null, subReps: 0, source: "1 × 25m fast breakout" },
+      // === build into fast finish @ :45 (input line 8) ===
+      { reps: 1, distance: 25, interval: "0:45", stroke: null, pattern: null, note: null, subReps: 0, source: "1 × 25m build into a fast finish" },
+      // === as 25m smooth + 25m race tempo (input line 9) — no sub-reps yet ===
+      { reps: 1, distance: 50, interval: "1:10", stroke: null, pattern: null, note: null, subReps: 0, source: "1 × 50m as 25m smooth + 25m race tempo" },
+      // === 100m easy @ 2:00 (input line 10) ===
+      { reps: 1, distance: 100, interval: "2:00", stroke: null, pattern: null, note: null, subReps: 0, source: "100m easy @ 2:00" },
+      // === from a dive @ 4:00 (input line 11) ===
+      { reps: 1, distance: 75, interval: "4:00", stroke: null, pattern: null, note: null, subReps: 0, source: "1 × 75m from a dive" },
+      // === 125m very easy (input line 12) ===
+      { reps: 1, distance: 125, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "125m very easy" },
+      // === 2 × 50m @ 1:20 (input line 13) ===
+      { reps: 2, distance: 50, interval: "1:20", stroke: null, pattern: null, note: null, subReps: 0, source: "2 × 50m @ 1:20" },
+      // === 100m easy (input line 14) ===
+      { reps: 1, distance: 100, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "100m easy" },
+      // === 1 × 200m @ 3:30–4:00 (input line 15) ===
+      { reps: 1, distance: 200, interval: "3:30", stroke: null, pattern: null, note: null, subReps: 0, source: "1 × 200m @ 3:30–4:00" },
+      // === 2 × 100m @ 1:45–2:00 (input line 16) ===
+      { reps: 2, distance: 100, interval: "1:45", stroke: null, pattern: null, note: null, subReps: 0, source: "2 × 100m @ 1:45–2:00" },
+      // === 75m at 400m pace (input line 17) — single rep w/ pace note ===
+      { reps: 1, distance: 75, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "75m at 400m pace" },
+      // === 25m faster than 400m pace (input line 18) ===
+      { reps: 1, distance: 25, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "25m faster than 400m pace" },
+      // === 100m easy @ 2:00 (input line 19) ===
+      { reps: 1, distance: 100, interval: "2:00", stroke: null, pattern: null, note: null, subReps: 0, source: "100m easy @ 2:00" },
+      // === 1 × 50m smooth into wall @ 1:20 (input line 20) ===
+      { reps: 1, distance: 50, interval: "1:20", stroke: null, pattern: null, note: null, subReps: 0, source: "1 × 50m smooth into the wall" },
+      // === 1 × 50m easy @ 1:10 (input line 21) ===
+      { reps: 1, distance: 50, interval: "1:10", stroke: null, pattern: null, note: null, subReps: 0, source: "1 × 50m easy @ 1:10" },
+      // === 1 × 500m @ 7:30–8:30 (input line 22) ===
+      { reps: 1, distance: 500, interval: "7:30", stroke: null, pattern: null, note: null, subReps: 0, source: "1 × 500m @ 7:30–8:30" },
+      // === 4 × 50m @ :50–1:00 (input line 23) ===
+      { reps: 4, distance: 50, interval: "0:50", stroke: null, pattern: null, note: null, subReps: 0, source: "4 × 50m @ :50–1:00" },
+      // === 100m easy (input line 24) ===
+      { reps: 1, distance: 100, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "100m easy" },
+      // === 4 × 50m as 15m fast + settle (input line 25) ===
+      { reps: 4, distance: 50, interval: "1:00", stroke: null, pattern: null, note: null, subReps: 0, source: "4 × 50m as 15m fast" },
+      // === 100m easy (input line 26) ===
+      { reps: 1, distance: 100, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "100m easy" },
+      // === 4 × 25m from a dive @ 1:00 (input line 27) ===
+      { reps: 4, distance: 25, interval: "1:00", stroke: null, pattern: null, note: null, subReps: 0, source: "4 × 25m from a dive" },
+      // === 4 × 25m turn entry and breakout @ :50 (input line 28) ===
+      { reps: 4, distance: 25, interval: "0:50", stroke: null, pattern: null, note: null, subReps: 0, source: "4 × 25m turn entry and breakout" },
+      // === 2 × 50m relaxed perfect technique @ 1:00 (input line 29) ===
+      { reps: 2, distance: 50, interval: "1:00", stroke: null, pattern: null, note: null, subReps: 0, source: "2 × 50m relaxed, perfect technique" },
+      // === 200m relaxed choice (input line 30) — parser picks stroke=Choice ===
+      { reps: 1, distance: 200, interval: null, stroke: "Choice", pattern: null, note: null, subReps: 0, source: "200m relaxed choice" },
+      // === 4 × 50m as 25m backstroke + 25m freestyle @ 1:00 (input line 31) ===
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Back", pattern: null, note: null, subReps: 0, source: "4 × 50m as 25m backstroke + 25m freestyle" },
+      // === 4 × 25m long smooth controlled @ :40 (input line 32) ===
+      { reps: 4, distance: 25, interval: "0:40", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 × 25m long, smooth and controlled" },
+    ],
+  },
+  'real-input-3.txt': {
     notes: [
       "1500 free",
       "200 easy",

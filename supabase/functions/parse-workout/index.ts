@@ -269,10 +269,10 @@ function detectSections(tokens: RawLine[]): SectionBlock[] {
 // ─── Pass 3 & 4: Label extraction + RepGroup parsing ──────────────────────────
 
 const START_SET_RE =
-  /^(\d+\s*[x×]\s*\d+|\d+\s+(?:m|yards?|meters?)?)(?=\s|\s*[,@:]|$)/i;
+  /^(\d+\s*[x×]\s*\d+|\d+\s*(?:m|yards?|meters?)?)(?=\s|\s*[,‌@:]|$)/i;
 
 const SET_LINE_RE =
-  /(\d+)\s*[x×]\s*(\d+)|\b(\d+)\s+(?:\d+)?\s*(?:m|yards?|meters?)?/i;
+  /(\d+)\s*[x×]\s*(\d+)|\b(\d+)\s*(?:\d+)?\s*(?:m|yards?|meters?)?/i;
 
 function isSetLine(text: string): boolean {
   return START_SET_RE.test(text) || /\d+\s+[x×]\s*\d+/.test(text);
@@ -441,6 +441,12 @@ function parseIntensity(raw: string): ParsedIntensity | null {
 
 function parseInterval(text: string): string | null {
   const n = normalize(text);
+  // ponytail (autoresearch iter 8, 2026-07-22): bare-seconds
+  // intervals like "@ :40", "@ :45", "@ :50" — coaches omit the
+  // leading zero. Require the @ prefix to avoid matching the
+  // seconds part of "1:40" or "2:50".
+  const bareSecMatch = n.match(/@\s*:(\d{2})\b/);
+  if (bareSecMatch) return `0:${bareSecMatch[1]}`;
   const colonMatch = n.match(
     /(?:on\s+)?(\d+):(\d{2})(?:\s+(?:interval|rest|i\/?)?)?/,
   );
