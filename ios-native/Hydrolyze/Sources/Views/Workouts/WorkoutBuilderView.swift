@@ -420,28 +420,31 @@ final class WorkoutBuilderViewModel: ObservableObject {
     }
 
     func parse(_ text: String) async {
-        // 1. On-device parse first (1-10ms).
+        // 1. On-device parse first (1-10ms) — only to keep the preview
+        //    populated during the 500ms debounce + ~200ms server warm.
         let syncResult = workoutService.parseWorkoutSync(text)
-        let syncCount = syncResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
         await MainActor.run {
             parsedWorkout = syncResult
             parseError = nil
             isLoading = true  // keep showing the parsing indicator while we reconcile
         }
 
-        // 2. Server reconciliation in the background (~200ms warm).
+        // 2. Server reconciliation. The server is canonical for both
+        //    rep-group count AND section grouping (the on-device parser
+        //    flattens everything into a single unnamed section, so
+        //    section dividers like "Pool warm-up — 1,000m" only appear
+        //    when we adopt the server result). Always prefer the server
+        //    output when the call succeeds, regardless of count —
+        //    even an empty server result is better than the sync result,
+        //    because empty server result means "I correctly parsed this
+        //    and found nothing" while sync result means "I parsed this
+        //    with the old single-section fallback". The fallback to sync
+        //    only fires when the server call ITSELF throws (network error,
+        //    auth failure, JSON decode error).
         do {
             let serverResult = try await workoutService.parseWorkout(text: text)
-            let serverCount = serverResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
-            // Server is canonical — always prefer its output when it produced
-            // anything. The on-device parser is a latency-hiding placeholder;
-            // it can produce the same rep-group COUNT but with worse fields
-            // (missing stroke, wrong interval, no note). Only fall back to
-            // the sync result when the server returned nothing.
-            if serverCount > 0 {
-                await MainActor.run {
-                    parsedWorkout = serverResult
-                }
+            await MainActor.run {
+                parsedWorkout = serverResult
             }
             let key = cacheKey(for: text)
             cache[key] = CachedParse(trimmedText: text, workout: serverResult)
@@ -455,8 +458,9 @@ final class WorkoutBuilderViewModel: ObservableObject {
                 isLoading = false
             }
         } catch {
+            // Server failed; surface the error and keep the sync result.
             await MainActor.run {
-                // Server failed; keep the sync result, clear isLoading.
+                parseError = "Server parse failed — using on-device fallback. \(error.localizedDescription)"
                 isPendingParse = false
                 isLoading = false
             }
