@@ -367,6 +367,83 @@ enum ParsedRep: Codable {
         case .simple: return "simple"
         }
     }
+
+    // ponytail (autoresearch iter 11, 2026-07-24): custom Codable
+    // for ParsedRep union. The server returns pattern entries as a
+    // flat JSON object with a `type` field discriminator (e.g.
+    // {"type": "odd_even", "odd": "...", "even": "..."}). Swift's
+    // auto-generated init for enums-with-associated-values requires
+    // a specific wrapping format with discriminator + value keys.
+    // Without a custom init(from:), decoding throws with
+    // "keyNotFound" or "typeMismatch" for every pattern entry, which
+    // propagates up and crashes the whole workout decode — falling
+    // back to the on-device sync parser (single flat section) instead
+    // of the server result (with sections). This was the root cause
+    // of "section dividers don't appear in the preview".
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case drillMeters, swimMeters, rawText
+        case odd, even
+        case meters, stroke, note, intensity, pacing
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let typeStr = try container.decode(String.self, forKey: .type)
+        switch typeStr {
+        case "drill_swim":
+            let drillMeters = try container.decodeIfPresent(Int.self, forKey: .drillMeters)
+            let swimMeters = try container.decodeIfPresent(Int.self, forKey: .swimMeters)
+            let rawText = try container.decodeIfPresent(String.self, forKey: .rawText)
+            self = .drillSwim(ParsedDrillSwimRep(
+                type: "drill_swim",
+                drillMeters: drillMeters,
+                swimMeters: swimMeters,
+                rawText: rawText
+            ))
+        case "odd_even":
+            let odd = try container.decode(String.self, forKey: .odd)
+            let even = try container.decode(String.self, forKey: .even)
+            self = .oddEven(ParsedOddEvenRep(type: "odd_even", odd: odd, even: even))
+        case "simple":
+            let meters = try container.decodeIfPresent(Int.self, forKey: .meters)
+            let stroke = try container.decodeIfPresent(String.self, forKey: .stroke)
+            let note = try container.decodeIfPresent(String.self, forKey: .note)
+            let intensity = try container.decodeIfPresent(ParsedIntensity.self, forKey: .intensity)
+            let pacing = try container.decodeIfPresent(String.self, forKey: .pacing)
+            self = .simple(ParsedSimpleRep(
+                type: "simple",
+                meters: meters,
+                stroke: stroke,
+                note: note,
+                intensity: intensity,
+                pacing: pacing
+            ))
+        default:
+            // Unknown pattern type — skip by treating as simple
+            self = .simple(ParsedSimpleRep(type: typeStr, meters: nil, stroke: nil, note: nil, intensity: nil, pacing: nil))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        switch self {
+        case .drillSwim(let r):
+            try container.encodeIfPresent(r.drillMeters, forKey: .drillMeters)
+            try container.encodeIfPresent(r.swimMeters, forKey: .swimMeters)
+            try container.encodeIfPresent(r.rawText, forKey: .rawText)
+        case .oddEven(let r):
+            try container.encode(r.odd, forKey: .odd)
+            try container.encode(r.even, forKey: .even)
+        case .simple(let r):
+            try container.encodeIfPresent(r.meters, forKey: .meters)
+            try container.encodeIfPresent(r.stroke, forKey: .stroke)
+            try container.encodeIfPresent(r.note, forKey: .note)
+            try container.encodeIfPresent(r.intensity, forKey: .intensity)
+            try container.encodeIfPresent(r.pacing, forKey: .pacing)
+        }
+    }
 }
 
 struct ParsedRepGroup: Codable {
