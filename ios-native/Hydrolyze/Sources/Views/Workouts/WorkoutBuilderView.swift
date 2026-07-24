@@ -423,11 +423,14 @@ final class WorkoutBuilderViewModel: ObservableObject {
         // 1. On-device parse first (1-10ms) — only to keep the preview
         //    populated during the 500ms debounce + ~200ms server warm.
         let syncResult = workoutService.parseWorkoutSync(text)
+        let syncSectionCount = syncResult.sections.count
+        let syncSetCount = syncResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
         await MainActor.run {
             parsedWorkout = syncResult
             parseError = nil
             isLoading = true  // keep showing the parsing indicator while we reconcile
         }
+        NSLog("[PARSE] sync: \(syncSectionCount) sections, \(syncSetCount) sets")
 
         // 2. Server reconciliation. The server is canonical for both
         //    rep-group count AND section grouping (the on-device parser
@@ -443,6 +446,9 @@ final class WorkoutBuilderViewModel: ObservableObject {
         //    auth failure, JSON decode error).
         do {
             let serverResult = try await workoutService.parseWorkout(text: text)
+            let serverSectionCount = serverResult.sections.count
+            let serverSetCount = serverResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
+            NSLog("[PARSE] server: \(serverSectionCount) sections, \(serverSetCount) sets — adopting")
             await MainActor.run {
                 parsedWorkout = serverResult
             }
@@ -458,6 +464,7 @@ final class WorkoutBuilderViewModel: ObservableObject {
                 isLoading = false
             }
         } catch {
+            NSLog("[PARSE] server FAILED: \(error.localizedDescription) — keeping sync result")
             // Server failed; surface the error and keep the sync result.
             await MainActor.run {
                 parseError = "Server parse failed — using on-device fallback. \(error.localizedDescription)"
