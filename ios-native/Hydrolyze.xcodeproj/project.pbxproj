@@ -98,6 +98,7 @@
 		F4A6B071989514A86B2AF2A2 /* SwimmerHomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ED58B38E311216828F53455 /* SwimmerHomeViewModel.swift */; };
 		F782783A579553B3278B9EFB /* PressFeedbackStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A6BAA55BEC6817427B2B574 /* PressFeedbackStyle.swift */; };
 		FA91467231FEDE548780E34F /* WaveAllocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CDEE0BE641DA59BB7648129 /* WaveAllocator.swift */; };
+		FE329F8DAECF1BF10C5A2F82 /* AnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F878ABFE69673781F1A025A3 /* AnalyticsService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -202,6 +203,7 @@
 		E8D42BD09217EC1098E3901C /* ChartDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartDataService.swift; sourceTree = "<group>"; };
 		F0E11B7104A97D4F39692D1C /* SwimmerUpcomingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerUpcomingView.swift; sourceTree = "<group>"; };
 		F61147CDFCC03EC205F60066 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		F878ABFE69673781F1A025A3 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
 		FF5DBAF6EEDA31CAA214AE38 /* HydrolyzeType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrolyzeType.swift; sourceTree = "<group>"; };
 		FFEA7C247218656325E481BA /* SwimmerSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerSheetView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -370,6 +372,7 @@
 		5D6A1A560B939AF09C3A2149 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				F878ABFE69673781F1A025A3 /* AnalyticsService.swift */,
 				9BCC2E5E797656F432A0858C /* AuthManager.swift */,
 				41C73AE0B5301A9952C2397D /* AuthService.swift */,
 				3B57DEE2C8841CB1436A3D30 /* CalibrationFactors.swift */,
@@ -659,6 +662,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FE329F8DAECF1BF10C5A2F82 /* AnalyticsService.swift in Sources */,
 				19B6D9CB42E8BA1848E37FD2 /* AnalyticsTabView.swift in Sources */,
 				C6B2D23B2DCA3E9DEA4B8720 /* Animations.swift in Sources */,
 				A81250405E32626E83026239 /* AttendanceBadge.swift in Sources */,

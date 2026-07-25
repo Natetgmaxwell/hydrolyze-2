@@ -1,50 +1,311 @@
 import SwiftUI
 
-/// AnalyticsTabView — placeholder for the v2 Analytics feature.
+/// AnalyticsTabView — Phase 4 squad-level coaching brain.
 ///
-/// PHASE 0.3 (2026-06-23): The v1.14 squad/swimmer analytics views
-/// (SquadAnalyticsView, SwimmerAnalyticsView, ProgressionChart,
-/// ChartDataService, ISO8601DateParser) were deferred to v2 per the
-/// user's MVP-first directive. The squad-level design captured at
-/// `originals/hydrolyze-squad-level-progression-design-v1` (resistance
-/// as F-v proxy, one-screen one-signal list, gear-capture mechanic)
-/// is the v2 reference. The Phase 2.1-2.7 swimmer login + Phase 2.8
-/// invite-code onboarding are the MVP focus.
+/// Replaces the v1 placeholder. Surfaces three signals from the metadata flywheel:
+///   1. Training band distribution — is the squad doing enough quality work?
+///   2. Gear/suit/dive breakdown — are we training race conditions?
+///   3. Top gear usage — what equipment is the squad training in?
 ///
-/// The `SquadAnalyticsView` and `SwimmerAnalyticsView` files have
-/// been deleted; this placeholder preserves the ContentView reference
-/// at ContentView.swift:63 so the build doesn't break. The v2 work
-/// (Phase 2.5+ in the periodised plan) will replace this with the
-/// real squad-level view.
-///
-/// Why this is the right shape:
-/// - The ContentView routing (coach/swimmer/unauthenticated) needs
-///   AnalyticsTabView's type to exist for the coach path's tab bar.
-/// - v2 ships SquadSignalsView + SwimmerDetailView's gear comparison
-///   + the Bu load model sparkline for endurance swimmers.
-/// - The `ChartDataService` + `ISO8601DateParser` + `ProgressionChart`
-///   files are KEPT because `SwimmerHomeViewModel` and
-///   `SwimmerDetailViewModel` still consume them (per precheck).
+/// The data comes from AnalyticsService which joins recorded_times → workout_sets.
+/// The gear/suit/dive columns on workout_sets (Phase 1 metadata wiring) make
+/// these queries possible.
 struct AnalyticsTabView: View {
-    var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "chart.bar.xaxis")
-                .font(.displayLarge)
-                .foregroundStyle(Color.accentCyan.opacity(0.6))
-            Text("Analytics — Coming in v2")
-                .font(.title2.weight(.semibold))
-            Text("Squad-level progression view + per-swimmer F-V\nlens + Bu load model for endurance swimmers.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Text("MVP focus: live stopwatch + set parser + swimmer login.")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
+    @Environment(AuthManager.self) private var authManager
+    @State private var timeWindow: TimeWindow = .week
+    @State private var bands: [AnalyticsService.TrainingBandStats] = []
+    @State private var gearBreakdown: AnalyticsService.GearBreakdown?
+    @State private var isLoading = false
+    @State private var loadError: String?
+
+    private let service = AnalyticsService()
+
+    enum TimeWindow: String, CaseIterable, Identifiable {
+        case week = "7D"
+        case month = "30D"
+        case quarter = "90D"
+        var id: String { rawValue }
+
+        var dateOffset: Date {
+            switch self {
+            case .week: return Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+            case .month: return Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+            case .quarter: return Calendar.current.date(byAdding: .day, value: -90, to: Date())!
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
-        .background(Color(.systemGroupedBackground))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.bgBase.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        timeWindowPicker
+
+                        if isLoading {
+                            HStack {
+                                Spacer()
+                                ProgressView().tint(Color.accentCyan)
+                                Spacer()
+                            }
+                            .padding(.vertical, 40)
+                        } else if let error = loadError {
+                            errorView(error)
+                        } else {
+                            trainingBandCard
+                            gearBreakdownCard
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationTitle("Analytics")
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .task { await loadData() }
+        .onChange(of: timeWindow) { _, _ in
+            Task { await loadData() }
+        }
+    }
+
+    // MARK: - Time Window Picker
+
+    private var timeWindowPicker: some View {
+        Picker("Time Window", selection: $timeWindow) {
+            ForEach(TimeWindow.allCases) { window in
+                Text(window.rawValue).tag(window)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    // MARK: - Training Band Distribution
+
+    private var trainingBandCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("TRAINING BAND DISTRIBUTION")
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
+                .tracking(1.2)
+
+            if bands.isEmpty {
+                Text("No recorded times in this window.")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .padding(.vertical, 20)
+            } else {
+                let totalReps = bands.reduce(0) { $0 + $1.repCount }
+
+                VStack(spacing: 10) {
+                    ForEach(bands) { band in
+                        bandBar(band, totalReps: totalReps)
+                    }
+                }
+
+                Divider().padding(.vertical, 4)
+
+                HStack(spacing: 16) {
+                    statLabel("Total Reps", value: "\(totalReps)")
+                    statLabel("Total Distance", value: "\(bands.reduce(0) { $0 + $1.distanceMeters })m")
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.bgSunken)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.divider, lineWidth: 1)
+        )
+    }
+
+    private func bandBar(_ band: AnalyticsService.TrainingBandStats, totalReps: Int) -> some View {
+        let fraction = totalReps > 0 ? Double(band.repCount) / Double(totalReps) : 0
+        let bandColor = Color(uiColor: UIColor(hex: band.color) ?? .systemGray)
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(band.band)
+                    .font(.captionStrong)
+                    .foregroundColor(Color.textPrimary)
+                Spacer()
+                Text("\(band.repCount) reps · \(Int(fraction * 100))%")
+                    .font(.numericSmall)
+                    .foregroundColor(Color.textMuted)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.divider.opacity(0.3))
+                        .frame(height: 8)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(bandColor)
+                        .frame(width: geo.size.width * fraction, height: 8)
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+
+    // MARK: - Gear/Suit/Dive Breakdown
+
+    private var gearBreakdownCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("GEAR · SUIT · DIVE")
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
+                .tracking(1.2)
+
+            if let gb = gearBreakdown, gb.totalReps > 0 {
+                HStack(spacing: 12) {
+                    breakdownTile(
+                        label: "Gear",
+                        count: gb.repsWithGear,
+                        total: gb.totalReps,
+                        color: Color.accentCyan
+                    )
+                    breakdownTile(
+                        label: "Suit",
+                        count: gb.repsWithSuit,
+                        total: gb.totalReps,
+                        color: Color.accentAmber
+                    )
+                    breakdownTile(
+                        label: "Dive",
+                        count: gb.repsWithDive,
+                        total: gb.totalReps,
+                        color: Color.statusError
+                    )
+                }
+
+                if !gb.topGear.isEmpty {
+                    Divider().padding(.vertical, 2)
+
+                    Text("TOP GEAR")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color.textFaint)
+                        .tracking(1)
+
+                    VStack(spacing: 6) {
+                        ForEach(gb.topGear, id: \.gear) { item in
+                            HStack {
+                                Text(formatGearName(item.gear))
+                                    .font(.caption)
+                                    .foregroundColor(Color.textPrimary)
+                                Spacer()
+                                Text("\(item.count)")
+                                    .font(.numericSmall)
+                                    .foregroundColor(Color.textMuted)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("No gear/suit/dive data in this window.")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .padding(.vertical, 20)
+            }
+        }
+        .padding(16)
+        .background(Color.bgSunken)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.divider, lineWidth: 1)
+        )
+    }
+
+    private func breakdownTile(label: String, count: Int, total: Int, color: Color) -> some View {
+        let pct = total > 0 ? Int(Double(count) / Double(total) * 100) : 0
+        return VStack(spacing: 6) {
+            Text("\(pct)%")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundColor(color)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(Color.textFaint)
+                .tracking(0.5)
+            Text("\(count)/\(total)")
+                .font(.system(size: 9))
+                .foregroundColor(Color.textFaint)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(color.opacity(0.08))
+        .cornerRadius(8)
+    }
+
+    // MARK: - Helpers
+
+    private func statLabel(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(Color.textFaint)
+            Text(value)
+                .font(.numeric)
+                .foregroundColor(Color.textPrimary)
+        }
+    }
+
+    private func formatGearName(_ gear: String) -> String {
+        gear.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private func errorView(_ message: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.title2)
+                .foregroundColor(Color.accentAmber)
+            Text(message)
+                .font(.caption)
+                .foregroundColor(Color.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+
+    // MARK: - Data Loading
+
+    private func loadData() async {
+        isLoading = true
+        loadError = nil
+        do {
+            let coachId = authManager.coachId ?? ""
+            async let bands = try service.fetchTrainingBands(
+                coachId: coachId,
+                since: timeWindow.dateOffset
+            )
+            async let gear = try service.fetchGearBreakdown(
+                coachId: coachId,
+                since: timeWindow.dateOffset
+            )
+            self.bands = try await bands
+            self.gearBreakdown = try await gear
+        } catch {
+            loadError = "Failed to load analytics: \(error.localizedDescription)"
+        }
+        isLoading = false
+    }
+}
+
+// MARK: - UIColor Hex Extension
+
+extension UIColor {
+    convenience init?(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        guard hex.count == 6 else { return nil }
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        self.init(
+            red: CGFloat((int >> 16) & 0xFF) / 255,
+            green: CGFloat((int >> 8) & 0xFF) / 255,
+            blue: CGFloat(int & 0xFF) / 255,
+            alpha: 1
+        )
     }
 }
 
