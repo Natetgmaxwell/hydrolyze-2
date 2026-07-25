@@ -484,7 +484,29 @@ function parseIntensity(raw: string): ParsedIntensity | null {
     };
   }
 
-  const paceMatch = n.match(/(?:at|on|@)\s*(\d+)\s*m?\s*(?:pace|effort)/);
+  // Slash-separated broken-swim segments: "50 400 pace/50 200 pace"
+  // Each segment is a sub-distance with its own pace. Parse this FIRST
+  // so the single-pace regex below doesn't grab only the first segment.
+  if (n.includes("/")) {
+    const segments = n.split("/").map((s) => s.trim()).filter((s) => s.length > 0);
+    if (segments.length >= 2) {
+      const hasPace = segments.some((s) => /\bpace\b/i.test(s));
+      if (hasPace) {
+        return {
+          type: "pace_target",
+          label: segments.map((s) => {
+            const m = s.match(/(\d+)\s*m?\s*pace/);
+            return m ? `${m[1]} pace` : s;
+          }).join(" / "),
+          paceDistance: undefined,
+        };
+      }
+    }
+  }
+
+  // Pace target: "400 pace", "at 400 pace", "on 200 pace", "@100 pace"
+  // The bare form (no preposition) is common in broken-swim notation.
+  const paceMatch = n.match(/(?:at\s+|on\s+|@\s*)?(\d+)\s*m?\s*(?:pace|effort)/);
   if (paceMatch) {
     const d = parseIntSafe(paceMatch[1]);
     if (d !== null && isKnownDistance(d))
