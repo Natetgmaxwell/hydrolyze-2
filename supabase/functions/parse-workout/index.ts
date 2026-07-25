@@ -91,6 +91,7 @@ interface RepGroup {
   dive: boolean;
   suit: boolean;
   ambiguousTerm: string | null;
+  defaultRpe: { low: number; high: number } | null;
 }
 
 interface NamedSet {
@@ -423,26 +424,38 @@ function parseRepDist(raw: string): {
 
 // ─── Pass 4: Intensity ─────────────────────────────────────────────────────────
 
-// RPE flywheel: these terms are ambiguous — different coaches mean different
-// things by them. The parser detects them and the UI prompts for an RPE mapping.
+// RPE flywheel: terms split into two tiers based on industry-standard meaning.
+//
+// TIER 1 — PROMPT: the coach should map these because they're wildly different
+// between coaches (one coach's "moderate" is another's "hard").
 const AMBIGUOUS_INTENSITY_TERMS: Array<[RegExp, string]> = [
   [/\bmoderate\b/i, "moderate"],
   [/\bhard\b/i, "hard"],
-  [/\beasy\b/i, "easy"],
   [/\bsteady\b/i, "steady"],
   [/\bcruise\b/i, "cruise"],
   [/\blight\b/i, "light"],
   [/\btough\b/i, "tough"],
-  [/\btempo\b/i, "tempo"],
   [/\bstrong\b/i, "strong"],
   [/\ball[-\s]?out\b/i, "all-out"],
 ];
+
+// TIER 2 — AUTO-RESOLVE: industry-standard swimming vocabulary. Don't prompt;
+// the parser resolves to a default RPE range that the coach can override
+// later by mapping the term in coach_vocabulary.
+const DEFAULT_RPE_BY_TERM: Record<string, { low: number; high: number }> = {
+  "easy": { low: 4, high: 5 },
+  "tempo": { low: 8, high: 9 },
+};
 
 function detectAmbiguousTerm(raw: string): string | null {
   for (const [re, term] of AMBIGUOUS_INTENSITY_TERMS) {
     if (re.test(raw)) return term;
   }
   return null;
+}
+
+function defaultRPEForTerm(term: string): { low: number; high: number } | null {
+  return DEFAULT_RPE_BY_TERM[term.toLowerCase()] ?? null;
 }
 
 function parseIntensity(raw: string): ParsedIntensity | null {
@@ -574,6 +587,11 @@ function parseIntensity(raw: string): ParsedIntensity | null {
     );
     const label = match ? match[1].toLowerCase() : "easy";
     return { type: "easy", label };
+  }
+
+  // Tempo — industry-standard threshold term. Auto-resolved to RPE 8-9.
+  if (/\b(?:tempo|race[\s-]?tempo|threshold[\s-]?tempo)\b/i.test(raw)) {
+    return { type: "threshold", label: "tempo" };
   }
 
   return null;
@@ -844,6 +862,7 @@ function parseRepGroup(lineText: string): RepGroup | null {
   const dive = parseDive(text);
   const suit = parseSuit(text);
   const ambiguousTerm = detectAmbiguousTerm(text);
+  const defaultRpe = ambiguousTerm ? defaultRPEForTerm(ambiguousTerm) : null;
 
   let details: string[] | null = null;
   {
@@ -1089,6 +1108,7 @@ function parseRepGroup(lineText: string): RepGroup | null {
     dive,
     suit,
     ambiguousTerm,
+    defaultRpe,
     // ponytail (autoresearch 2026-07-21): the previous code used a stale
     // `reps` const that was mapped from subReps BEFORE the rotation
     // block had a chance to populate it. That meant FBBF/FBF/FBFB
