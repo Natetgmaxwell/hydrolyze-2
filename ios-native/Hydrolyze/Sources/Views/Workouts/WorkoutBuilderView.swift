@@ -226,6 +226,8 @@ struct WorkoutBuilderView: View {
                     syntaxHintRow("Sets: 4×100 free @1:30")
                     syntaxHintRow("Intervals: @1:30  /  on 2:00  /  on 1:30 rest")
                     syntaxHintRow("Gear: paddles  /  pull buoy  /  fins  /  kickboard")
+                    syntaxHintRow("Dive: from a dive  /  off the blocks")
+                    syntaxHintRow("Suit: in a suit  /  tech suit  /  racing suit")
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)

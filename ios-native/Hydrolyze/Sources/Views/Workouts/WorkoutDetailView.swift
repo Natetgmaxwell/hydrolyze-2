@@ -246,16 +246,38 @@ struct WorkoutDetailView: View {
                             .foregroundColor(Color.textPrimary)
                             .multilineTextAlignment(.leading)
 
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
+                            // Gear badges
                             if let gear = set.gear, !gear.isEmpty {
                                 Text(gear.joined(separator: ", "))
                                     .font(.captionStrong)
                                     .foregroundColor(Color.accentCyan)
                             }
+                            // Intensity label
                             if let intensity = set.intensityLabel {
                                 Text(intensity)
                                     .font(.caption)
                                     .foregroundColor(Color.accentAmber)
+                            }
+                            // Dive badge
+                            if set.dive == true {
+                                Text("DIVE")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(Color.accentAmber)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Color.accentAmber.opacity(0.12))
+                                    .cornerRadius(4)
+                            }
+                            // Suit badge
+                            if set.suit == true {
+                                Text("SUIT")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(Color.accentCyan)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Color.accentCyan.opacity(0.12))
+                                    .cornerRadius(4)
                             }
                         }
                     }
