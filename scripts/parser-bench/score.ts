@@ -14,6 +14,9 @@ interface FlatRepGroup {
   pattern: string | null;
   note: string | null;
   subReps: number;
+  dive: boolean;
+  suit: boolean;
+  gear: string[] | null;
   source: string;
 }
 
@@ -60,6 +63,9 @@ function flatten(parsed: ReturnType<typeof parseWorkoutV2>): FlatRepGroup[] {
           pattern: patternStr,
           note: rg.note,
           subReps: rg.pattern?.length ?? 0,
+          dive: rg.dive ?? false,
+          suit: rg.suit ?? false,
+          gear: rg.gear,
           source: (rg.details || []).join(" ").slice(0, 60),
         });
       }

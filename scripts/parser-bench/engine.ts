@@ -95,6 +95,8 @@ interface RepGroup {
   gearOptional: boolean;
   descend: string | null;
   details: string[] | null;
+  dive: boolean;
+  suit: boolean;
 }
 
 interface NamedSet {
@@ -128,21 +130,61 @@ const STROKE_PATTERNS: Array<[RegExp, Stroke]> = [
   [/\b(?:choice|free[\s-]?choice)\b/i, "Choice"],
 ];
 
+// ─── Dive / Suit detection ───────────────────────────────────────────────────
+
+// Dive: binary. Coach says "from a dive", "dive start", "off the blocks",
+// "block start", "racing dive" → dive=true. Default false (in-water push).
+// Anti: kick sets are never dive-started; the coach wouldn't write it.
+const DIVE_PATTERNS: RegExp[] = [
+  /\bfrom\s+a\s+dive\b/i,
+  /\bdive\s+start\b/i,
+  /\boff\s+the\s+blocks?\b/i,
+  /\bblock\s+start\b/i,
+  /\bracing\s+dive\b/i,
+  /\bdive\s+entry\b/i,
+  // bare "dive" when clearly a start qualifier (not "dive drill")
+  /\bdive\b(?!.*(?:drill|kick|recover|depth))/i,
+];
+
+// Suit: binary. Coach says "in a suit", "tech suit", "raced in suit" → suit=true.
+// Anti: suit=true never on drill sets. Default false.
+const SUIT_PATTERNS: RegExp[] = [
+  /\bin\s+a\s+suit\b/i,
+  /\btech\s*suit\b/i,
+  /\braced?\s+in\s+(?:a\s+)?suit\b/i,
+  /\bsuit\s+on\b/i,
+  /\b(?:full[-\s]?body|jaked|arena|speedo\s+lzr)\b/i,
+];
+
+function parseDive(text: string): boolean {
+  return DIVE_PATTERNS.some((re) => re.test(text));
+}
+
+function parseSuit(text: string): boolean {
+  return SUIT_PATTERNS.some((re) => re.test(text));
+}
+
+// ─── Gear parsing ─────────────────────────────────────────────────────────────
+
 const GEAR_PATTERNS: Array<[RegExp, string]> = [
   [/\bfins\b/i, "fins"],
   [/\bflippers\b/i, "fins"],
   [/\bpaddles?\b/i, "paddles"],
-  // ponytail (opus-1, 2026-07-19): consolidate pull_buoy / buoy into
-  // a single match. The previous "buoy" fallback matched "pull buoy"
-  // twice (once via the pull[\s-]?buoy pattern, once via bare buoy).
   [/\b(?:pull[\s-]?buoy|buoy)\b/i, "pull_buoy"],
   [/\bkickboard\b/i, "kickboard"],
-  // ponytail (opus-1): consolidate kick\s*board into the main
-  // kickboard match to avoid duplicate matches.
   [/\bkick\s*board\b/i, "kickboard"],
-  [/\bdrag\s*suit\b/i, "dragSuit"],
-  // ponytail (opus-1): snorkel (a common gear for breathing drills).
   [/\bsnorkel\b/i, "snorkel"],
+  [/\bdrum\s*parachute\b/i, "parachute"],
+  [/\bparachute\b/i, "parachute"],
+  [/\bresistance\s*(?:band|cord|tubing)\b/i, "resistance_band"],
+  [/\bpower\s*tower\b/i, "power_tower"],
+  [/\bweight\s*belt\b/i, "weight_belt"],
+  [/\b(?:tennis|golf)\s*balls?\b/i, "tennis_balls"],
+  [/\bankle\s*bands?\b/i, "ankle_band"],
+  [/\bpull\s*paddle\b/i, "pull_paddle"],
+  [/\bfinger\s*paddle\b/i, "finger_paddle"],
+  [/\bdrag\s*(?:suit|shorts?)\b/i, "drag_suit"],
+  [/\bstretchcordz\b/i, "stretchcordz"],
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -836,6 +878,8 @@ function parseRepGroup(lineText: string): RepGroup | null {
 
   const gear = parseGear(text);
   const gearOptional = gear !== null && /\boptional\b/i.test(text);
+  const dive = parseDive(text);
+  const suit = parseSuit(text);
 
   let details: string[] | null = null;
   {
@@ -1032,6 +1076,8 @@ function parseRepGroup(lineText: string): RepGroup | null {
     gearOptional,
     descend,
     details,
+    dive,
+    suit,
     pattern: reps,
     patternType: subReps.length > 0 ? (patternType ?? "simple") : null,
     connectors: [],

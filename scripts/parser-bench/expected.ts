@@ -17,6 +17,10 @@ export interface ExpectedRepGroup {
   pattern: string | null;           // e.g. 'FBBF', 'FBF', 'FBFB' if the line had a pattern rotation
   note: string | null;              // attached free-text note (e.g. 'fast for time', 'descend 1-4')
   subReps: number;                  // count of sub-reps the line produced (0 unless the line had `as N.X, N+1.Y` notation)
+  // v3 additions (metadata phase):
+  dive?: boolean;                   // true if the set is dive-started (default false)
+  suit?: boolean;                   // true if the set is swum in a suit (default false)
+  gear?: string[];                  // extracted gear (e.g. ['fins', 'paddles'])
   source: string;                   // the human source line this came from, for diagnostics
 }
 
@@ -182,6 +186,34 @@ export const EXPECTED: Record<string, ExpectedLine> = {
     ],
   },
 
+  'real-input-5.txt': {
+    notes: [
+      "Dive, suit, and equipment extraction tests",
+    ],
+    repGroups: [
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, dive: true, source: "4 x 50m free from a dive @ 1:00" },
+      { reps: 6, distance: 25, interval: "0:40", stroke: "Fly", pattern: null, note: null, subReps: 0, dive: true, source: "6 x 25m fly off the blocks @ 0:40" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, dive: true, suit: true, source: "4 x 50m free in a suit from a dive @ 1:00" },
+      { reps: 8, distance: 50, interval: "1:10", stroke: "Kick", pattern: null, note: null, subReps: 0, gear: ["fins"], source: "8 x 50m kick with fins @ 1:10" },
+      { reps: 4, distance: 100, interval: "1:40", stroke: "IM", pattern: null, note: null, subReps: 0, gear: ["paddles", "pull_buoy"], source: "4 x 100m IM with paddles and pull buoy @ 1:40" },
+      { reps: 6, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, gear: ["snorkel"], source: "6 x 50m free with snorkel @ 1:00" },
+      { reps: 4, distance: 25, interval: "1:00", stroke: null, pattern: null, note: null, subReps: 0, dive: true, gear: ["parachute"], source: "4 x 25m sprint with parachute from a dive @ 1:00" },
+      { reps: 8, distance: 50, interval: "1:15", stroke: "Back", pattern: null, note: null, subReps: 0, gear: ["resistance_band"], source: "8 x 50m back with resistance band @ 1:15" },
+      { reps: 4, distance: 50, interval: "1:20", stroke: "Breast", pattern: null, note: null, subReps: 0, gear: ["tennis_balls"], source: "4 x 50m breast with tennis balls @ 1:20" },
+      { reps: 6, distance: 100, interval: "1:30", stroke: "Free", pattern: null, note: null, subReps: 0, suit: true, source: "6 x 100m free raced in suit @ 1:30" },
+      { reps: 4, distance: 50, interval: "1:10", stroke: "Kick", pattern: null, note: null, subReps: 0, gear: ["kickboard", "fins"], source: "4 x 50m kick with kickboard and fins @ 1:10" },
+      { reps: 8, distance: 25, interval: "0:45", stroke: null, pattern: null, note: null, subReps: 0, dive: true, source: "8 x 25m dive entry fast breakout @ 0:45" },
+      { reps: 6, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, gear: ["finger_paddle"], source: "6 x 50m free with finger paddles @ 1:00" },
+      { reps: 4, distance: 100, interval: "1:45", stroke: "IM", pattern: null, note: null, subReps: 0, gear: ["pull_paddle", "ankle_band"], source: "4 x 100m IM with pull paddle and ankle band @ 1:45" },
+      { reps: 8, distance: 50, interval: "1:00", stroke: "Choice", pattern: null, note: null, subReps: 0, gear: ["drag_suit"], source: "8 x 50m choice with drag suit @ 1:00" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Free", pattern: null, note: null, subReps: 0, dive: true, suit: true, source: "4 x 50m free tech suit dive start @ 1:00" },
+      { reps: 8, distance: 25, interval: "0:50", stroke: "Fly", pattern: null, note: null, subReps: 0, dive: true, gear: ["fins"], source: "8 x 25m fly from a dive with fins @ 0:50" },
+      { reps: 6, distance: 50, interval: "1:20", stroke: "Back", pattern: null, note: null, subReps: 0, gear: ["weight_belt"], source: "6 x 50m back with weight belt @ 1:20" },
+      { reps: 4, distance: 100, interval: "2:00", stroke: "Free", pattern: null, note: null, subReps: 0, gear: ["power_tower"], source: "4 x 100m free with power tower @ 2:00" },
+      { reps: 8, distance: 50, interval: "1:10", stroke: "IM", pattern: null, note: null, subReps: 0, gear: ["stretchcordz"], source: "8 x 50m IM with stretchcordz @ 1:10" },
+    ],
+  },
+
 };
 
 // Normalize interval: "1.20" <-> "1:20", trim leading zero
@@ -214,6 +246,9 @@ export function matchesExpected(
     pattern: string | null;
     note: string | null;
     subReps?: number;
+    dive?: boolean;
+    suit?: boolean;
+    gear?: string[] | null;
   },
   expected: ExpectedRepGroup,
 ): boolean {
@@ -237,6 +272,17 @@ export function matchesExpected(
   }
   if (expectedHasSubReps) {
     if ((actual.subReps ?? 0) !== expected.subReps) return false;
+  }
+  // v3 fields (metadata phase): dive, suit, gear
+  if (expected.dive !== undefined && (actual.dive ?? false) !== expected.dive) return false;
+  if (expected.suit !== undefined && (actual.suit ?? false) !== expected.suit) return false;
+  if (expected.gear !== undefined) {
+    const actualGear = actual.gear ?? [];
+    const expectedGear = expected.gear;
+    // Every expected gear must be present in actual
+    for (const g of expectedGear) {
+      if (!actualGear.includes(g)) return false;
+    }
   }
   return true;
 }
