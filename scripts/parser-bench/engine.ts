@@ -97,6 +97,7 @@ interface RepGroup {
   details: string[] | null;
   dive: boolean;
   suit: boolean;
+  ambiguousTerm: string | null;
 }
 
 interface NamedSet {
@@ -440,6 +441,29 @@ function parseRepDist(raw: string): {
 }
 
 // ─── Pass 4: Intensity ─────────────────────────────────────────────────────────
+
+// RPE flywheel: these terms are ambiguous — different coaches mean different
+// things by them. The parser detects them and the UI prompts for an RPE mapping.
+// Once mapped, future uses resolve silently via coach_vocabulary.
+const AMBIGUOUS_INTENSITY_TERMS: Array<[RegExp, string]> = [
+  [/\bmoderate\b/i, "moderate"],
+  [/\bhard\b/i, "hard"],
+  [/\beasy\b/i, "easy"],
+  [/\bsteady\b/i, "steady"],
+  [/\bcruise\b/i, "cruise"],
+  [/\blight\b/i, "light"],
+  [/\btough\b/i, "tough"],
+  [/\btempo\b/i, "tempo"],
+  [/\bstrong\b/i, "strong"],
+  [/\ball[-\s]?out\b/i, "all-out"],
+];
+
+function detectAmbiguousTerm(raw: string): string | null {
+  for (const [re, term] of AMBIGUOUS_INTENSITY_TERMS) {
+    if (re.test(raw)) return term;
+  }
+  return null;
+}
 
 function parseIntensity(raw: string): ParsedIntensity | null {
   const n = normalize(raw);
@@ -880,6 +904,7 @@ function parseRepGroup(lineText: string): RepGroup | null {
   const gearOptional = gear !== null && /\boptional\b/i.test(text);
   const dive = parseDive(text);
   const suit = parseSuit(text);
+  const ambiguousTerm = detectAmbiguousTerm(text);
 
   let details: string[] | null = null;
   {
@@ -1078,6 +1103,7 @@ function parseRepGroup(lineText: string): RepGroup | null {
     details,
     dive,
     suit,
+    ambiguousTerm,
     pattern: reps,
     patternType: subReps.length > 0 ? (patternType ?? "simple") : null,
     connectors: [],

@@ -35,6 +35,7 @@
 		49001D80567C85B979548EA9 /* WorkoutDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256B77F8E4552F5BFC3E94D6 /* WorkoutDetailView.swift */; };
 		49636A4AD8B6BA6A7BF17B23 /* HungarianMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4232B41EF6194E1C779B28A8 /* HungarianMatching.swift */; };
 		497C3DC1F2BAF8402869E77C /* SessionStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB7C1706AD3C037674651AD /* SessionStartView.swift */; };
+		4B46F4955337282308CE1D26 /* VocabularyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B754DDC1D6F4548B1611C4B6 /* VocabularyService.swift */; };
 		4E4C788802BF1959ABFC99A2 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = B785FD52B8AAC2796EF6C35B /* Color+Hex.swift */; };
 		52097E02FF93302A145F9E4F /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCC2E5E797656F432A0858C /* AuthManager.swift */; };
 		54B53CC34EDC25C4E355C112 /* WorkoutParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */; };
@@ -180,6 +181,7 @@
 		A9B8CB893521F12CBAC32325 /* PBAddSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PBAddSheet.swift; sourceTree = "<group>"; };
 		AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerSheetViewModel.swift; sourceTree = "<group>"; };
 		B0102BBE0B7283BBAEB2212A /* LapAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LapAssignment.swift; sourceTree = "<group>"; };
+		B754DDC1D6F4548B1611C4B6 /* VocabularyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyService.swift; sourceTree = "<group>"; };
 		B785FD52B8AAC2796EF6C35B /* Color+Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Hex.swift"; sourceTree = "<group>"; };
 		B7D12415D6245D44A3406ACC /* CoachIntentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachIntentService.swift; sourceTree = "<group>"; };
 		BD85D4E3D3924B1DB74506FC /* WorkoutPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPreview.swift; sourceTree = "<group>"; };
@@ -381,6 +383,7 @@
 				3E2C863D2B9B6375268ACA3C /* SupabaseService.swift */,
 				616DD04CE0DFD317A57C2C92 /* SwimmerService.swift */,
 				4511E979EA8A02DFAA772CE6 /* TimingService.swift */,
+				B754DDC1D6F4548B1611C4B6 /* VocabularyService.swift */,
 				1FFEFCEEA8D2A083A13A7302 /* VolumeButtonService.swift */,
 				5CDEE0BE641DA59BB7648129 /* WaveAllocator.swift */,
 				09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */,
@@ -725,6 +728,7 @@
 				A4C025060CF3411EE05E87CF /* TimingViewModel.swift in Sources */,
 				C1B4401CFE251CE36B73C025 /* TodayView.swift in Sources */,
 				7E87FA161B654CD3DEF00FEA /* TrendChart.swift in Sources */,
+				4B46F4955337282308CE1D26 /* VocabularyService.swift in Sources */,
 				B7E47F35F585923599AD2151 /* VolumeButtonService.swift in Sources */,
 				FA91467231FEDE548780E34F /* WaveAllocator.swift in Sources */,
 				0D7498B11EC7438A96B9E109 /* WaveAssignment.swift in Sources */,

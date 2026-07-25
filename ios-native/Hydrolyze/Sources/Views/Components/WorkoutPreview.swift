@@ -142,6 +142,12 @@ private struct RepGroupRowView: View {
                 if rg.suit == true {
                     MetadataBadge(text: "SUIT", color: Color.accentCyan)
                 }
+
+                // RPE flywheel: if the parser detected an ambiguous intensity term,
+                // show a tappable RPE prompt badge so the coach can assign a mapping.
+                if let term = rg.ambiguousTerm {
+                    RPEPromptBadge(term: term)
+                }
             }
 
             if !expandedDetails.isEmpty {
@@ -345,6 +351,60 @@ private struct MetadataBadge: View {
     }
 }
 
+/// RPE prompt badge — shown when the parser detects an ambiguous intensity term.
+/// Tapping presents an RPE picker. Selecting a range saves the mapping to
+/// coach_vocabulary via VocabularyService (the flywheel).
+private struct RPEPromptBadge: View {
+    let term: String
+    @State private var resolvedRPE: VocabularyService.RPERange?
+
+    var body: some View {
+        if let rpe = resolvedRPE {
+            // Term has been mapped — show the RPE silently
+            Text("\"\(term)\" → \(rpe.label)")
+                .font(.numericSmall)
+                .foregroundColor(Color.textMuted)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Color.bgInset)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color.divider, lineWidth: 1)
+                )
+        } else {
+            // Term not yet mapped — show tappable prompt
+            Menu {
+                ForEach(VocabularyService.rpeBuckets, id: \.self) { bucket in
+                    Button("\(bucket.label)") {
+                        Task {
+                            await VocabularyService.shared.saveMapping(term: term, rpe: bucket)
+                            resolvedRPE = bucket
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text("\"\(term)\" → ?")
+                        .font(.numericSmall)
+                    Text("tap")
+                        .font(.caption2)
+                        .italic()
+                }
+                .foregroundColor(Color.accentAmber)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Color.accentAmber.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color.accentAmber.opacity(0.3), lineWidth: 1)
+                )
+            }
+        }
+    }
+}
+
 // MARK: - Parsed Workout Tree Types (Swift port of workout-types.ts)
 
 enum ParsedIntensityType: String, Codable {
@@ -490,6 +550,8 @@ struct ParsedRepGroup: Codable {
     // Phase 1 metadata (2026-07-25): dive + suit from parser
     var dive: Bool?
     var suit: Bool?
+    // RPE flywheel (2026-07-25): ambiguous intensity term detected by parser
+    var ambiguousTerm: String?
 }
 
 struct ParsedNamedSet: Codable {
@@ -527,7 +589,8 @@ struct ParsedWorkout: Codable {
                                         pattern: [], patternType: nil, connectors: nil,
                                         note: nil, gear: ["paddles"], gearOptional: true,
                                         descend: nil, details: nil,
-                                        dive: false, suit: false
+                                        dive: false, suit: false,
+                                        ambiguousTerm: nil
                                     )
                                 ]
                             )
@@ -548,7 +611,8 @@ struct ParsedWorkout: Codable {
                                         pattern: [], patternType: nil, connectors: nil,
                                         note: nil, gear: nil, gearOptional: false,
                                         descend: "1-4", details: nil,
-                                        dive: false, suit: false
+                                        dive: false, suit: false,
+                                        ambiguousTerm: nil
                                     )
                                 ]
                             )

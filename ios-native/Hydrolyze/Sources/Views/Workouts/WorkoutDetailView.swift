@@ -381,7 +381,8 @@ struct WorkoutDetailView: View {
                                     descend: nil,
                                     details: nil,
                                     dive: set.dive,
-                                    suit: set.suit
+                                    suit: set.suit,
+                                    ambiguousTerm: nil
                                 )
                             }
                         )
