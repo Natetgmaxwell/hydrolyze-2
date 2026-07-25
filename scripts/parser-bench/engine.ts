@@ -941,13 +941,18 @@ function parseRepGroup(lineText: string): RepGroup | null {
     t = t.replace(/\boptional\b/gi, "");
     t = t.replace(/\d+\s*[x×]\s*\d+\s*m*/gi, "");
     t = t.replace(/\bat\s+[\d:]+\b/gi, "");
-    t = t.replace(/\d+\s*(?:meters?|yards?|yds?)?\b/gi, "");
+    // Strip distance+unit from details. Must include bare 'm' (the most
+    // common abbreviation) — the original regex had 'meters?' but not 'm'.
+    // Also strip 'seconds rest' / 'minutes rest' which are rest lines,
+    // not swim distances.
+    t = t.replace(/\b\d+\s*(?:m|meters?|yards?|yds?)?\b/gi, "");
+    t = t.replace(/\b\d+\s*(?:seconds?|sec|minutes?|min)\s+rest\b/gi, "");
     t = t.replace(
       /\b(?:free|back|breast|fly|IM|medley|freestyle|backstroke|breaststroke|butterfly|pull)\b/gi,
       "",
     );
     t = t.replace(
-      /\b(?:easy|moderate|aerobic|threshold|sprint|descend|negative[\s-]?split|race[\s-]?pace|hard|maximum|vo2)\b/gi,
+      /\b(?:easy|moderate|aerobic|threshold|sprint|descend|negative[\s-]?split|race[\s-]?pace|hard|maximum|vo2|build(?:ing)?|choice|very|each|last|into|the|wall)\b/gi,
       "",
     );
     // Strip pace/effort words so they don't show as details when
