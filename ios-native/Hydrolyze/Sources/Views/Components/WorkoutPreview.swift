@@ -461,6 +461,9 @@ struct ParsedRepGroup: Codable {
     var gearOptional: Bool
     var descend: String?
     var details: [String]?
+    // Phase 1 metadata (2026-07-25): dive + suit from parser
+    var dive: Bool?
+    var suit: Bool?
 }
 
 struct ParsedNamedSet: Codable {
@@ -497,7 +500,8 @@ struct ParsedWorkout: Codable {
                                         interval: "1:30", intensity: nil, pacing: nil,
                                         pattern: [], patternType: nil, connectors: nil,
                                         note: nil, gear: ["paddles"], gearOptional: true,
-                                        descend: nil, details: nil
+                                        descend: nil, details: nil,
+                                        dive: false, suit: false
                                     )
                                 ]
                             )
@@ -517,7 +521,8 @@ struct ParsedWorkout: Codable {
                                         pacing: "build",
                                         pattern: [], patternType: nil, connectors: nil,
                                         note: nil, gear: nil, gearOptional: false,
-                                        descend: "1-4", details: nil
+                                        descend: "1-4", details: nil,
+                                        dive: false, suit: false
                                     )
                                 ]
                             )

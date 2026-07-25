@@ -247,8 +247,8 @@ struct WorkoutDetailView: View {
                             .multilineTextAlignment(.leading)
 
                         HStack(spacing: 8) {
-                            if let gear = set.gear {
-                                Text(gear)
+                            if let gear = set.gear, !gear.isEmpty {
+                                Text(gear.joined(separator: ", "))
                                     .font(.captionStrong)
                                     .foregroundColor(Color.accentCyan)
                             }
@@ -376,10 +376,12 @@ struct WorkoutDetailView: View {
                                     patternType: nil,
                                     connectors: nil,
                                     note: nil,
-                                    gear: set.gear.map { [$0] },
+                                    gear: set.gear,
                                     gearOptional: false,
                                     descend: nil,
-                                    details: nil
+                                    details: nil,
+                                    dive: set.dive,
+                                    suit: set.suit
                                 )
                             }
                         )

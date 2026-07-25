@@ -48,7 +48,7 @@ struct WorkoutSet: Codable, Identifiable, Sendable {
     var intensityType: String?
     var intensityLabel: String?
     var paceTargetDistance: Int?
-    var gear: String?
+    var gear: [String]?  // Phase 1: upgraded from String? to [String]? for multi-gear sets
     /// Whether the swimmer wore a suit for this set (T1 schema, 2026-06-20).
     /// Default false (no suit, the common training case). Engine reads
     /// this to apply the suit calibration delta in
@@ -58,6 +58,9 @@ struct WorkoutSet: Codable, Identifiable, Sendable {
     /// 'in_water' (the common training case, covers push start).
     /// Engine reads this to apply the start calibration delta.
     var startType: String?
+    /// Whether this set is dive-started (Phase 1, 2026-07-25).
+    /// Denormalized from start_type='dive' and/or parser detection.
+    var dive: Bool?
     var createdAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -74,6 +77,7 @@ struct WorkoutSet: Codable, Identifiable, Sendable {
         case gear
         case suit
         case startType = "start_type"
+        case dive
         case createdAt = "created_at"
     }
 

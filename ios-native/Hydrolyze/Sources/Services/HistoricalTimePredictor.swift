@@ -92,13 +92,13 @@ final class HistoricalTimePredictor {
         // stroke/distance columns to enable a 5-way match, but the
         // 4-way match is correct given the current schema.
         let setIntensity = set.intensityLabel ?? "race"
-        let setGear = set.gear ?? ""
+        let setGear = set.gear ?? []
         var exact: [RecordedTime] = []
         for rt in recordedTimes {
             if rt.workoutSetId == set.id
                 && rt.swimmerId == swimmer.id
                 && rt.intensity == setIntensity
-                && (rt.gear ?? "") == setGear {
+                && gearMatches(rt.gear, setGear) {
                 exact.append(rt)
             }
         }
@@ -304,18 +304,37 @@ final class HistoricalTimePredictor {
 
     // MARK: - Constants (port of v2 `constants.ts`)
 
+    /// Phase 1 (2026-07-25): compare recorded_time gear (String?) against
+    /// workout_set gear ([String]?). For backwards compat, a recorded_time
+    /// with a single gear string matches if the set's gear array contains it.
+    static func gearMatches(_ rtGear: String?, _ setGear: [String]) -> Bool {
+        guard let rtGear = rtGear, !rtGear.isEmpty else {
+            return setGear.isEmpty
+        }
+        return setGear.contains(rtGear)
+    }
+
     /// Gear penalties. > 1.0 = slower, < 1.0 = faster.
     /// These are cold-start universals. Per-swimmer calibration is v2.
-    static func gearMultiplier(_ gear: String?) -> Double {
+    /// Phase 1 update (2026-07-25): now takes [String]? (array) and combines
+    /// multipliers for multi-gear sets (e.g. paddles + pull_buoy).
+    static func gearMultiplier(_ gear: [String]?) -> Double {
         guard let gear = gear, !gear.isEmpty else { return 1.0 }
-        switch gear {
-        case "paddles":    return 1.05   // 5% slower
-        case "pull_buoy":  return 1.03   // 3% slower
-        case "fins":       return 0.88   // 12% faster
-        case "kickboard":  return 1.04   // 4% slower
-        case "dragSuit":   return 1.10   // 10% slower
-        default:           return 1.0
+        var mult: Double = 1.0
+        for g in gear {
+            switch g {
+            case "paddles":    mult *= 1.05   // 5% slower
+            case "pull_buoy":  mult *= 1.03   // 3% slower
+            case "fins":       mult *= 0.88   // 12% faster
+            case "kickboard":  mult *= 1.04   // 4% slower
+            case "drag_suit", "dragSuit": mult *= 1.10   // 10% slower
+            case "snorkel":    mult *= 1.0    // neutral (breathing aid)
+            case "parachute":  mult *= 1.15   // 15% slower (resistance)
+            case "resistance_band": mult *= 1.12  // 12% slower
+            default:           break
+            }
         }
+        return mult
     }
 
     /// Intensity multiplier vs race-pace (baseline = 1.00).
