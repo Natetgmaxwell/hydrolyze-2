@@ -17,6 +17,11 @@ actor VocabularyService {
     private var cache: [String: RPERange] = [:]
     private var loaded = false
 
+    /// Nonisolated sync lookup for use in SwiftUI view bodies.
+    /// Reads from the same cache via a lock — safe to call from main thread.
+    private static let cacheLock = NSLock()
+    private static var cacheSnapshot: [String: RPERange] = [:]
+
     /// RPE range bucket. The UI picker offers these 4 buckets:
     /// RPE 4-5 (easy aerobic), 6-7 (moderate-aerobic), 8-9 (threshold-hard), 10 (max sprint)
     struct RPERange: Codable, Sendable, Hashable {
@@ -49,6 +54,8 @@ actor VocabularyService {
                 cache[entry.userTerm] = RPERange(low: entry.rpeLow, high: entry.rpeHigh)
             }
             loaded = true
+            // Sync the nonisolated snapshot so SwiftUI views can read it
+            Self.syncSnapshot(cache)
         } catch {
             print("⚠️ VocabularyService.loadVocabulary error: \(error)")
         }
@@ -58,6 +65,19 @@ actor VocabularyService {
     /// Returns the RPE range if the coach has mapped this term before, nil otherwise.
     func lookup(_ term: String) -> RPERange? {
         cache[term.lowercased()]
+    }
+
+    /// Nonisolated sync lookup — safe to call from SwiftUI view bodies.
+    static func lookupSync(_ term: String) -> RPERange? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return cacheSnapshot[term.lowercased()]
+    }
+
+    private static func syncSnapshot(_ cache: [String: RPERange]) {
+        cacheLock.lock()
+        cacheSnapshot = cache
+        cacheLock.unlock()
     }
 
     /// Save a mapping. Writes to DB and updates the cache.
@@ -74,6 +94,7 @@ actor VocabularyService {
                 .upsert(entry)
                 .execute()
             cache[term.lowercased()] = rpe
+            Self.syncSnapshot(cache)
         } catch {
             print("⚠️ VocabularyService.saveMapping error: \(error)")
         }

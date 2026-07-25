@@ -359,7 +359,11 @@ private struct RPEPromptBadge: View {
     @State private var resolvedRPE: VocabularyService.RPERange?
 
     var body: some View {
-        if let rpe = resolvedRPE {
+        // Check the shared vocabulary cache first (loaded on WorkoutBuilderView appear)
+        let cached = VocabularyService.lookupSync(term)
+        let effective = resolvedRPE ?? cached
+
+        if let rpe = effective {
             // Term has been mapped — show the RPE silently
             Text("\"\(term)\" → \(rpe.label)")
                 .font(.numericSmall)

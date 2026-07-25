@@ -54,6 +54,11 @@ struct WorkoutBuilderView: View {
             )
         }
         .task {
+            // RPE flywheel: load the coach's vocabulary mappings so the
+            // preview can resolve ambiguous terms silently if they've
+            // already been mapped.
+            await VocabularyService.shared.loadVocabulary()
+
             // Phase 2.7 performance: warm up the parse-workout Edge Function on
             // first appearance. The function has a ~574ms cold-start on first call
             // after idle; warming it here means the coach's first keystroke is
