@@ -63,8 +63,9 @@ final class AnalyticsService {
                 swimmer_id,
                 pace_distance,
                 created_at,
-                workout_set:workout_sets (
-                    intensity,
+                workout_set:workout_sets!workout_set_id (
+                    intensity_type,
+                    intensity_label,
                     gear,
                     dive,
                     suit
@@ -78,7 +79,7 @@ final class AnalyticsService {
         // Aggregate by intensity band
         var bandMap: [String: (reps: Int, distance: Int)] = [:]
         for row in response {
-            let intensity = row.workoutSet?.intensity ?? "unknown"
+            let intensity = row.workoutSet?.intensityLabel ?? row.workoutSet?.intensityType ?? "unknown"
             let band = mapIntensityToBand(intensity)
             let dist = row.paceDistance ?? 0
             let current = bandMap[band] ?? (0, 0)
@@ -202,7 +203,8 @@ private struct RecordedTimeRow: Codable {
 }
 
 struct WorkoutSetMeta: Codable {
-    let intensity: String?
+    let intensityType: String?
+    let intensityLabel: String?
     let gear: [String]?
     let dive: Bool?
     let suit: Bool?
