@@ -98,7 +98,7 @@ final class HistoricalTimePredictor {
             if rt.workoutSetId == set.id
                 && rt.swimmerId == swimmer.id
                 && rt.intensity == setIntensity
-                && gearMatches(rt.gear, setGear) {
+                && Self.gearMatches(rt.gear, setGear) {
                 exact.append(rt)
             }
         }
