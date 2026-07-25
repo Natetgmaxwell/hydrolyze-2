@@ -865,6 +865,11 @@ function parseRepGroup(lineText: string): RepGroup | null {
       /\b(?:easy|moderate|aerobic|threshold|sprint|descend|negative[\s-]?split|race[\s-]?pace|hard|maximum|vo2)\b/gi,
       "",
     );
+    // Strip pace/effort words so they don't show as details when
+    // intensity is already pace_target. Also strip the bare numbers
+    // that precede "pace" in broken-swim notation (e.g. "400 pace").
+    t = t.replace(/\b\d*\s*pace\b/gi, "");
+    t = t.replace(/\b\d*\s*effort\b/gi, "");
     t = t.replace(/[~]?\d+\s*[-–]\s*\d+\s*%/gi, "");
     t = t.replace(/[~]?\d+\s*%/gi, "");
     // ponytail (autoresearch iter 5, 2026-07-17): treat '/' as a

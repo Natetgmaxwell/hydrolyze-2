@@ -950,6 +950,11 @@ function parseRepGroup(lineText: string): RepGroup | null {
       /\b(?:easy|moderate|aerobic|threshold|sprint|descend|negative[\s-]?split|race[\s-]?pace|hard|maximum|vo2)\b/gi,
       "",
     );
+    // Strip pace/effort words so they don't show as details when
+    // intensity is already pace_target. Also strip the bare numbers
+    // that precede "pace" in broken-swim notation (e.g. "400 pace").
+    t = t.replace(/\b\d*\s*pace\b/gi, "");
+    t = t.replace(/\b\d*\s*effort\b/gi, "");
     // ponytail (opus-1, 2026-07-19): strip detected gear words from
     // the details leftover so they don't appear twice (once in
     // rg.gear, once in rg.details). Build a single union regex from
