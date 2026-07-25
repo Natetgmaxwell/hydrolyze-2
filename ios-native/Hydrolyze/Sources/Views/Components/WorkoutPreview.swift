@@ -135,6 +135,13 @@ private struct RepGroupRowView: View {
                 ForEach(rg.gear ?? [], id: \.self) { gear in
                     GearBadge(gear: gear, optional: rg.gearOptional)
                 }
+
+                if rg.dive == true {
+                    MetadataBadge(text: "DIVE", color: Color.accentAmber)
+                }
+                if rg.suit == true {
+                    MetadataBadge(text: "SUIT", color: Color.accentCyan)
+                }
             }
 
             if !expandedDetails.isEmpty {
@@ -315,6 +322,25 @@ private struct DetailBadge: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(Color.divider, lineWidth: 1)
+            )
+    }
+}
+
+private struct MetadataBadge: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.numericSmall)
+            .foregroundColor(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(color.opacity(0.3), lineWidth: 1)
             )
     }
 }
