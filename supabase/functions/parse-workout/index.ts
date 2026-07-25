@@ -88,6 +88,8 @@ interface RepGroup {
   gearOptional: boolean;
   descend: string | null;
   details: string[] | null;
+  dive: boolean;
+  suit: boolean;
 }
 
 interface NamedSet {
@@ -121,15 +123,53 @@ const STROKE_PATTERNS: Array<[RegExp, Stroke]> = [
   [/\b(?:choice|free[\s-]?choice)\b/i, "Choice"],
 ];
 
+// ─── Dive / Suit detection ───────────────────────────────────────────────────
+
+const DIVE_PATTERNS: RegExp[] = [
+  /\bfrom\s+a\s+dive\b/i,
+  /\bdive\s+start\b/i,
+  /\boff\s+the\s+blocks?\b/i,
+  /\bblock\s+start\b/i,
+  /\bracing\s+dive\b/i,
+  /\bdive\s+entry\b/i,
+  /\bdive\b(?!.*(?:drill|kick|recover|depth))/i,
+];
+
+const SUIT_PATTERNS: RegExp[] = [
+  /\bin\s+a\s+suit\b/i,
+  /\btech\s*suit\b/i,
+  /\braced?\s+in\s+(?:a\s+)?suit\b/i,
+  /\bsuit\s+on\b/i,
+  /\b(?:full[-\s]?body|jaked|arena|speedo\s+lzr)\b/i,
+];
+
+function parseDive(text: string): boolean {
+  return DIVE_PATTERNS.some((re) => re.test(text));
+}
+
+function parseSuit(text: string): boolean {
+  return SUIT_PATTERNS.some((re) => re.test(text));
+}
+
 const GEAR_PATTERNS: Array<[RegExp, string]> = [
   [/\bfins\b/i, "fins"],
   [/\bflippers\b/i, "fins"],
   [/\bpaddles?\b/i, "paddles"],
-  [/\bpull[\s-]?buoy\b/i, "pull_buoy"],
-  [/\bbuoy\b(?!\s*rate)/i, "pull_buoy"],
+  [/\b(?:pull[\s-]?buoy|buoy)\b/i, "pull_buoy"],
   [/\bkickboard\b/i, "kickboard"],
   [/\bkick\s*board\b/i, "kickboard"],
-  [/\bdrag\s*suit\b/i, "dragSuit"],
+  [/\bsnorkel\b/i, "snorkel"],
+  [/\bdrum\s*parachute\b/i, "parachute"],
+  [/\bparachute\b/i, "parachute"],
+  [/\bresistance\s*(?:band|cord|tubing)\b/i, "resistance_band"],
+  [/\bpower\s*tower\b/i, "power_tower"],
+  [/\bweight\s*belt\b/i, "weight_belt"],
+  [/\b(?:tennis|golf)\s*balls?\b/i, "tennis_balls"],
+  [/\bankle\s*bands?\b/i, "ankle_band"],
+  [/\bpull\s*paddle\b/i, "pull_paddle"],
+  [/\bfinger\s*paddle\b/i, "finger_paddle"],
+  [/\bdrag\s*(?:suit|shorts?)\b/i, "drag_suit"],
+  [/\bstretchcordz\b/i, "stretchcordz"],
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -756,6 +796,8 @@ function parseRepGroup(lineText: string): RepGroup | null {
 
   const gear = parseGear(text);
   const gearOptional = gear !== null && /\boptional\b/i.test(text);
+  const dive = parseDive(text);
+  const suit = parseSuit(text);
 
   let details: string[] | null = null;
   {
@@ -988,6 +1030,8 @@ function parseRepGroup(lineText: string): RepGroup | null {
     gearOptional,
     descend,
     details,
+    dive,
+    suit,
     // ponytail (autoresearch 2026-07-21): the previous code used a stale
     // `reps` const that was mapped from subReps BEFORE the rotation
     // block had a chance to populate it. That meant FBBF/FBF/FBFB
