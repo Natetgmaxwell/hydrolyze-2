@@ -251,8 +251,11 @@ struct TodayView: View {
 
     // MARK: - derived state
 
+    /// v1.17 Slice 4: counts resolved attendance, not raw `intent == "in"`.
+    /// A squad running on standing schedules used to read as "0 attending"
+    /// because nobody had an explicit row.
     private var attendingCount: Int {
-        attendanceEntries.filter { $0.intent == "in" }.count
+        attendanceEntries.filter(\.isAttending).count
     }
 
     // MARK: - data flow
@@ -267,8 +270,12 @@ struct TodayView: View {
     private func loadAttendance(workoutId: String) async {
         do {
             attendanceEntries = try await CoachIntentService()
-                .fetchAttendance(forWorkoutId: workoutId)
+                .fetchResolvedAttendance(forWorkoutId: workoutId)
+                .entries
         } catch {
+            // Includes AttendanceError.unschedulable — a workout with no
+            // date can't be resolved against a weekday pattern. Empty is
+            // the honest answer; the badge reads "0 of N".
             attendanceEntries = []
         }
     }

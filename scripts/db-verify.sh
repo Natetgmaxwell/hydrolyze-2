@@ -43,6 +43,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 filter="${1:-}"
 # shellcheck disable=SC1090
 source ~/.supabase/load-env.sh 2>/dev/null
+# load-env.sh runs `set -euo pipefail`, which leaks into THIS shell. With -e
+# active, the `out=$(supabase ...)` assignment below aborts the whole script
+# the instant a probe errors -- no output, no FAIL line, and an exit code
+# laundered to 0 by the trailing pipe. A gate that dies silently on a broken
+# probe is worse than no gate. Turn it back off explicitly.
+set +e
 
 shopt -s nullglob
 probes=(scripts/verify/*"$filter"*.sql)
@@ -55,7 +61,8 @@ for probe in "${probes[@]}"; do
   echo "$out"
 
   if   grep -q 'FAIL'  <<<"$out"; then echo "✗ FAIL rows present"; failed=1
-  elif grep -q 'ERROR' <<<"$out"; then echo "✗ query errored";     failed=1
+  elif grep -qE 'ERROR|unexpected status|Failed to run' <<<"$out"; then
+    echo "✗ query errored"; failed=1
   elif ! grep -q 'PASS' <<<"$out"; then echo "✗ no PASS rows — probe emitted nothing"; failed=1
   fi
 done

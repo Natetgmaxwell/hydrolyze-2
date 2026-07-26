@@ -108,8 +108,12 @@ struct AttendancePopoverContent: View {
         .background(Color.bgSunken)
     }
 
+    /// v1.17 Slice 4: resolved, not raw. Must agree with the badge that
+    /// opened this popover — counting `intent == "in"` here while the badge
+    /// counts resolved attendance would show the coach two different numbers
+    /// one tap apart.
     private var inCount: Int {
-        entries.filter { $0.intent == "in" }.count
+        entries.filter(\.isAttending).count
     }
 }
 
@@ -126,10 +130,19 @@ private struct AttendanceRow: View {
                 Circle()
                     .fill(dotColor)
                     .frame(width: 8, height: 8)
-                Text(entry.swimmerName)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.swimmerName)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
+                    // Why this swimmer counts the way they do. "usual
+                    // session" vs "said they're in" warrant different
+                    // levels of trust when the coach decides to override.
+                    Text(entry.provenanceLabel)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.textFaint)
+                        .lineLimit(1)
+                }
             }
             Spacer()
             // Three-pill toggle
@@ -151,11 +164,22 @@ private struct AttendanceRow: View {
         .padding(.vertical, 4)
     }
 
+    /// v1.17 Slice 4: the dot reflects RESOLVED attendance, so a swimmer
+    /// attending via their standing pattern shows the same colour as one
+    /// who marked in — matching what the badge counts. Reading raw `intent`
+    /// here would show a grey "unmarked" dot next to a swimmer the badge
+    /// has already counted as attending.
+    ///
+    /// The pills above deliberately still key on `intent`: they show what
+    /// the coach has explicitly SET, not what was resolved. Neither pill
+    /// being filled is the correct rendering of "this is just their usual
+    /// session" — the coach hasn't overridden anything.
     private var dotColor: Color {
-        switch entry.intent {
-        case "in": return Color.accentCyanDim
-        case "out": return Color.accentSlate
-        default: return Color.white.opacity(0.2)
+        switch entry.reason {
+        case .explicitIn:   return Color.accentCyanDim
+        case .standingSlot: return Color.accentCyanDim.opacity(0.55)
+        case .explicitOut:  return Color.accentSlate
+        case .noSignal:     return Color.white.opacity(0.2)
         }
     }
 }
