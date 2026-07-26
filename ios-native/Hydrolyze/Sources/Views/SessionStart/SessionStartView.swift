@@ -98,7 +98,12 @@ struct SessionStartView: View {
         // it's safe to disable dismiss for the whole sheet.
         .interactiveDismissDisabled(true)
         .task {
-            await viewModel.loadRoster(coachId: coachId)
+            // v1.17 Slice 5: pass the workout so the picker seeds from
+            // resolved attendance instead of selecting everyone.
+            await viewModel.loadRoster(
+                coachId: coachId,
+                workoutId: workoutSets.first?.workoutId
+            )
         }
         // PHASE 2.8.6: same nil→non-nil race fix as SwimmersListView.
         // The .task fires once on appear; if coachId is still nil
@@ -107,7 +112,12 @@ struct SessionStartView: View {
         // coachId becomes available.
         .onChange(of: coachId) { _, newCoachId in
             guard let newCoachId = newCoachId else { return }
-            Task { await viewModel.loadRoster(coachId: newCoachId) }
+            Task {
+                await viewModel.loadRoster(
+                    coachId: newCoachId,
+                    workoutId: workoutSets.first?.workoutId
+                )
+            }
         }
         // ponytail: outer content fade-in on sheet/cover appear. Gating
         // by reduceMotion is the standard a11y pattern (matches d46c444,
@@ -192,7 +202,8 @@ struct RosterPickerView: View {
                             if let id = UUID(uuidString: swimmer.id) {
                                 viewModel.toggleSwimmer(id)
                             }
-                        }
+                        },
+                        attendanceReason: viewModel.attendanceReasons[swimmer.id]
                     )
                     // Capture each row's frame in the shared coordinate space.
                     // GeometryReader is cheap inside a LazyVStack because only
@@ -318,6 +329,10 @@ struct SwimmerRowView: View {
     let swimmer: Swimmer
     let isSelected: Bool
     let onToggle: () -> Void
+    /// v1.17 Slice 5: why this swimmer is (or isn't) pre-selected. nil when
+    /// the roster wasn't seeded from attendance — then no caption shows and
+    /// the row looks exactly as it did before the feature existed.
+    var attendanceReason: AttendanceResolver.Reason? = nil
 
     var body: some View {
         Button(action: onToggle) {
@@ -329,7 +344,14 @@ struct SwimmerRowView: View {
                     Text(swimmer.fullName)
                         .font(.bodyEmphasis)
                         .foregroundColor(Color.textPrimary)
-                    if !swimmer.groups.isEmpty {
+                    // Provenance beats squad name here: "said they're in" vs
+                    // "usual session" is what the coach needs when deciding
+                    // whether to override. Squad name falls back through.
+                    if let caption = attendanceCaption {
+                        Text(caption)
+                            .font(.caption)
+                            .foregroundColor(captionColor)
+                    } else if !swimmer.groups.isEmpty {
                         Text(swimmer.groups.map { $0.name }.joined(separator: ", "))
                             .font(.caption)
                             .foregroundColor(Color.textFaint)
@@ -352,6 +374,29 @@ struct SwimmerRowView: View {
         // so users with motion sensitivity get instant transitions. Matches
         // d46c444, 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f.
         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
+    }
+
+    /// Coach vocabulary, not system vocabulary. No "intent", no "resolved".
+    private var attendanceCaption: String? {
+        switch attendanceReason {
+        case .explicitIn?:   return "said they're in"
+        case .explicitOut?:  return "can't make it"
+        case .standingSlot?: return "usual session"
+        case .noSignal?:     return "not marked"
+        case nil:            return nil
+        }
+    }
+
+    /// A declined swimmer reads differently from one who simply hasn't
+    /// marked — the coach should be able to tell those apart at a glance
+    /// without reading the words.
+    private var captionColor: Color {
+        switch attendanceReason {
+        case .explicitIn?:   return Color.accentCyanDim
+        case .standingSlot?: return Color.textMuted
+        case .explicitOut?:  return Color.accentSlate
+        default:             return Color.textFaint
+        }
     }
 }
 

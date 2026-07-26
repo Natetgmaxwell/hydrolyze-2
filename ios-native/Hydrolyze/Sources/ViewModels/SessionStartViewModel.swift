@@ -87,7 +87,32 @@ final class SessionStartViewModel: ObservableObject {
         }
     }
 
-    func loadRoster(coachId: String?) async {
+    /// How the current selection was arrived at — drives the chip
+    /// provenance in `SessionStartView` and the "why is this roster like
+    /// this?" caption above the picker.
+    enum RosterSeed: Equatable {
+        /// Seeded from resolved attendance (explicit marks + standing
+        /// schedules). The normal case once swimmers have onboarded.
+        case attendance(attending: Int, total: Int)
+        /// Nobody in the squad has any signal at all — no intents, no
+        /// standing schedules. Falls back to selecting everyone so a coach
+        /// mid-onboarding is never handed an empty roster.
+        case noSignalFallback
+        /// Attendance couldn't be resolved (workout has no date, or the
+        /// fetch failed). Falls back to selecting everyone.
+        case unavailable
+    }
+
+    /// Per-swimmer provenance for the picker chips, keyed by swimmer id.
+    /// Empty when the roster wasn't seeded from attendance.
+    ///
+    /// `@Published` matters: this is an ObservableObject (not @Observable),
+    /// so a plain property would mutate without notifying SwiftUI and the
+    /// captions would never appear.
+    @Published private(set) var attendanceReasons: [String: AttendanceResolver.Reason] = [:]
+    @Published private(set) var rosterSeed: RosterSeed = .unavailable
+
+    func loadRoster(coachId: String?, workoutId: String? = nil) async {
         self.coachId = coachId
         guard let coachId = coachId else { return }
         isLoading = true
@@ -105,10 +130,79 @@ final class SessionStartViewModel: ObservableObject {
                 guard let uuid = UUID(uuidString: swimmer.id) else { return nil }
                 return (uuid, swimmer.fullName)
             })
+
+            await seedSelectionFromAttendance(workoutId: workoutId)
         } catch {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    /// v1.17 Slice 5 — THE vision slice.
+    ///
+    /// Seed `selectedSwimmerIds` from resolved attendance instead of
+    /// `selectAll()`. This is the single line of causation that was missing:
+    /// every downstream consumer — the roster insert, the PB fetch, the
+    /// recorded-times fetch, the wave preview, `wave_assignments`,
+    /// `coarsePredictions`, and the Hungarian cost matrix — already derives
+    /// from `selectedSwimmerIds`. Narrow it here and the pairing engine
+    /// stops trying to match times to swimmers who aren't in the water.
+    ///
+    /// The coach can still add or remove anyone. This is a pre-seed, not a
+    /// lock — "Coach is the authority" is preserved; the N taps are not.
+    ///
+    /// Falls back to `selectAll()` in exactly two cases, both of which mean
+    /// "we know nothing", never "nobody is coming":
+    ///   - the squad has no intents AND no standing schedules (onboarding)
+    ///   - attendance couldn't be resolved at all (undated workout, fetch failed)
+    ///
+    /// A squad where everyone explicitly declined does NOT fall back. That
+    /// is a real answer, and handing the coach a full roster on a morning
+    /// nobody is coming would be worse than an empty one.
+    private func seedSelectionFromAttendance(workoutId: String?) async {
+        attendanceReasons = [:]
+
+        guard let workoutId else {
+            rosterSeed = .unavailable
+            selectAll()
+            return
+        }
+
+        do {
+            let resolved = try await CoachIntentService()
+                .fetchResolvedAttendance(forWorkoutId: workoutId)
+
+            guard !resolved.hasNoSignal else {
+                rosterSeed = .noSignalFallback
+                selectAll()
+                return
+            }
+
+            attendanceReasons = Dictionary(
+                uniqueKeysWithValues: resolved.entries.map { ($0.swimmerId, $0.reason) }
+            )
+            // Intersect with the loaded roster: fetchResolvedAttendance reads
+            // every non-archived swimmer, which may not be the same set the
+            // picker is showing. Selecting an id that isn't in
+            // `availableSwimmers` would silently inflate the count without
+            // ever appearing as a chip.
+            let available = Set(availableSwimmers.map(\.id))
+            selectedSwimmerIds = Set(
+                resolved.attendingIds
+                    .filter { available.contains($0) }
+                    .compactMap(UUID.init(uuidString:))
+            )
+            rosterSeed = .attendance(
+                attending: selectedSwimmerIds.count,
+                total: availableSwimmers.count
+            )
+        } catch {
+            // Includes AttendanceError.unschedulable. Don't surface an error
+            // banner — the coach can still pick a roster by hand, which is
+            // exactly what they did before this feature existed.
+            rosterSeed = .unavailable
+            selectAll()
+        }
     }
 
     func toggleSwimmer(_ id: UUID) {
@@ -218,18 +312,18 @@ final class SessionStartViewModel: ObservableObject {
             self.allPBs = allPBsFetched
             self.recordedTimes = allTimesFetched
 
-            // Promote swimmer-self-marked intent into session_roster.
-            // Additive: the upsert dedupes if a swimmer is already
-            // on the roster from the manual picker. If the coach
-            // picked no swimmers manually, the promotion populates
-            // the roster entirely from intent — the seamless flow.
-            // Silent no-op if no intents exist.
-            if let workoutId = workoutSets.first?.workoutId {
-                try? await CoachIntentService().promoteConfirmedToRoster(
-                    workoutId: workoutId,
-                    sessionId: sessionId
-                )
-            }
+            // v1.17 Slice 5: the post-hoc promoteConfirmedToRoster call that
+            // used to sit here is gone. It ran AFTER selectedSwimmerIds had
+            // already been consumed by the roster insert, the times fetch,
+            // the wave preview and wave_assignments — so it wrote into
+            // session_roster and changed nothing the pairing engine ever
+            // read. That ordering bug is exactly why attendance never
+            // narrowed the candidate pool.
+            //
+            // Attendance is now applied at load time (seedSelectionFromAttendance),
+            // so `selectedSwimmers` above IS the resolved attending set,
+            // minus anyone the coach removed and plus anyone they added.
+            // The roster insert at line ~284 already carries it.
 
             // PHASE 2.6 v1.13.0: use PBService as the SINGLE function
             // for "what's this swimmer's predicted time for this set +
