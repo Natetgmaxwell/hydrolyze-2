@@ -30,18 +30,31 @@ struct SwimmerAttendanceIntent: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// UpcomingWorkout — the swimmer-side view model for workouts in
-/// the next 7 days. Bundles the workout with the swimmer's current
-/// intent (if any) so the Upcoming tab can render one row per
-/// workout without a join on the client.
+/// UpcomingWorkout — the swimmer-side view model for a scheduled workout,
+/// bundled with the swimmer's *resolved* attendance so the Upcoming tab can
+/// render one row per workout without a join or a second pass.
+///
+/// v1.17 Slice 3: `myIntent` (the raw row, often nil) is no longer the thing
+/// the UI renders. `isAttending` + `reason` come from AttendanceResolver, so
+/// a swimmer on a standing Mon/Wed/Fri pattern sees "attending — usual
+/// session" without ever having marked anything. `myIntent` is retained
+/// because the opt-out button needs to know whether an explicit row exists
+/// to delete.
 struct UpcomingWorkout: Identifiable, Hashable {
     let id: String              // workout_id
     let title: String           // workout title
     let date: String            // ISO8601 scheduled_at (DATE, rendered as ISO at midnight)
     let slot: String            // "AM" | "PM"
-    let myIntent: String?       // nil if not yet marked
+    let myIntent: String?       // nil if no explicit row exists
+    let isAttending: Bool       // resolved: explicit > standing > out
+    let reason: AttendanceResolver.Reason
 
     var hasMarked: Bool { myIntent != nil }
+
+    /// True when the swimmer is attending purely because of their standing
+    /// pattern. The UI uses this to offer "not this week" rather than a
+    /// generic toggle.
+    var isFromStandingSchedule: Bool { reason == .standingSlot }
 }
 
 /// IntentService — wraps the Supabase calls for the
@@ -56,26 +69,42 @@ struct UpcomingWorkout: Identifiable, Hashable {
 final class IntentService {
     private let client = SupabaseService.shared.client
 
-    /// Fetch all upcoming workouts (next 7 days) joined with the
-    /// swimmer's own intent row (if any). Single round-trip via
-    /// the `workouts` table; the join is client-side.
+    /// Every future scheduled workout visible to this swimmer, with their
+    /// resolved attendance.
     ///
-    /// ponytail: returning `[UpcomingWorkout]` directly keeps the
-    /// Upcoming tab's view-model trivial. If we ever need a richer
-    /// shape (set count, athlete count), promote the helper.
-    func fetchUpcomingWorkouts() async throws -> [UpcomingWorkout] {
-        let now = Date()
-        let weekOut = now.addingTimeInterval(7 * 24 * 60 * 60)
+    /// v1.17 Slice 3 changed three things:
+    ///
+    /// 1. **Scoped to the caller.** The intent read now filters on
+    ///    `swimmer_id`. Previously it fetched every intent row for the
+    ///    workout and collapsed with `uniquingKeysWith: { first, _ in first }`
+    ///    — an arbitrary winner. A swimmer could see *another swimmer's*
+    ///    intent rendered as their own toggle state. RLS was the only thing
+    ///    standing between that and a real leak, and RLS should be the
+    ///    backstop, not the mechanism.
+    ///
+    /// 2. **No 7-day cap.** Q3: the swimmer can look as far ahead as they
+    ///    like. With standing schedules supplying the default, a long list is
+    ///    cheap — they only touch deviations.
+    ///
+    /// 3. **Resolved, not raw.** Attendance now comes from
+    ///    AttendanceResolver, so a swimmer with a standing pattern shows as
+    ///    attending without an intent row.
+    ///
+    /// Squad scoping is enforced by RLS (`swimmer_read_squad_workouts`), not
+    /// re-implemented here — one source of truth for who sees what.
+    ///
+    /// A workout whose `scheduled_at` won't parse is skipped rather than
+    /// defaulted: guessing a weekday would resolve real swimmers against the
+    /// wrong standing slot.
+    func fetchUpcomingWorkouts(swimmerId: String) async throws -> [UpcomingWorkout] {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
-        let dateNow = formatter.string(from: now)
-        let dateOut = formatter.string(from: weekOut)
+        let today = formatter.string(from: Date())
 
         let workoutsResponse = try await client
             .from("workouts")
             .select("id, title, scheduled_at, am_pm")
-            .gte("scheduled_at", value: dateNow)
-            .lte("scheduled_at", value: dateOut)
+            .gte("scheduled_at", value: today)
             .eq("status", value: "scheduled")
             .order("scheduled_at", ascending: true)
             .execute()
@@ -85,28 +114,61 @@ final class IntentService {
 
         guard !workouts.isEmpty else { return [] }
 
+        // Both reads are scoped to this swimmer. RLS enforces the same
+        // constraint server-side; the explicit filter means a policy change
+        // can't silently widen what the UI renders.
         let ids = workouts.map(\.id)
-        let intentResponse = try await client
+        async let intentFetch = client
             .from("swimmer_attendance_intent")
             .select("id, workout_id, swimmer_id, intent, marked_at, source")
+            .eq("swimmer_id", value: swimmerId)
             .in("workout_id", values: ids)
             .execute()
+        async let scheduleFetch = client
+            .from("swimmer_training_schedule")
+            .select("id, swimmer_id, weekday, am_pm, active")
+            .eq("swimmer_id", value: swimmerId)
+            .execute()
+
         let intents = try JSONDecoder().decode(
-            [SwimmerAttendanceIntent].self, from: intentResponse.data
+            [SwimmerAttendanceIntent].self, from: try await intentFetch.data
         )
-        let intentByWorkout = Dictionary(
-            intents.map { ($0.workoutId, $0) },
-            uniquingKeysWith: { first, _ in first }
+        let schedule = try JSONDecoder().decode(
+            [SwimmerTrainingSchedule].self, from: try await scheduleFetch.data
         )
 
-        return workouts.map { workout in
-            let myIntent = intentByWorkout[workout.id]
+        // The unique key is (workout_id, swimmer_id) and we filtered to one
+        // swimmer, so there is at most one row per workout. No collapse
+        // needed — and no arbitrary winner.
+        let intentByWorkout = Dictionary(
+            uniqueKeysWithValues: intents.map { ($0.workoutId, $0) }
+        )
+
+        return workouts.compactMap { workout in
+            guard
+                let scheduledAt = workout.scheduledAt,
+                let context = AttendanceResolver.WorkoutContext(
+                    workoutId: workout.id,
+                    scheduledAt: scheduledAt,
+                    amPm: workout.amPm
+                )
+            else { return nil }
+
+            let resolution = AttendanceResolver.resolve(
+                swimmerId: swimmerId,
+                workout: context,
+                intents: intents,
+                schedule: schedule
+            )
+
             return UpcomingWorkout(
                 id: workout.id,
                 title: workout.title ?? "Workout",
-                date: workout.scheduledAt ?? "",
+                date: scheduledAt,
                 slot: workout.amPm ?? "AM",
-                myIntent: myIntent?.intent
+                myIntent: intentByWorkout[workout.id]?.intent,
+                isAttending: resolution.isAttending,
+                reason: resolution.reason
             )
         }
     }

@@ -95,8 +95,16 @@ struct SwimmerUpcomingView: View {
     private func load() async {
         isLoading = true
         errorMessage = nil
+        // v1.17 Slice 3: the fetch is now swimmer-scoped. Without an
+        // identity there is nothing to resolve, so show the empty state
+        // rather than a list built from someone else's rows.
+        guard let swimmerId = authManager.currentSwimmer?.id else {
+            workouts = []
+            isLoading = false
+            return
+        }
         do {
-            workouts = try await service.fetchUpcomingWorkouts()
+            workouts = try await service.fetchUpcomingWorkouts(swimmerId: swimmerId)
             isLoading = false
         } catch {
             errorMessage = "Couldn't load upcoming workouts.\n\(error.localizedDescription)"
@@ -109,14 +117,29 @@ struct SwimmerUpcomingView: View {
         togglingWorkoutId = workout.id
 
         // Optimistic update — flip the local row first, then write.
-        if let idx = workouts.firstIndex(where: { $0.id == workout.id }) {
-            workouts[idx] = UpcomingWorkout(
-                id: workouts[idx].id,
-                title: workouts[idx].title,
-                date: workouts[idx].date,
-                slot: workouts[idx].slot,
-                myIntent: intent
+        // An explicit mark always wins over the standing pattern, so the
+        // optimistic row carries the explicit reason too (Slice 6 renders
+        // provenance; keeping it accurate here avoids a flicker on reload).
+        let optimistic = { (row: UpcomingWorkout, value: String?) -> UpcomingWorkout in
+            let resolved: (Bool, AttendanceResolver.Reason)
+            switch value {
+            case "in":  resolved = (true, .explicitIn)
+            case "out": resolved = (false, .explicitOut)
+            default:    resolved = (row.isAttending, row.reason)
+            }
+            return UpcomingWorkout(
+                id: row.id,
+                title: row.title,
+                date: row.date,
+                slot: row.slot,
+                myIntent: value,
+                isAttending: resolved.0,
+                reason: resolved.1
             )
+        }
+
+        if let idx = workouts.firstIndex(where: { $0.id == workout.id }) {
+            workouts[idx] = optimistic(workouts[idx], intent)
         }
 
         Haptics.tap()
@@ -128,15 +151,9 @@ struct SwimmerUpcomingView: View {
                 intent: intent
             )
         } catch {
-            // Revert on failure
+            // Revert to exactly what the server last told us.
             if let idx = workouts.firstIndex(where: { $0.id == workout.id }) {
-                workouts[idx] = UpcomingWorkout(
-                    id: workouts[idx].id,
-                    title: workouts[idx].title,
-                    date: workouts[idx].date,
-                    slot: workouts[idx].slot,
-                    myIntent: workout.myIntent
-                )
+                workouts[idx] = workout
             }
             errorMessage = "Couldn't save. Try again."
             Haptics.error()
