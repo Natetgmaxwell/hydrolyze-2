@@ -45,10 +45,12 @@
 		5CEF56078E75ACD6930869A5 /* AttendanceResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 476DE307B897395397132407 /* AttendanceResolver.swift */; };
 		64833600ED0701686C6F395D /* SwimmerSheetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */; };
 		64D0C23101DC7F509AF5840D /* SwimmerDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */; };
+		69F547FF1CC10BBC630D89BC /* build_and_run_attendance.sh in Resources */ = {isa = PBXBuildFile; fileRef = D4616F9A681BCD3987147C30 /* build_and_run_attendance.sh */; };
 		6E63D74A84935A1342953360 /* build_and_run.sh in Resources */ = {isa = PBXBuildFile; fileRef = 3AA843D052311070F8AEE466 /* build_and_run.sh */; };
 		72A8F8D11B5CDF9E6AFFC8D1 /* HydrolyzeType.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5DBAF6EEDA31CAA214AE38 /* HydrolyzeType.swift */; };
 		7855878CDCEFE64FD8F75904 /* SwimmerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9108E7DFD14A0CC8F3D48ADC /* SwimmerDetailView.swift */; };
 		78BA0F01BC80043FD1ADBC44 /* TimingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8072313F8796BE24142DE5B4 /* TimingModels.swift */; };
+		7A95F255E252FDC137C15BBE /* AttendanceNarrowingCLITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92CEF8A2E9404B9958AA494E /* AttendanceNarrowingCLITest.swift */; };
 		7E87FA161B654CD3DEF00FEA /* TrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01CB59EE3973B613CE63DF69 /* TrendChart.swift */; };
 		803EB3E88699B30BBFBA0E40 /* ScheduleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0859A78AA5815DD4B477A286 /* ScheduleService.swift */; };
 		8554015BCE5474BF97C1BE22 /* PBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419CF1926284C59F92EBF0AD /* PBService.swift */; };
@@ -184,6 +186,7 @@
 		8F3B0E1EAB016A69A8583CC2 /* WaveAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveAssignment.swift; sourceTree = "<group>"; };
 		9108E7DFD14A0CC8F3D48ADC /* SwimmerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerDetailView.swift; sourceTree = "<group>"; };
 		91F992C337F1E63DF1765344 /* Swimmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Swimmer.swift; sourceTree = "<group>"; };
+		92CEF8A2E9404B9958AA494E /* AttendanceNarrowingCLITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceNarrowingCLITest.swift; sourceTree = "<group>"; };
 		93A75A9B833BA692D9F61C24 /* SwimmerHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerHomeView.swift; sourceTree = "<group>"; };
 		946F09F1BB6D858EE01E66E2 /* SwimmersListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmersListViewModel.swift; sourceTree = "<group>"; };
 		953FDAF57842AEC0AF43B76F /* SessionStartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStartViewModel.swift; sourceTree = "<group>"; };
@@ -209,6 +212,7 @@
 		CDAC8AF50EC683B821FB10AF /* HistoricalTimePredictor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoricalTimePredictor.swift; sourceTree = "<group>"; };
 		D353FF572767DA374F6433AF /* SessionReviewViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionReviewViewModel.swift; sourceTree = "<group>"; };
 		D35CBCFB723977C7138568CD /* HydrolyzeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrolyzeApp.swift; sourceTree = "<group>"; };
+		D4616F9A681BCD3987147C30 /* build_and_run_attendance.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_attendance.sh; sourceTree = "<group>"; };
 		D662EC6A41D34AFB29805D1C /* Prediction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Prediction.swift; sourceTree = "<group>"; };
 		DBCD81FD87A2BA882885F663 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		DC9FC4386910B6A7B249B8C3 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
@@ -541,7 +545,9 @@
 		EF69CCB3B0B19C51E8A84D20 /* CLI */ = {
 			isa = PBXGroup;
 			children = (
+				92CEF8A2E9404B9958AA494E /* AttendanceNarrowingCLITest.swift */,
 				030AD31BEB757D513E7F7B11 /* AttendanceResolverCLITest.swift */,
+				D4616F9A681BCD3987147C30 /* build_and_run_attendance.sh */,
 				6FEE165FD6BF32A1E9DDC8F6 /* build_and_run_resolver.sh */,
 				3AA843D052311070F8AEE466 /* build_and_run.sh */,
 				749CEC366935E5647FE9E071 /* CalibrationFactorsCLITest.swift */,
@@ -662,6 +668,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6E63D74A84935A1342953360 /* build_and_run.sh in Resources */,
+				69F547FF1CC10BBC630D89BC /* build_and_run_attendance.sh in Resources */,
 				A668CB0BE3BD1F1B5236A9BB /* build_and_run_resolver.sh in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -779,6 +786,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7A95F255E252FDC137C15BBE /* AttendanceNarrowingCLITest.swift in Sources */,
 				BC96658679F39183E915BD82 /* AttendanceResolverCLITest.swift in Sources */,
 				E5BDB884AAD367992D8BF7F5 /* CalibrationFactorsCLITest.swift in Sources */,
 				998E5A1452183E65132ADB02 /* PairingEngineCLITest.swift in Sources */,
