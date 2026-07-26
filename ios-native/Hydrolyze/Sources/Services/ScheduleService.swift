@@ -167,6 +167,76 @@ final class ScheduleService {
     func hasSchedule(swimmerId: String) async throws -> Bool {
         try await !fetchSchedule(swimmerId: swimmerId).isEmpty
     }
+
+    // MARK: - Coach-side squad slots (v1.17 Slice 7)
+
+    /// The squad's offered sessions, INCLUDING inactive ones. The coach
+    /// editor shows inactive slots (greyed, removable) so the view
+    /// matches what's in the DB rather than silently dropping rows.
+    func fetchAllSquadSlots(groupId: String) async throws -> [SquadSessionSlot] {
+        let response = try await client
+            .from("squad_session_slot")
+            .select("id, group_id, weekday, am_pm, label, active")
+            .eq("group_id", value: groupId)
+            .execute()
+        let slots = try JSONDecoder().decode([SquadSessionSlot].self, from: response.data)
+        return slots.sorted { $0.sortKey < $1.sortKey }
+    }
+
+    /// Add or re-activate one squad slot. Idempotent on the unique key.
+    func setSquadSlot(groupId: String, weekday: Weekday, amPm: SessionSlot,
+                       label: String?, active: Bool) async throws {
+        struct Payload: Encodable {
+            let group_id: String
+            let weekday: Int
+            let am_pm: String
+            let label: String?
+            let active: Bool
+        }
+        // Empty string label -> nil, so a cleared label acts as a real
+        // delete rather than a no-op insert of ''.
+        let payload = Payload(
+            group_id: groupId,
+            weekday: weekday.rawValue,
+            am_pm: amPm.rawValue,
+            label: label?.isEmpty == true ? nil : label,
+            active: active
+        )
+        _ = try await client
+            .from("squad_session_slot")
+            .upsert(payload, onConflict: "group_id,weekday,am_pm")
+            .execute()
+    }
+
+    /// Soft-disable a squad slot. Active=false hides it from swimmer UIs
+    /// without losing the row — a coach can reactivate later.
+    func setSquadSlotActive(slotId: String, active: Bool) async throws {
+        struct Patch: Encodable { let active: Bool }
+        _ = try await client
+            .from("squad_session_slot")
+            .update(Patch(active: active))
+            .eq("id", value: slotId)
+            .execute()
+    }
+
+    /// Permanently remove a squad slot. No undo.
+    func deleteSquadSlot(slotId: String) async throws {
+        _ = try await client
+            .from("squad_session_slot")
+            .delete()
+            .eq("id", value: slotId)
+            .execute()
+    }
+
+    /// Patch the squad's settings jsonb. v1.17 Slice 7 key: visibility.
+    func updateGroupSettings(groupId: String, settings: CoachGroup.Settings) async throws {
+        struct Patch: Encodable { let settings: CoachGroup.Settings }
+        _ = try await client
+            .from("groups")
+            .update(Patch(settings: settings))
+            .eq("id", value: groupId)
+            .execute()
+    }
 }
 
 /// Monday-first, AM before PM — the one ordering the grid and the schedule

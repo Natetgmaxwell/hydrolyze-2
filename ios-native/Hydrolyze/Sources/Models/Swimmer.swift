@@ -60,15 +60,30 @@ struct SwimmerGroup: Codable, Identifiable, Sendable {
 }
 
 /// CoachGroup — coach-defined swimmer groups.
+///
+/// v1.17 Slice 7: `settings` (jsonb) carries per-squad config. v1 key:
+/// `attendance_visibility` ("private" | "squad"). Default `private` is
+/// applied on read so a legacy row missing the column works.
 struct CoachGroup: Codable, Identifiable, Sendable {
     let id: String
     let coachId: String
     var name: String
+    var settings: Settings = Settings()
 
     enum CodingKeys: String, CodingKey {
         case id
         case coachId = "coach_id"
         case name
+        case settings
+    }
+
+    struct Settings: Codable, Hashable, Sendable {
+        var attendanceVisibility: AttendanceVisibility = .private
+
+        enum AttendanceVisibility: String, Codable, Hashable, Sendable, CaseIterable {
+            case `private` = "private"
+            case squad = "squad"
+        }
     }
 }
 

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		017906383E24B59BE0E6F5E0 /* SquadSessionsEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6216796BE406C11CB42FF1 /* SquadSessionsEditor.swift */; };
 		0CB2780967A1467984F27568 /* TickMarkCelebrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCE58F424FCFC70ABC5440C /* TickMarkCelebrationView.swift */; };
 		0D70C4D437576E858EF95C4C /* RecordedTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E3D5422A3C8FB38F9DC0CA /* RecordedTime.swift */; };
 		0D7498B11EC7438A96B9E109 /* WaveAssignment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3B0E1EAB016A69A8583CC2 /* WaveAssignment.swift */; };
@@ -192,6 +193,7 @@
 		9BCC2E5E797656F432A0858C /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		9ED58B38E311216828F53455 /* SwimmerHomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerHomeViewModel.swift; sourceTree = "<group>"; };
 		A9B8CB893521F12CBAC32325 /* PBAddSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PBAddSheet.swift; sourceTree = "<group>"; };
+		AD6216796BE406C11CB42FF1 /* SquadSessionsEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquadSessionsEditor.swift; sourceTree = "<group>"; };
 		AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerSheetViewModel.swift; sourceTree = "<group>"; };
 		B0102BBE0B7283BBAEB2212A /* LapAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LapAssignment.swift; sourceTree = "<group>"; };
 		B754DDC1D6F4548B1611C4B6 /* VocabularyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyService.swift; sourceTree = "<group>"; };
@@ -367,6 +369,7 @@
 			isa = PBXGroup;
 			children = (
 				96014AF82D49C3F8EC0FEF70 /* InviteSwimmerSheet.swift */,
+				AD6216796BE406C11CB42FF1 /* SquadSessionsEditor.swift */,
 			);
 			path = Coach;
 			sourceTree = "<group>";
@@ -732,6 +735,7 @@
 				B4F41533600D912B26FA4DB1 /* SetScheduleView.swift in Sources */,
 				C14911E1B73327CF3A829827 /* SpeedCurveChart.swift in Sources */,
 				F0550B6C9285B3D9568A129E /* SpeedCurveFitter.swift in Sources */,
+				017906383E24B59BE0E6F5E0 /* SquadSessionsEditor.swift in Sources */,
 				3097A6C6E18712ABFF2B647E /* SupabaseService.swift in Sources */,
 				3E355B12AB83C683FEA2BAE5 /* Swimmer.swift in Sources */,
 				E54D8BD8A2A4AAB4A01A51C2 /* SwimmerAnalyticsView.swift in Sources */,
