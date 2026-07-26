@@ -174,6 +174,32 @@ enum AttendanceResolver {
 
     /// Convenience: just the attending IDs, order preserved.
     static func attendingIds(_ resolutions: [Resolution]) -> [String] {
-        resolutions.filter(\.isAttending).map(\.swimmerId)
+        resolutions.attendingIds
+    }
+}
+
+/// Anything carrying a resolved attendance verdict. Lets the collection
+/// helpers below serve both the resolver's own `Resolution` and the
+/// coach-facing `CoachAttendanceEntry` from one implementation.
+protocol AttendanceResolved {
+    var swimmerId: String { get }
+    var isAttending: Bool { get }
+    var reason: AttendanceResolver.Reason { get }
+}
+
+extension AttendanceResolver.Resolution: AttendanceResolved {}
+
+extension Collection where Element: AttendanceResolved {
+    /// Attending swimmer IDs, order preserved.
+    var attendingIds: [String] { filter(\.isAttending).map(\.swimmerId) }
+
+    /// True when nobody has any signal at all — every swimmer fell through
+    /// to "not marked". This is what the session-start fallback keys on.
+    ///
+    /// Deliberately distinct from "everybody declined", which is a real
+    /// answer: collapsing the two would hand a coach a full roster on a
+    /// morning when the whole squad has said they aren't coming.
+    var hasNoSignal: Bool {
+        !isEmpty && allSatisfy { $0.reason == .noSignal }
     }
 }

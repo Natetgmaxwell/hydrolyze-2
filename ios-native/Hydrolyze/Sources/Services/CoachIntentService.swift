@@ -12,7 +12,7 @@ import Foundation
 ///
 /// `intent` is retained because the coach's override pills need to know
 /// whether an explicit row already exists.
-struct CoachAttendanceEntry: Identifiable, Hashable {
+struct CoachAttendanceEntry: Identifiable, Hashable, AttendanceResolved {
     let swimmerId: String
     let swimmerName: String
     let intent: String?        // nil = no explicit row
@@ -36,21 +36,18 @@ struct CoachAttendanceEntry: Identifiable, Hashable {
 
 /// The resolved attendance split for a workout — what the coach's badge
 /// counts and what the session-start picker seeds from.
+///
+/// `attendingIds` and `hasNoSignal` come from the shared
+/// `AttendanceResolved` collection helpers, so the coach side and the
+/// resolver can never drift apart on what "attending" or "no signal" means.
 struct ResolvedAttendance {
     let entries: [CoachAttendanceEntry]
 
     var attending: [CoachAttendanceEntry] { entries.filter(\.isAttending) }
-    var attendingIds: [String] { attending.map(\.swimmerId) }
+    var attendingIds: [String] { entries.attendingIds }
     var attendingCount: Int { attending.count }
     var totalCount: Int { entries.count }
-
-    /// True when nobody has any signal at all — every swimmer fell through
-    /// to "not marked". This is the condition the session-start fallback
-    /// keys on (Slice 5). Deliberately distinct from "everyone declined",
-    /// which is a real answer and must NOT trigger the fallback.
-    var hasNoSignal: Bool {
-        !entries.isEmpty && entries.allSatisfy { $0.reason == .noSignal }
-    }
+    var hasNoSignal: Bool { entries.hasNoSignal }
 }
 
 /// Why resolved attendance couldn't be computed.
