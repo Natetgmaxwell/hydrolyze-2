@@ -288,7 +288,7 @@ phase_install_launch() {
 
   echo "$booted_raw" \
     | grep -E '\([0-9A-Fa-f-]{36}\) \(Booted\)' \
-    | sed -E 's/^[[:space:]]+(.+) \(([0-9A-Fa-f-]{36})\) \(Booted\)$/\2|\1/' \
+    | sed -E 's/^[[:space:]]+(.+) \(([0-9A-Fa-f-]{36})\) \(Booted\)[[:space:]]*$/\2|\1/' \
     > "$booted_pairs_file"
 
   # ---------------------------------------------------------------------
@@ -315,7 +315,7 @@ phase_install_launch() {
     booted_raw="$(ssh "$SSH_HOST" 'xcrun simctl list devices booted')"
     echo "$booted_raw" \
       | grep -E '\([0-9A-Fa-f-]{36}\) \(Booted\)' \
-      | sed -E 's/^[[:space:]]+(.+) \(([0-9A-Fa-f-]{36})\) \(Booted\)$/\2|\1/' \
+      | sed -E 's/^[[:space:]]+(.+) \(([0-9A-Fa-f-]{36})\) \(Booted\)[[:space:]]*$/\2|\1/' \
       > "$booted_pairs_file"
   fi
 
@@ -339,8 +339,10 @@ phase_install_launch() {
   ssh "$SSH_HOST" "mkdir -p '${REMOTE_SCREENSHOT_DIR}' && rm -f '${REMOTE_SCREENSHOT_DIR}'/*.png" \
     >/dev/null 2>&1 || true
 
+  local processed=0
   while IFS='|' read -r udid name; do
     [[ -z "$udid" || -z "$name" ]] && continue
+    processed=$((processed + 1))
     # Slugify name for filename ("iPad Pro 11-inch" -> "ipad-pro-11-inch").
     local slug
     slug="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' \
@@ -394,8 +396,39 @@ phase_install_launch() {
     fi
   done < <(cat "$ipad_pairs_file" "$iphone_pairs_file")
 
+  # A phase that did nothing must never report OK.
+  #
+  # This is the defect that hid a broken PHASE 4 for five slices: a stray
+  # trailing space in `simctl list devices booted` output ("(Booted) \n")
+  # defeated the sed `$` anchor, so the udid|name pairs file came out empty,
+  # the loop body ran ZERO times, and the unconditional "PHASE 4 OK" printed
+  # anyway. The app was never installed, never launched, and no screenshot
+  # was captured -- while the script reported all three and exited SHIPS.
+  #
+  # `processed` is incremented inside the loop. `done < <(...)` uses process
+  # substitution rather than a pipe, so the loop runs in THIS shell and the
+  # increment survives -- a `cat ... | while` would have put the loop in a
+  # subshell and silently reset the count to 0, reintroducing the same class
+  # of bug in the guard meant to catch it.
+  if [[ "$processed" -eq 0 ]]; then
+    echo 'BLOCKED in PHASE 4: parsed 0 devices from the booted list.' >&2
+    echo '  The install/launch/screenshot loop never executed.' >&2
+    echo '  Raw simctl output was:' >&2
+    printf '%s\n' "$booted_raw" | sed 's/^/    /' >&2
+    return 1
+  fi
+
+  # Every device that reached the loop must have left a screenshot on THIS
+  # machine. Anything less and the phase is reporting evidence it doesn't have.
+  local captured
+  captured=$(find "$LOCAL_SCREENSHOT_DIR" -name 'hydrolyze-*.png' -newermt '-10 minutes' 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "$captured" -lt "$processed" ]]; then
+    echo "BLOCKED in PHASE 4: processed ${processed} device(s) but only ${captured} fresh screenshot(s) landed in ${LOCAL_SCREENSHOT_DIR}." >&2
+    return 1
+  fi
+
   echo
-  echo "PHASE 4 OK: app installed, launched, and screenshot captured on all booted simulators."
+  echo "PHASE 4 OK: installed, launched, and captured ${captured} screenshot(s) across ${processed} simulator(s)."
   echo "  screenshots in: ${LOCAL_SCREENSHOT_DIR}"
 }
 
