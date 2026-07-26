@@ -116,30 +116,11 @@ struct SwimmerUpcomingView: View {
         guard let swimmerId = authManager.currentSwimmer?.id else { return }
         togglingWorkoutId = workout.id
 
-        // Optimistic update — flip the local row first, then write.
-        // An explicit mark always wins over the standing pattern, so the
-        // optimistic row carries the explicit reason too (Slice 6 renders
-        // provenance; keeping it accurate here avoids a flicker on reload).
-        let optimistic = { (row: UpcomingWorkout, value: String?) -> UpcomingWorkout in
-            let resolved: (Bool, AttendanceResolver.Reason)
-            switch value {
-            case "in":  resolved = (true, .explicitIn)
-            case "out": resolved = (false, .explicitOut)
-            default:    resolved = (row.isAttending, row.reason)
-            }
-            return UpcomingWorkout(
-                id: row.id,
-                title: row.title,
-                date: row.date,
-                slot: row.slot,
-                myIntent: value,
-                isAttending: resolved.0,
-                reason: resolved.1
-            )
-        }
-
+        // Optimistic update — flip the local row first, then write. An
+        // explicit mark beats the standing pattern, so `marked` flips the
+        // reason too and the row keeps its shape on reload.
         if let idx = workouts.firstIndex(where: { $0.id == workout.id }) {
-            workouts[idx] = optimistic(workouts[idx], intent)
+            workouts[idx] = workout.marked(intent)
         }
 
         Haptics.tap()

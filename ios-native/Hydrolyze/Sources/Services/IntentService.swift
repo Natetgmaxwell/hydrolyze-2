@@ -55,6 +55,19 @@ struct UpcomingWorkout: Identifiable, Hashable {
     /// pattern. The UI uses this to offer "not this week" rather than a
     /// generic toggle.
     var isFromStandingSchedule: Bool { reason == .standingSlot }
+
+    /// This row as it will look once `intent` is written — an explicit mark
+    /// always beats the standing pattern, so the reason flips too. Used for
+    /// the optimistic update, so the row doesn't change shape on reload.
+    func marked(_ intent: String) -> UpcomingWorkout {
+        let attending = intent == "in"
+        return UpcomingWorkout(
+            id: id, title: title, date: date, slot: slot,
+            myIntent: intent,
+            isAttending: attending,
+            reason: attending ? .explicitIn : .explicitOut
+        )
+    }
 }
 
 /// IntentService — wraps the Supabase calls for the
