@@ -170,10 +170,39 @@ struct RosterPickerView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchBar
+            rosterSeedCaption
             swimmersList
             errorMessageView
             lockRosterButton
         }
+    }
+
+    /// v1.17 Slice 5: one line telling the coach why this roster is
+    /// pre-filled the way it is. Silent in the normal attendance case —
+    /// the per-chip captions already say it, and a 20-year coach doesn't
+    /// need the app narrating itself. Speaks up only when the selection is
+    /// a fallback rather than real attendance, because that is the case
+    /// where "everyone is selected" would otherwise be misread as
+    /// "everyone is coming".
+    @ViewBuilder
+    private var rosterSeedCaption: some View {
+        switch viewModel.rosterSeed {
+        case .attendance:
+            EmptyView()
+        case .noSignalFallback:
+            captionRow("No one's marked their attendance yet — everyone's selected.")
+        case .unavailable:
+            captionRow("Attendance isn't available for this workout — everyone's selected.")
+        }
+    }
+
+    private func captionRow(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundColor(Color.textFaint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
     }
 
     private var searchBar: some View {

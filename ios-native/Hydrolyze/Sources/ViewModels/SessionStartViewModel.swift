@@ -87,13 +87,16 @@ final class SessionStartViewModel: ObservableObject {
         }
     }
 
-    /// How the current selection was arrived at — drives the chip
-    /// provenance in `SessionStartView` and the "why is this roster like
-    /// this?" caption above the picker.
+    /// How the current selection was arrived at — drives the caption above
+    /// the picker so the coach can see why the roster looks like it does.
+    ///
+    /// Carries no counts: `selectedSwimmerIds.count` and
+    /// `availableSwimmers.count` are the live truth, and duplicating them
+    /// here would go stale the moment the coach taps a chip.
     enum RosterSeed: Equatable {
         /// Seeded from resolved attendance (explicit marks + standing
         /// schedules). The normal case once swimmers have onboarded.
-        case attendance(attending: Int, total: Int)
+        case attendance
         /// Nobody in the squad has any signal at all — no intents, no
         /// standing schedules. Falls back to selecting everyone so a coach
         /// mid-onboarding is never handed an empty roster.
@@ -192,10 +195,7 @@ final class SessionStartViewModel: ObservableObject {
                     .filter { available.contains($0) }
                     .compactMap(UUID.init(uuidString:))
             )
-            rosterSeed = .attendance(
-                attending: selectedSwimmerIds.count,
-                total: availableSwimmers.count
-            )
+            rosterSeed = .attendance
         } catch {
             // Includes AttendanceError.unschedulable. Don't surface an error
             // banner — the coach can still pick a roster by hand, which is
