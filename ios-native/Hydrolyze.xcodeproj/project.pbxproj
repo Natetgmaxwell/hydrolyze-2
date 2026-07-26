@@ -36,6 +36,7 @@
 		49636A4AD8B6BA6A7BF17B23 /* HungarianMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4232B41EF6194E1C779B28A8 /* HungarianMatching.swift */; };
 		497C3DC1F2BAF8402869E77C /* SessionStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB7C1706AD3C037674651AD /* SessionStartView.swift */; };
 		4B46F4955337282308CE1D26 /* VocabularyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B754DDC1D6F4548B1611C4B6 /* VocabularyService.swift */; };
+		4BED39CD2EEF1833AC3A96A9 /* MyScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF122EA41003564C5520C06 /* MyScheduleView.swift */; };
 		4E4C788802BF1959ABFC99A2 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = B785FD52B8AAC2796EF6C35B /* Color+Hex.swift */; };
 		52097E02FF93302A145F9E4F /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCC2E5E797656F432A0858C /* AuthManager.swift */; };
 		54B53CC34EDC25C4E355C112 /* WorkoutParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */; };
@@ -154,6 +155,7 @@
 		4511E979EA8A02DFAA772CE6 /* TimingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimingService.swift; sourceTree = "<group>"; };
 		476DE307B897395397132407 /* AttendanceResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceResolver.swift; sourceTree = "<group>"; };
 		481474A86010D3AE00A5B895 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		4CF122EA41003564C5520C06 /* MyScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyScheduleView.swift; sourceTree = "<group>"; };
 		5183D5E2B80817F518F1218D /* PairingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingEngine.swift; sourceTree = "<group>"; };
 		52A4B3670041A064FEE0BD7C /* TrainingSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSchedule.swift; sourceTree = "<group>"; };
 		5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerDetailViewModel.swift; sourceTree = "<group>"; };
@@ -410,6 +412,7 @@
 		60C627FB0AF40BCCE04D01E0 /* Swimmer */ = {
 			isa = PBXGroup;
 			children = (
+				4CF122EA41003564C5520C06 /* MyScheduleView.swift */,
 				93A75A9B833BA692D9F61C24 /* SwimmerHomeView.swift */,
 				F0E11B7104A97D4F39692D1C /* SwimmerUpcomingView.swift */,
 			);
@@ -709,6 +712,7 @@
 				AFFCEB114CF74D2BD5ACDC2F /* JetBrainsMonoFont.swift in Sources */,
 				98E81C8A6B63B262E0D2DE3D /* LapAssignment.swift in Sources */,
 				191E434A103ED20F037A275F /* LoginView.swift in Sources */,
+				4BED39CD2EEF1833AC3A96A9 /* MyScheduleView.swift in Sources */,
 				C9A148F47D4D67AE7CEEAD41 /* PBAddSheet.swift in Sources */,
 				8554015BCE5474BF97C1BE22 /* PBService.swift in Sources */,
 				BE9F4D953C0374F23FA74557 /* PairingEngine.swift in Sources */,

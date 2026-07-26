@@ -21,6 +21,12 @@ struct SwimmerUpcomingView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var togglingWorkoutId: String?
+    /// v1.17 Slice 6: first-run prompt. A swimmer with no standing pattern
+    /// resolves to "out" for everything (spec Q2), which is correct but a
+    /// cold-start cliff — so we ask once, on the screen where it matters.
+    @State private var showSchedule = false
+    @State private var isFirstRunPrompt = false
+    @State private var didPromptThisSession = false
 
     private var service: IntentService { IntentService() }
 
@@ -34,8 +40,30 @@ struct SwimmerUpcomingView: View {
             .navigationTitle("Upcoming")
             .toolbarBackground(Color.bgBase, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showSchedule) {
+                MyScheduleView(isFirstRun: isFirstRunPrompt) {
+                    // Reload: the standing pattern the swimmer just set
+                    // changes what every upcoming row resolves to.
+                    Task { await load() }
+                }
+                .environment(authManager)
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Haptics.selection()
+                        isFirstRunPrompt = false
+                        showSchedule = true
+                    } label: {
+                        Image(systemName: "calendar.badge.clock")
+                    }
+                    .foregroundStyle(Color.accentCyan)
+                    .accessibilityLabel("My schedule")
+                }
+            }
             .task {
                 await load()
+                await promptForScheduleIfNeeded()
             }
         }
     }
@@ -91,6 +119,21 @@ struct SwimmerUpcomingView: View {
     }
 
     // MARK: - data flow
+
+    /// Ask once per app session, and only when the swimmer genuinely has no
+    /// standing pattern. Deliberately NOT persisted to UserDefaults: if they
+    /// skip and later wonder why nothing is pre-marked, seeing the prompt
+    /// again next launch is the fix, not a bug. A swimmer who sets even one
+    /// slot never sees it again.
+    private func promptForScheduleIfNeeded() async {
+        guard !didPromptThisSession,
+              let swimmerId = authManager.currentSwimmer?.id else { return }
+        didPromptThisSession = true
+        guard let hasSchedule = try? await ScheduleService().hasSchedule(swimmerId: swimmerId),
+              !hasSchedule else { return }
+        isFirstRunPrompt = true
+        showSchedule = true
+    }
 
     private func load() async {
         isLoading = true
@@ -178,17 +221,27 @@ private struct UpcomingWorkoutRow: View {
                 }
             }
 
+            // v1.17 Slice 6: why this row looks the way it does. A swimmer
+            // whose "I'm in" is filled by their standing pattern should see
+            // that it wasn't them tapping it — otherwise the one case that
+            // matters ("I can't make Wednesday") looks already handled.
+            if workout.isFromStandingSchedule {
+                Text("From your usual schedule")
+                    .font(.caption)
+                    .foregroundStyle(Color.textFaint)
+            }
+
             HStack(spacing: 10) {
                 IntentPill(
                     label: "I'm in",
-                    isSelected: workout.myIntent == "in",
+                    isSelected: workout.isAttending,
                     isDisabled: isToggling,
                     accent: Color.accentCyanDim,
                     action: onMarkIn
                 )
                 IntentPill(
                     label: "Can't make it",
-                    isSelected: workout.myIntent == "out",
+                    isSelected: !workout.isAttending && workout.hasMarked,
                     isDisabled: isToggling,
                     accent: Color.accentSlate,
                     action: onMarkOut
