@@ -42,10 +42,14 @@ enum Weekday: Int, CaseIterable, Codable, Hashable, Sendable {
         }
     }
 
-    /// Monday-first ordering for UI. Coaches read a week as Mon→Sun;
-    /// the raw 0=Sunday value stays the storage convention.
+    /// Monday-first position (Mon = 0 … Sun = 6). Coaches read a week as
+    /// Mon→Sun; 0=Sunday stays the storage convention. Arithmetic, not an
+    /// array lookup, so it's usable inside a sort comparator.
+    var displayIndex: Int { (rawValue + 6) % 7 }
+
+    /// Monday-first ordering for UI grids.
     static var displayOrder: [Weekday] {
-        [.monday, .tuesday, .wednesday, .thursday, .friday, .saturday, .sunday]
+        allCases.sorted { $0.displayIndex < $1.displayIndex }
     }
 }
 

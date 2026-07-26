@@ -32,7 +32,7 @@ final class ScheduleService {
             .eq("active", value: true)
             .execute()
         let slots = try JSONDecoder().decode([SquadSessionSlot].self, from: response.data)
-        return slots.sorted(by: Self.displayOrder)
+        return slots.sorted { $0.sortKey < $1.sortKey }
     }
 
     /// Every slot across every squad the swimmer belongs to.
@@ -49,7 +49,7 @@ final class ScheduleService {
             .eq("active", value: true)
             .execute()
         let slots = try JSONDecoder().decode([SquadSessionSlot].self, from: response.data)
-        return slots.sorted(by: Self.displayOrder)
+        return slots.sorted { $0.sortKey < $1.sortKey }
     }
 
     // MARK: - Swimmer standing schedule
@@ -66,7 +66,7 @@ final class ScheduleService {
             .eq("swimmer_id", value: swimmerId)
             .execute()
         let rows = try JSONDecoder().decode([SwimmerTrainingSchedule].self, from: response.data)
-        return rows.sorted(by: Self.displayOrder)
+        return rows.sorted { $0.sortKey < $1.sortKey }
     }
 
     /// Add one standing slot. Idempotent via the (swimmer, weekday, am_pm)
@@ -167,25 +167,18 @@ final class ScheduleService {
     func hasSchedule(swimmerId: String) async throws -> Bool {
         try await !fetchSchedule(swimmerId: swimmerId).isEmpty
     }
-
-    // MARK: - helpers
-
-    /// Monday-first, AM before PM. Shared by both fetches so the grid and
-    /// the schedule list always agree on ordering.
-    private static func displayOrder<T>(_ a: T, _ b: T) -> Bool
-    where T: WeekdaySlotOrderable {
-        let ai = Weekday.displayOrder.firstIndex(of: a.day) ?? 0
-        let bi = Weekday.displayOrder.firstIndex(of: b.day) ?? 0
-        if ai != bi { return ai < bi }
-        return a.slot == .am && b.slot == .pm
-    }
 }
 
-/// Shared ordering surface so `SquadSessionSlot` and
-/// `SwimmerTrainingSchedule` can use one sort comparator.
+/// Monday-first, AM before PM — the one ordering the grid and the schedule
+/// list both use. A protocol rather than a free function so the sort reads
+/// as `sorted { $0.sortKey < $1.sortKey }` at every call site.
 protocol WeekdaySlotOrderable {
     var day: Weekday { get }
     var slot: SessionSlot { get }
+}
+
+extension WeekdaySlotOrderable {
+    var sortKey: (Int, Int) { (day.displayIndex, slot == .am ? 0 : 1) }
 }
 
 extension SquadSessionSlot: WeekdaySlotOrderable {}
