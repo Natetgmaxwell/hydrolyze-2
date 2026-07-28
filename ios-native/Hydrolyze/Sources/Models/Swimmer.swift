@@ -84,6 +84,23 @@ struct CoachGroup: Codable, Identifiable, Sendable {
             case `private` = "private"
             case squad = "squad"
         }
+
+        init() {}
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            // Tolerate missing key — DB default is '{}'::jsonb
+            attendanceVisibility = try c.decodeIfPresent(AttendanceVisibility.self, forKey: .attendanceVisibility) ?? .private
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        coachId = try c.decode(String.self, forKey: .coachId)
+        name = try c.decode(String.self, forKey: .name)
+        // Tolerate missing settings column on older rows
+        settings = try c.decodeIfPresent(Settings.self, forKey: .settings) ?? Settings()
     }
 }
 

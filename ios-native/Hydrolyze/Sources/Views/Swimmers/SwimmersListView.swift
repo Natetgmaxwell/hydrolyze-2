@@ -14,6 +14,9 @@ struct SwimmersListView: View {
     @State private var swimmerToArchive: Swimmer?
     @State private var newGroupName = ""
     @State private var showAddGroupRow = false
+    @State private var showSquadManagement = false
+    @State private var swimmerToMove: Swimmer? = nil
+    @State private var showMovePicker = false
     // ponytail (warmth-through-motion iter 5): on-appear reveal.
     // Same pattern as login reveal (d46c444), today reveal (0a90257),
     // workouts reveal (06c6823), and swimmers migration (61404f1).
@@ -49,6 +52,16 @@ struct SwimmersListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Haptics.action()
+                        showSquadManagement = true
+                    } label: {
+                        Image(systemName: "person.2.crop.square.stack")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Color.accentCyan)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Haptics.action()
                         showAddSheet = true
                     } label: {
                         Image(systemName: "plus")
@@ -56,6 +69,9 @@ struct SwimmersListView: View {
                             .foregroundColor(Color.accentCyan)
                     }
                 }
+            }
+            .sheet(isPresented: $showSquadManagement) {
+                SquadManagementView()
             }
             .sheet(isPresented: $showAddSheet) {
                 SwimmerSheetView(swimmerId: nil, onSave: {
@@ -113,9 +129,12 @@ struct SwimmersListView: View {
             // change. Cyan-tinted pull-to-refresh indicator.
             .tint(Color.accentCyan)
         }
+        .sheet(item: $swimmerToMove) { swimmer in
+            MoveSwimmerSheet(swimmer: swimmer, viewModel: viewModel)
+        }
     }
 
-    // Filter pills: Active / Archived
+    /// Sheet for moving a swimmer between squads.
     private var filterPills: some View {
         HStack(spacing: 8) {
             ForEach(SwimmerFilter.allCases, id: \.self) { filter in
@@ -171,6 +190,8 @@ struct SwimmersListView: View {
                     ProgressView()
                         .tint(Color.accentCyan)
                         .padding(.top, 40)
+                } else if viewModel.allSwimmers.isEmpty, let errorMessage = viewModel.errorMessage {
+                    errorState(errorMessage)
                 } else if viewModel.filteredSwimmers.isEmpty {
                     emptyState
                 } else {
@@ -210,6 +231,15 @@ struct SwimmersListView: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
+        .contextMenu {
+            Button {
+                Haptics.tap()
+                swimmerToMove = swimmer
+                showMovePicker = true
+            } label: {
+                Label("Move to squad", systemImage: "arrow.right.square")
+            }
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 Haptics.heavy()
@@ -281,6 +311,110 @@ struct SwimmersListView: View {
                 .foregroundColor(Color.textFaint)
         }
         .padding(.top, 80)
+    }
+
+    private func errorState(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 40))
+                .foregroundColor(Color.accentAmber)
+
+            Text("Couldn't load swimmers")
+                .font(.body)
+                .foregroundColor(Color.textMuted)
+
+            Text(message)
+                .font(.caption)
+                .foregroundColor(Color.textFaint)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Button("Retry") {
+                Task { await viewModel.loadSwimmers(coachId: coachId) }
+            }
+            .font(.caption)
+            .foregroundColor(Color.accentCyan)
+            .padding(.top, 8)
+        }
+        .padding(.top, 80)
+    }
+}
+
+// MARK: - MoveSwimmerSheet
+
+/// Sheet for moving a swimmer to a different squad.
+private struct MoveSwimmerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let swimmer: Swimmer
+    @ObservedObject var viewModel: SwimmersListViewModel
+
+    @State private var selectedGroupId: String? = nil
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.bgBase.ignoresSafeArea()
+                List {
+                    Section {
+                        Button {
+                            selectedGroupId = nil
+                        } label: {
+                            HStack {
+                                Text("No Squad")
+                                    .foregroundColor(Color.textPrimary)
+                                Spacer()
+                                if selectedGroupId == nil {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(Color.accentCyan)
+                                }
+                            }
+                        }
+
+                        ForEach(viewModel.groups) { group in
+                            Button {
+                                selectedGroupId = group.id
+                            } label: {
+                                HStack {
+                                    Text(group.name)
+                                        .foregroundColor(Color.textPrimary)
+                                    Spacer()
+                                    if selectedGroupId == group.id {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(Color.accentCyan)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .background(Color.bgBase)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Move to Squad")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(Color.accentCyan)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Move") {
+                        Task {
+                            await viewModel.moveSwimmer(swimmerId: swimmer.id, toGroupId: selectedGroupId)
+                            dismiss()
+                        }
+                    }
+                    .foregroundColor(Color.accentCyan)
+                }
+            }
+            .task {
+                // Pre-select the swimmer's current group (single-squad model).
+                selectedGroupId = viewModel.groupsWithSwimmers
+                    .first { $0.swimmers.contains(where: { $0.id == swimmer.id }) }?
+                    .group.id
+            }
+        }
     }
 }
 
