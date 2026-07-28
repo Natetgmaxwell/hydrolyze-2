@@ -75,7 +75,7 @@ final class WorkoutService {
     }
 
     /// Create a new workout with optional sets.
-    func createWorkout(coachId: String, title: String?, description: String?, scheduledAt: String? = nil, workoutText: String? = nil) async throws -> Workout {
+    func createWorkout(coachId: String, title: String?, description: String?, scheduledAt: String? = nil, workoutText: String? = nil, groupId: String? = nil) async throws -> Workout {
         struct CreatePayload: Encodable {
             let coachId: String
             let title: String?
@@ -83,6 +83,7 @@ final class WorkoutService {
             let scheduledAt: String?
             let status: String
             let workoutText: String?
+            let groupId: String?
 
             enum CodingKeys: String, CodingKey {
                 case coachId = "coach_id"
@@ -91,6 +92,7 @@ final class WorkoutService {
                 case scheduledAt = "scheduled_at"
                 case status
                 case workoutText = "workout_text"
+                case groupId = "group_id"
             }
         }
         let payload = CreatePayload(
@@ -99,7 +101,8 @@ final class WorkoutService {
             description: description,
             scheduledAt: scheduledAt,
             status: "draft",
-            workoutText: workoutText
+            workoutText: workoutText,
+            groupId: groupId
         )
         let response = try await supabase.from("workouts")
             .insert(payload)
