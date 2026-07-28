@@ -26,78 +26,83 @@ struct SetScheduleView: View {
             ZStack {
                 Color.bgBase.ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: 24) {
-                    // Step 1: Squad picker
-                    Text("SQUAD")
-                        .font(.eyebrow)
-                        .foregroundColor(Color.textFaint)
-                        .tracking(1.5)
-
-                    squadPicker
-
-                    if viewModel.selectedSquad != nil {
-                        // Step 2: Date (constrained to squad's active weekdays)
-                        Text("DATE")
-                            .font(.eyebrow)
-                            .foregroundColor(Color.textFaint)
-                            .tracking(1.5)
-
-                        DatePicker(
-                            "Select date",
-                            selection: $viewModel.selectedDate,
-                            in: viewModel.allowedDateRange,
-                            displayedComponents: .date
-                        )
-                        .datePickerStyle(.graphical)
-                        .background(Color.bgSunken)
-                        .cornerRadius(12)
-                        .tint(Color.accentCyan)
-                        .onChange(of: viewModel.selectedDate) { _, _ in
-                            viewModel.updateAvailableSlots()
-                        }
-
-                        // Step 3: Session (only slots the squad offers on this day)
-                        if !viewModel.availableSlots.isEmpty {
-                            Text("SESSION")
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            // Step 1: Squad picker
+                            Text("SQUAD")
                                 .font(.eyebrow)
                                 .foregroundColor(Color.textFaint)
                                 .tracking(1.5)
 
-                            HStack(spacing: 12) {
-                                ForEach(viewModel.availableSlots, id: \.self) { slotOption in
-                                    Button {
-                                        viewModel.amPm = slotOption
-                                    } label: {
-                                        VStack(spacing: 2) {
-                                            Text(slotOption.rawValue)
-                                                .font(.system(size: 15, weight: .semibold))
-                                            if let label = viewModel.slotLabel(for: slotOption) {
-                                                Text(label)
-                                                    .font(.caption2)
+                            squadPicker
+
+                            if viewModel.selectedSquad != nil {
+                                // Step 2: Date (constrained to squad's active weekdays)
+                                Text("DATE")
+                                    .font(.eyebrow)
+                                    .foregroundColor(Color.textFaint)
+                                    .tracking(1.5)
+
+                                DatePicker(
+                                    "Select date",
+                                    selection: $viewModel.selectedDate,
+                                    in: viewModel.allowedDateRange,
+                                    displayedComponents: .date
+                                )
+                                .datePickerStyle(.graphical)
+                                .background(Color.bgSunken)
+                                .cornerRadius(12)
+                                .tint(Color.accentCyan)
+                                .onChange(of: viewModel.selectedDate) { _, _ in
+                                    viewModel.updateAvailableSlots()
+                                }
+
+                                // Step 3: Session (only slots the squad offers on this day)
+                                if !viewModel.availableSlots.isEmpty {
+                                    Text("SESSION")
+                                        .font(.eyebrow)
+                                        .foregroundColor(Color.textFaint)
+                                        .tracking(1.5)
+
+                                    HStack(spacing: 12) {
+                                        ForEach(viewModel.availableSlots, id: \.self) { slotOption in
+                                            Button {
+                                                viewModel.amPm = slotOption
+                                            } label: {
+                                                VStack(spacing: 2) {
+                                                    Text(slotOption.rawValue)
+                                                        .font(.system(size: 15, weight: .semibold))
+                                                    if let label = viewModel.slotLabel(for: slotOption) {
+                                                        Text(label)
+                                                            .font(.caption2)
+                                                    }
+                                                }
+                                                .frame(maxWidth: .infinity)
+                                                .frame(height: 52)
+                                                .background(viewModel.amPm == slotOption ? Color.accentCyan : Color.bgSunken)
+                                                .foregroundColor(viewModel.amPm == slotOption ? .black : Color.textMuted)
+                                                .cornerRadius(8)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(Color.divider, lineWidth: 1)
+                                                )
                                             }
                                         }
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 52)
-                                        .background(viewModel.amPm == slotOption ? Color.accentCyan : Color.bgSunken)
-                                        .foregroundColor(viewModel.amPm == slotOption ? .black : Color.textMuted)
-                                        .cornerRadius(8)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(Color.divider, lineWidth: 1)
-                                        )
                                     }
+                                } else {
+                                    Text("This squad doesn't train on \(viewModel.selectedWeekday.shortLabel). Pick another day or configure sessions for this squad.")
+                                        .font(.caption)
+                                        .foregroundColor(Color.accentAmber)
+                                        .padding(.vertical, 8)
                                 }
                             }
-                        } else {
-                            Text("This squad doesn't train on \(viewModel.selectedWeekday.shortLabel). Pick another day or configure sessions for this squad.")
-                                .font(.caption)
-                                .foregroundColor(Color.accentAmber)
-                                .padding(.vertical, 8)
                         }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 24)
                     }
 
-                    Spacer()
-
+                    // Buttons pinned at the bottom, always visible
                     VStack(spacing: 12) {
                         PrimaryButton(
                             title: "Confirm Schedule",
@@ -121,8 +126,11 @@ struct SetScheduleView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Color.textMuted)
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
+                    .padding(.top, 12)
+                    .background(Color.bgBase)
                 }
-                .padding(24)
             }
             .navigationTitle("Schedule Workout")
             .navigationBarTitleDisplayMode(.inline)
