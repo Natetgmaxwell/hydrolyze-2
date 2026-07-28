@@ -169,6 +169,10 @@ BEGIN
 
   -- Create the auth.users row. Mirrors the create_swimmer_account
   -- pattern from Phase 2.3 — same Supabase auth.users shape.
+  -- NOTE 2026-07-27: do NOT include confirmed_at; Supabase now
+  -- generates it from email_confirmed_at. Inserting into it throws
+  -- 428C9 and corrupts the row, breaking sign-in with
+  -- "Database error querying schema".
   INSERT INTO auth.users (
     instance_id,
     id,
@@ -177,16 +181,33 @@ BEGIN
     email,
     encrypted_password,
     email_confirmed_at,
+    invited_at,
+    confirmation_token,
+    confirmation_sent_at,
+    recovery_token,
     recovery_sent_at,
+    email_change_token_new,
+    email_change,
+    email_change_sent_at,
     last_sign_in_at,
     raw_app_meta_data,
     raw_user_meta_data,
+    is_super_admin,
     created_at,
     updated_at,
-    confirmation_token,
-    email_change,
-    email_change_token_new,
-    email_change_token_current
+    phone,
+    phone_confirmed_at,
+    phone_change,
+    phone_change_token,
+    phone_change_sent_at,
+    email_change_token_current,
+    email_change_confirm_status,
+    banned_until,
+    reauthentication_token,
+    reauthentication_sent_at,
+    is_sso_user,
+    deleted_at,
+    is_anonymous
   ) VALUES (
     '00000000-0000-0000-0000-000000000000'::uuid,
     gen_random_uuid(),
@@ -194,15 +215,27 @@ BEGIN
     'authenticated',
     p_email,
     crypt(p_password, gen_salt('bf')),
-    now(), now(), now(),
+    now(),
+    NULL,
+    '',
+    NULL,
+    '',
+    NULL,
+    '',
+    '',
+    NULL,
+    now(),
     jsonb_build_object('provider', 'email', 'providers',
                        array['email']::text[]),
     jsonb_build_object('name', v_full_name,
                        'first_name', p_first_name,
                        'last_name', coalesce(p_last_name, ''),
                        'swimmer_id', v_swimmer.id::text),
+    false,
     now(), now(),
-    '', '', '', ''
+    NULL, NULL, '', '', NULL,
+    '', 0, NULL, '', NULL,
+    false, NULL, false
   )
   RETURNING id INTO v_auth_id;
 

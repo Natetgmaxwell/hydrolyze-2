@@ -1,0 +1,190 @@
+{
+  "main": {
+    "id": "4f2c6deef97ac257",
+    "type": "split",
+    "children": [
+      {
+        "id": "95e21693121bfe0b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1a43229b8866603d",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "attendance-intent-loop-design-spec.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "attendance-intent-loop-design-spec"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "6735e6fca9fde512",
+    "type": "split",
+    "children": [
+      {
+        "id": "36efdd01cf349d47",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "bf86797560f29153",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "b373559ecf8a8c0d",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "a7b70a0a76ed0dbf",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "d403e54b48d4453c",
+    "type": "split",
+    "children": [
+      {
+        "id": "3232ff8181e9c583",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b64780e005d6cd36",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "attendance-intent-loop-design-spec.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for attendance-intent-loop-design-spec"
+            }
+          },
+          {
+            "id": "fad0447da124ad14",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "attendance-intent-loop-design-spec.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from attendance-intent-loop-design-spec"
+            }
+          },
+          {
+            "id": "60e0e14163215102",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "fc5817a6b85a70e8",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "1b85b06fe82b0dee",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "attendance-intent-loop-design-spec.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of attendance-intent-loop-design-spec"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "1a43229b8866603d",
+  "lastOpenFiles": [
+    "attendance-intent-loop-design-spec.md"
+  ]
+}

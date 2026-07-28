@@ -62,6 +62,9 @@ enum SessionSlot: String, CaseIterable, Codable, Hashable, Sendable {
     case pm = "PM"
 
     var label: String { self == .am ? "AM" : "PM" }
+
+    /// Stable AM-before-PM ordering for UI grids.
+    var sortOrder: Int { self == .am ? 0 : 1 }
 }
 
 /// A session the squad offers — the coach's weekly template.
@@ -87,7 +90,12 @@ struct SquadSessionSlot: Codable, Identifiable, Hashable, Sendable {
     }
 
     var day: Weekday { Weekday(rawValue: weekday) ?? .sunday }
-    var slot: SessionSlot { SessionSlot(rawValue: amPm) ?? .am }
+    var slot: SessionSlot {
+        // Defensive: the DB stores uppercase "AM" / "PM", but drift
+        // (lowercase import, old rows) should not silently map a PM
+        // slot to AM and break swimmer selection.
+        SessionSlot(rawValue: amPm.uppercased()) ?? .am
+    }
 
     /// "Mon AM" — or the coach's own label when they've named the session
     /// ("Distance", "Sprint"). Used as the grid cell caption.
@@ -118,7 +126,12 @@ struct SwimmerTrainingSchedule: Codable, Identifiable, Hashable, Sendable {
     }
 
     var day: Weekday { Weekday(rawValue: weekday) ?? .sunday }
-    var slot: SessionSlot { SessionSlot(rawValue: amPm) ?? .am }
+    var slot: SessionSlot {
+        // Defensive: the DB stores uppercase "AM" / "PM", but drift
+        // (lowercase import, old rows) should not silently map a PM
+        // slot to AM and break swimmer selection.
+        SessionSlot(rawValue: amPm.uppercased()) ?? .am
+    }
 
     /// Does this standing slot cover the given (weekday, am_pm) pair?
     ///

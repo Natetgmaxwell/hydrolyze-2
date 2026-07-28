@@ -12,6 +12,7 @@ struct SwimmerDetailView: View {
     @State private var showInviteSheet = false
     @State private var showArchiveAlert = false
     @State private var showDeleteAlert = false
+    @State private var showTransferSheet = false
     // ponytail (warmth-through-motion iter 6): on-appear reveal.
     // Same pattern as login reveal (d46c444), today reveal (0a90257),
     // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
@@ -88,6 +89,13 @@ struct SwimmerDetailView: View {
             PBAddSheet(swimmerId: viewModel.swimmerId, onSave: {
                 Task { await viewModel.load(coachId: coachId) }
             })
+        }
+        .sheet(isPresented: $showTransferSheet) {
+            if let swimmer = viewModel.swimmer {
+                TransferSwimmerSheet(swimmer: swimmer, onTransferred: {
+                    Task { await viewModel.load(coachId: coachId) }
+                })
+            }
         }
         .alert("Archive Swimmer?", isPresented: $showArchiveAlert) {
             Button("Cancel", role: .cancel) {}
@@ -396,6 +404,22 @@ struct SwimmerDetailView: View {
     private var actionButtons: some View {
         VStack(spacing: 12) {
             Button {
+                showTransferSheet = true
+            } label: {
+                Text("Transfer to Coach")
+                    .font(.body)
+                    .foregroundColor(Color.accentCyan)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.bgInset)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.accentCyan, lineWidth: 1)
+                    )
+            }
+
+            Button {
                 showArchiveAlert = true
             } label: {
                 Text("Archive Swimmer")
@@ -530,6 +554,154 @@ Text(stroke)
                         .foregroundColor(Color.accentCyan)
                 }
             }
+        }
+    }
+}
+
+// MARK: - TransferSwimmerSheet
+
+/// TransferSwimmerSheet — coach transfers a swimmer to another coach.
+/// Lists all coaches on the platform; the current coach picks one and
+/// confirms. The RPC removes the swimmer from their current squad and
+/// updates coach_id. PBs follow; historical times stay with old coach.
+private struct TransferSwimmerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AuthManager.self) private var authManager
+    let swimmer: Swimmer
+    let onTransferred: () -> Void
+
+    @State private var coaches: [Coach] = []
+    @State private var selectedCoach: Coach?
+    @State private var isLoading = false
+    @State private var isTransferring = false
+    @State private var errorMessage: String?
+
+    private var swimmerService: SwimmerService { SwimmerService() }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.bgBase.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Transfer \(swimmer.fullName) to a different coach. Their PBs and profile move with them. Historical times stay with you. They'll be removed from their current squad — the new coach can assign them to one of their squads.")
+                                .font(.caption)
+                                .foregroundColor(Color.textMuted)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 16)
+
+                            if isLoading {
+                                ProgressView()
+                                    .tint(Color.accentCyan)
+                                    .padding(.top, 40)
+                            } else {
+                                ForEach(coaches) { coach in
+                                    Button {
+                                        Haptics.selection()
+                                        selectedCoach = coach
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(coach.name ?? "Unknown coach")
+                                                    .font(.body)
+                                                    .foregroundColor(Color.textPrimary)
+                                            }
+                                            Spacer()
+                                            if selectedCoach?.id == coach.id {
+                                                Image(systemName: "checkmark")
+                                                    .foregroundColor(Color.accentCyan)
+                                            }
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 12)
+                                        .background(
+                                            selectedCoach?.id == coach.id
+                                                ? Color.accentCyan.opacity(0.1)
+                                                : Color.bgRaised
+                                        )
+                                        .cornerRadius(10)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(
+                                                    selectedCoach?.id == coach.id ? Color.accentCyan : Color.divider,
+                                                    lineWidth: 1
+                                                )
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 16)
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(spacing: 12) {
+                        if let errorMessage {
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundColor(Color.statusError)
+                        }
+                        Button {
+                            Task { await transfer() }
+                        } label: {
+                            Text("Transfer Swimmer")
+                                .font(.body)
+                                .foregroundColor(Color.textOnAccent)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(selectedCoach != nil ? Color.accentCyan : Color.bgInset)
+                                .cornerRadius(10)
+                        }
+                        .disabled(selectedCoach == nil || isTransferring)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                    .padding(.top, 12)
+                    .background(Color.bgBase)
+                }
+            }
+            .navigationTitle("Transfer Swimmer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(Color.accentCyan)
+                }
+            }
+        }
+        .task { await loadCoaches() }
+    }
+
+    private func loadCoaches() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let response = try await swimmerService.supabase
+                .from("coaches")
+                .select()
+                .execute()
+            coaches = try JSONDecoder().decode([Coach].self, from: response.data)
+                .filter { $0.id != authManager.coachId }
+        } catch {
+            errorMessage = "Couldn't load coaches: \(error.localizedDescription)"
+        }
+    }
+
+    private func transfer() async {
+        guard let target = selectedCoach else { return }
+        isTransferring = true
+        errorMessage = nil
+        defer { isTransferring = false }
+        do {
+            _ = try await swimmerService.transferSwimmer(
+                swimmerId: swimmer.id,
+                toCoachId: target.id
+            )
+            onTransferred()
+            dismiss()
+        } catch {
+            errorMessage = "Transfer failed: \(error.localizedDescription)"
         }
     }
 }

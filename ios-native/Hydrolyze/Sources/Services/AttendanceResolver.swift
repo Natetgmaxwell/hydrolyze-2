@@ -76,7 +76,10 @@ enum AttendanceResolver {
             guard let date = Self.parseDate(scheduledAt, calendar: calendar) else { return nil }
             self.workoutId = workoutId
             self.weekday = Weekday(date: date, calendar: calendar)
-            self.amPm = amPm.flatMap(SessionSlot.init(rawValue:))
+            // Defensive: the DB stores uppercase "AM" / "PM". Lowercase drift
+            // should not silently turn a PM workout into an AM workout and
+            // break standing-slot matching.
+            self.amPm = amPm.flatMap { SessionSlot(rawValue: $0.uppercased()) }
         }
 
         /// `scheduled_at` is a Postgres DATE, so it arrives as "2026-07-29"

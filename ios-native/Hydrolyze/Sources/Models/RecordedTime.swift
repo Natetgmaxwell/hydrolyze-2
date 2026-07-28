@@ -39,6 +39,15 @@ struct RecordedTime: Codable, Identifiable, Sendable, Hashable {
     /// distance; with stroke on recorded_times, the join
     /// becomes optional.
     let stroke: String?
+    /// PHASE 2.5: read-only joined workout title for grouping the
+    /// My Swims list by session. Embedded as a nested object so the
+    /// Supabase foreign-table select stays standard (`workout:workouts!workout_id(title)`).
+    /// Falls back to nil when the row has no linked workout or the workout
+    /// is untitled.
+    let workout: WorkoutRef?
+
+    /// Convenience accessor used by the view model.
+    var workoutTitle: String? { workout?.title }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -59,5 +68,12 @@ struct RecordedTime: Codable, Identifiable, Sendable, Hashable {
         case source
         case assignmentConfidence = "assignment_confidence"
         case stroke
+        case workout
     }
+}
+
+/// Lightweight read-only reference to the parent workout for a recorded time.
+/// Keeps RecordedTime Codable when the select embeds `workouts`.
+struct WorkoutRef: Codable, Sendable, Hashable {
+    let title: String?
 }

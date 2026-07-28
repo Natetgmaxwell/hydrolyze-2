@@ -124,11 +124,13 @@ struct MyScheduleView: View {
 
     /// One row per day the squad trains, with its AM/PM slots. Days the
     /// squad never trains simply don't appear — less to read, and nothing
-    /// to tap that wouldn't mean anything.
+    /// to tap that wouldn't mean anything. Both AM and PM slots for a day
+    /// are rendered as separate, independently-tappable chips.
     private var grid: some View {
         VStack(spacing: 8) {
             ForEach(Weekday.displayOrder, id: \.self) { day in
                 let daySlots = slots.filter { $0.day == day }
+                    .sorted { $0.slot.sortOrder < $1.slot.sortOrder }
                 if !daySlots.isEmpty {
                     HStack(spacing: 8) {
                         Text(day.shortLabel)

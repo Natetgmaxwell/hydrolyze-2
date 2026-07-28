@@ -27,6 +27,11 @@ struct SwimmerUpcomingView: View {
     @State private var showSchedule = false
     @State private var isFirstRunPrompt = false
     @State private var didPromptThisSession = false
+    /// v1.17 Slice 8d: visible attendance roster per workout. RLS-gated,
+    /// so an empty array here means "this squad is private" or "no one has
+    /// marked in yet" — both render identically (the row simply doesn't
+    /// appear). The swimmer does not see the absence of a feature.
+    @State private var rosters: [String: [IntentService.RosterEntry]] = [:]
 
     private var service: IntentService { IntentService() }
 
@@ -102,6 +107,7 @@ struct SwimmerUpcomingView: View {
                     ForEach(workouts) { workout in
                         UpcomingWorkoutRow(
                             workout: workout,
+                            roster: rosters[workout.id] ?? [],
                             isToggling: togglingWorkoutId == workout.id,
                             onMarkIn: {
                                 Task { await markIntent(workout, intent: "in") }
@@ -148,6 +154,18 @@ struct SwimmerUpcomingView: View {
         }
         do {
             workouts = try await service.fetchUpcomingWorkouts(swimmerId: swimmerId)
+            // Slice 8d: rosters in parallel. Each fetch is gated by
+            // swimmer_squad_attendance_read; a private squad returns
+            // [] silently, so the row just doesn't render.
+            rosters = await withTaskGroup(of: (String, [IntentService.RosterEntry]).self) { group in
+                for w in workouts {
+                    let id = w.id
+                    group.addTask { (id, (try? await self.service.fetchRoster(forWorkoutId: id)) ?? []) }
+                }
+                var result: [String: [IntentService.RosterEntry]] = [:]
+                for await (id, entries) in group { result[id] = entries }
+                return result
+            }
             isLoading = false
         } catch {
             errorMessage = "Couldn't load upcoming workouts.\n\(error.localizedDescription)"
@@ -193,6 +211,7 @@ struct SwimmerUpcomingView: View {
 /// Already-marked state shows the chosen pill filled.
 private struct UpcomingWorkoutRow: View {
     let workout: UpcomingWorkout
+    let roster: [IntentService.RosterEntry]
     let isToggling: Bool
     let onMarkIn: () -> Void
     let onMarkOut: () -> Void
@@ -229,6 +248,15 @@ private struct UpcomingWorkoutRow: View {
                 Text("From your usual schedule")
                     .font(.caption)
                     .foregroundStyle(Color.textFaint)
+            }
+
+            // v1.17 Slice 8d: who else is in. RLS-gated — an empty array
+            // means the squad is private (default) or nobody has marked in
+            // yet. Both render identically: the row simply doesn't appear.
+            // No "this is hidden by your settings" caption, no
+            // affordance suggesting the swimmer can change it (they can't).
+            if !roster.isEmpty {
+                RosterLine(roster: roster)
             }
 
             HStack(spacing: 10) {
@@ -280,6 +308,47 @@ private struct UpcomingWorkoutRow: View {
         formatter.dateFormat = "EEE, MMM d"
         return formatter.string(from: date)
     }
+}
+
+/// RosterLine — the "X others attending" line under the pills.
+///
+/// Shows the first three names, with a "+N" suffix if there are more.
+/// Three is the right cap: long lists in a single-line caption become
+/// unreadable on a phone, and the swimmer's only actionable takeaway
+/// is "people are coming". The coach's view has the full list; this
+/// is the lightweight version for the swimmer's own decision-making.
+private struct RosterLine: View {
+    let roster: [IntentService.RosterEntry]
+
+    private static let maxNames = 3
+
+    private var caption: String {
+        let firstNames = roster.prefix(Self.maxNames).map { ($0.firstName?.nonEmpty) ?? "—" }
+        let shown = firstNames.joined(separator: ", ")
+        let extra = roster.count - firstNames.count
+        if extra > 0 {
+            return "\(shown) + \(extra) more"
+        }
+        return shown
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "person.2.fill")
+                .font(.caption)
+                .foregroundStyle(Color.textFaint)
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(Color.textMuted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+}
+
+private extension String {
+    /// Empty-string → nil, so displayName joins cleanly.
+    var nonEmpty: String? { isEmpty ? nil : self }
 }
 
 /// IntentPill — a single tap target for marking intent. Selected

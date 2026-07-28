@@ -221,6 +221,69 @@ final class IntentService {
 
     // MARK: - helpers
 
+    /// Read the visible attendance roster for a workout.
+    ///
+    /// "Visible" is the load-bearing word. The new RLS policy
+    /// `swimmer_squad_attendance_read` admits only rows that satisfy:
+    ///   1. the calling swimmer is a member of the same group as the
+    ///      target swimmer,
+    ///   2. that group belongs to the same coach as both,
+    ///   3. the group's settings has attendance_visibility = 'squad'.
+    ///
+    /// In private mode (the default) the policy admits no rows, so
+    /// this returns an empty array. The caller does not need to know
+    /// the policy exists.
+    ///
+    /// Returns the attending swimmers (one per id, with first/last
+    /// name). In a squad the roster typically reads as 3–15 names;
+    /// in a private squad the array is empty.
+    struct RosterEntry: Codable, Identifiable, Hashable, Sendable {
+        let swimmerId: String
+        let firstName: String?
+        let lastName: String?
+
+        var id: String { swimmerId }
+        var displayName: String {
+            [firstName ?? "", lastName ?? ""]
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+        }
+    }
+
+    func fetchRoster(forWorkoutId workoutId: String) async throws -> [RosterEntry] {
+        struct Row: Decodable {
+            let swimmer_id: String
+            let swimmers: SwimmerRef
+            struct SwimmerRef: Decodable {
+                let first_name: String?
+                let last_name: String?
+                enum CodingKeys: String, CodingKey {
+                    case first_name, last_name
+                }
+            }
+            enum CodingKeys: String, CodingKey {
+                case swimmer_id
+                case swimmers
+            }
+        }
+        let response = try await client
+            .from("swimmer_attendance_intent")
+            .select("swimmer_id, swimmers!swimmer_attendance_intent_swimmer_id_fkey(first_name,last_name)")
+            .eq("workout_id", value: workoutId)
+            .eq("intent", value: "in")
+            .execute()
+        let rows = try JSONDecoder().decode([Row].self, from: response.data)
+        return rows
+            .filter { !$0.swimmer_id.isEmpty }
+            .map {
+                RosterEntry(
+                    swimmerId: $0.swimmer_id,
+                    firstName: $0.swimmers.first_name,
+                    lastName: $0.swimmers.last_name
+                )
+            }
+    }
+
     /// Wire shape for the workouts select — narrower than the
     /// full Workout model. Keeps the read lean.
     private struct WorkoutRow: Decodable {

@@ -76,15 +76,15 @@ struct MySwimsTab: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    if viewModel.isLoading && viewModel.recentTimes.isEmpty {
+                    if viewModel.isLoading && viewModel.recentSessions.isEmpty {
                         ProgressView()
                             .tint(Color.accentCyan)
                             .padding(.top, 40)
-                    } else if viewModel.recentTimes.isEmpty {
+                    } else if viewModel.recentSessions.isEmpty {
                         emptyState
                     } else {
-                        ForEach(viewModel.recentTimes) { entry in
-                            SwimTimeRow(entry: entry)
+                        ForEach(viewModel.recentSessions) { session in
+                            sessionSection(session)
                         }
                     }
                 }
@@ -96,6 +96,51 @@ struct MySwimsTab: View {
             .toolbarBackground(Color.bgBase, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
+    }
+
+    private func sessionSection(_ session: SwimmerHomeViewModel.SessionEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(sessionHeaderTitle(for: session))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color.textPrimary)
+                Spacer()
+                Text(sessionHeaderDate(for: session))
+                    .font(.system(size: 11))
+                    .foregroundColor(Color.textMuted)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.bgDeep)
+            .cornerRadius(8)
+
+            ForEach(session.times) { entry in
+                SwimTimeRow(entry: entry)
+            }
+        }
+    }
+
+    private func sessionHeaderTitle(for session: SwimmerHomeViewModel.SessionEntry) -> String {
+        if let title = session.title, !title.isEmpty {
+            return title
+        }
+        return "Practice"
+    }
+
+    private func sessionHeaderDate(for session: SwimmerHomeViewModel.SessionEntry) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        let base = formatter.string(from: session.date)
+        // When every time inside the session is the same calendar day, just show the date.
+        // If the session spans midnight somehow, append the relative day from the newest time.
+        let calendar = Calendar.current
+        let newest = session.times.map(\.createdAt).max() ?? session.date
+        let oldest = session.times.map(\.createdAt).min() ?? session.date
+        if calendar.isDate(newest, inSameDayAs: oldest) {
+            return base
+        }
+        return "\(base) · \(session.times.first?.relativeDate ?? "")"
     }
 
     private var emptyState: some View {

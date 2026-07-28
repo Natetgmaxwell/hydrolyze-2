@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		017906383E24B59BE0E6F5E0 /* SquadSessionsEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6216796BE406C11CB42FF1 /* SquadSessionsEditor.swift */; };
+		03C5C6129C07CE4E27D6B8B3 /* SquadManagementViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0833FE39DE5E5FB0B9744F0 /* SquadManagementViewModel.swift */; };
 		0CB2780967A1467984F27568 /* TickMarkCelebrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCE58F424FCFC70ABC5440C /* TickMarkCelebrationView.swift */; };
 		0D70C4D437576E858EF95C4C /* RecordedTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E3D5422A3C8FB38F9DC0CA /* RecordedTime.swift */; };
 		0D7498B11EC7438A96B9E109 /* WaveAssignment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3B0E1EAB016A69A8583CC2 /* WaveAssignment.swift */; };
@@ -43,6 +44,7 @@
 		54B53CC34EDC25C4E355C112 /* WorkoutParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */; };
 		59078B16E7256A044D2AC09C /* Bundle+AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4355EC298F9F720ABFE4603A /* Bundle+AppInfo.swift */; };
 		5CEF56078E75ACD6930869A5 /* AttendanceResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 476DE307B897395397132407 /* AttendanceResolver.swift */; };
+		5F0E844BEA9642908BE7C867 /* SquadManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E9A0EBD6BC8CF5C2D5BDBD0 /* SquadManagementView.swift */; };
 		64833600ED0701686C6F395D /* SwimmerSheetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */; };
 		64D0C23101DC7F509AF5840D /* SwimmerDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */; };
 		69F547FF1CC10BBC630D89BC /* build_and_run_attendance.sh in Resources */ = {isa = PBXBuildFile; fileRef = D4616F9A681BCD3987147C30 /* build_and_run_attendance.sh */; };
@@ -129,6 +131,7 @@
 		0859A78AA5815DD4B477A286 /* ScheduleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleService.swift; sourceTree = "<group>"; };
 		09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutParser.swift; sourceTree = "<group>"; };
 		0D00A58874D880B534E5AE62 /* ISO8601DateParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ISO8601DateParser.swift; sourceTree = "<group>"; };
+		0E9A0EBD6BC8CF5C2D5BDBD0 /* SquadManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquadManagementView.swift; sourceTree = "<group>"; };
 		0FCE58F424FCFC70ABC5440C /* TickMarkCelebrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickMarkCelebrationView.swift; sourceTree = "<group>"; };
 		1077B3502F7320E20680EDEB /* SwimmersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmersListView.swift; sourceTree = "<group>"; };
 		16F2B9FC412EF150DB478F46 /* RPEParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPEParser.swift; sourceTree = "<group>"; };
@@ -204,6 +207,7 @@
 		B7D12415D6245D44A3406ACC /* CoachIntentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachIntentService.swift; sourceTree = "<group>"; };
 		BD85D4E3D3924B1DB74506FC /* WorkoutPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPreview.swift; sourceTree = "<group>"; };
 		BF78D9146F2ADACFD15FB25D /* SessionReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionReviewView.swift; sourceTree = "<group>"; };
+		C0833FE39DE5E5FB0B9744F0 /* SquadManagementViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquadManagementViewModel.swift; sourceTree = "<group>"; };
 		C16BF60F3797127342B7FBFB /* AnalyticsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsTabView.swift; sourceTree = "<group>"; };
 		C299F2DDFE8C40C3B743853E /* JetBrainsMonoNerdFont-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMonoNerdFont-Regular.ttf"; sourceTree = "<group>"; };
 		C8E3D5422A3C8FB38F9DC0CA /* RecordedTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordedTime.swift; sourceTree = "<group>"; };
@@ -318,6 +322,7 @@
 			children = (
 				D353FF572767DA374F6433AF /* SessionReviewViewModel.swift */,
 				953FDAF57842AEC0AF43B76F /* SessionStartViewModel.swift */,
+				C0833FE39DE5E5FB0B9744F0 /* SquadManagementViewModel.swift */,
 				5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */,
 				9ED58B38E311216828F53455 /* SwimmerHomeViewModel.swift */,
 				AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */,
@@ -373,6 +378,7 @@
 			isa = PBXGroup;
 			children = (
 				96014AF82D49C3F8EC0FEF70 /* InviteSwimmerSheet.swift */,
+				0E9A0EBD6BC8CF5C2D5BDBD0 /* SquadManagementView.swift */,
 				AD6216796BE406C11CB42FF1 /* SquadSessionsEditor.swift */,
 			);
 			path = Coach;
@@ -742,6 +748,8 @@
 				B4F41533600D912B26FA4DB1 /* SetScheduleView.swift in Sources */,
 				C14911E1B73327CF3A829827 /* SpeedCurveChart.swift in Sources */,
 				F0550B6C9285B3D9568A129E /* SpeedCurveFitter.swift in Sources */,
+				5F0E844BEA9642908BE7C867 /* SquadManagementView.swift in Sources */,
+				03C5C6129C07CE4E27D6B8B3 /* SquadManagementViewModel.swift in Sources */,
 				017906383E24B59BE0E6F5E0 /* SquadSessionsEditor.swift in Sources */,
 				3097A6C6E18712ABFF2B647E /* SupabaseService.swift in Sources */,
 				3E355B12AB83C683FEA2BAE5 /* Swimmer.swift in Sources */,

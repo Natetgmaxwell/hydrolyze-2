@@ -15,7 +15,7 @@ import Foundation
 /// WHERE clauses scope by swimmer_id.
 @MainActor
 final class SwimmerHomeViewModel: ObservableObject {
-    @Published var recentTimes: [TimeEntry] = []
+    @Published var recentSessions: [SessionEntry] = []
     @Published var pbs: [PBEntry] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
@@ -29,6 +29,17 @@ final class SwimmerHomeViewModel: ObservableObject {
         let distance: Int
         let relativeDate: String
         let createdAt: Date
+        let sessionKey: String
+        let sessionDate: Date
+        let workoutTitle: String?
+    }
+
+    /// One session/workout grouping for the My Swims list.
+    struct SessionEntry: Identifiable {
+        let id: String  // sessionKey
+        let date: Date
+        let title: String?
+        let times: [TimeEntry]
     }
 
     /// One personal best.
@@ -66,27 +77,61 @@ final class SwimmerHomeViewModel: ObservableObject {
             async let pbsTask = swimmerService.fetchPersonalBests(swimmerId: swimmerId)
             let (times, pbs) = try await (timesTask, pbsTask)
 
-            self.recentTimes = times.compactMap { rt in
+            let calendar = Calendar.current
+            let entries: [TimeEntry] = times.compactMap { rt in
                 // RecordedTime.timeMs is non-optional (recorded_times.time_ms is NOT NULL).
                 // paceDistance + stroke are optional (only set on pace sets / pre-Phase 2.6 rows).
                 let timeMs = rt.timeMs
                 guard let stroke = rt.stroke,
                       let distance = rt.paceDistance else { return nil }
                 let date = ISO8601DateParser.parse(rt.createdAt) ?? Date()
+                // Group by session when available, otherwise by workout, otherwise by calendar day.
+                // The session/workout id is enough to keep distinct practices separate; prefixing
+                // with the date keeps the header stable and readable even when ids are nil.
+                let dayStart = calendar.startOfDay(for: date)
+                let keyParts = [
+                    rt.sessionId,
+                    rt.workoutId,
+                    ISO8601DateFormatter().string(from: dayStart)
+                ].compactMap { $0 }
+                let sessionKey = keyParts.isEmpty ? rt.id : keyParts.joined(separator: "|")
                 return TimeEntry(
                     id: rt.id,
                     timeMs: timeMs,
                     stroke: stroke,
                     distance: distance,
                     relativeDate: relativeDateString(from: date),
-                    createdAt: date
+                    createdAt: date,
+                    sessionKey: sessionKey,
+                    sessionDate: dayStart,
+                    workoutTitle: rt.workoutTitle
                 )
             }
             // Most recent first; cap at the last 20 entries so
             // the My Swims list stays scannable
-            .sorted { $0.createdAt > $1.createdAt }
-            .prefix(20)
-            .map { $0 }
+            let sortedEntries = entries
+                .sorted { $0.createdAt > $1.createdAt }
+                .prefix(20)
+                .map { $0 }
+
+            // Group by session, preserving most-recent-first order.
+            var sessionsByKey: [String: SessionEntry] = [:]
+            for entry in sortedEntries {
+                var existing = sessionsByKey[entry.sessionKey]
+                let times = (existing?.times ?? []) + [entry]
+                sessionsByKey[entry.sessionKey] = SessionEntry(
+                    id: entry.sessionKey,
+                    date: entry.sessionDate,
+                    title: entry.workoutTitle,
+                    times: times
+                )
+            }
+            // Re-sort sessions by their newest time so the list is chronological top-down.
+            self.recentSessions = sessionsByKey.values.sorted {
+                let aMax = $0.times.map(\.createdAt).max() ?? $0.date
+                let bMax = $1.times.map(\.createdAt).max() ?? $1.date
+                return aMax > bMax
+            }
 
             self.pbs = pbs.compactMap { pb in
                 PBEntry(

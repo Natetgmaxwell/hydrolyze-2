@@ -19,6 +19,7 @@ final class SwimmersListViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let swimmerService = SwimmerService()
+    private let authManager = AuthManager()
 
     /// Swimmers filtered by the current active/archived pill.
     var filteredSwimmers: [Swimmer] {
@@ -140,8 +141,18 @@ final class SwimmersListViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
-}
 
+    /// Move a swimmer to a single squad (or remove from all squads).
+    func moveSwimmer(swimmerId: String, toGroupId groupId: String?) async {
+        do {
+            let groupIds = groupId.map { [$0] } ?? []
+            try await swimmerService.setSwimmerGroups(swimmerId: swimmerId, groupIds: groupIds)
+            await loadSwimmers(coachId: authManager.coachId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
 extension SwimmerService {
     func fetchSwimmersWithGroups(coachId: String, includeArchived: Bool) async throws -> ([Swimmer], [CoachGroup]) {
         let swimmers: [Swimmer]
