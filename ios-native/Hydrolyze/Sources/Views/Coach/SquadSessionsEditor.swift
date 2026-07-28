@@ -21,6 +21,7 @@ struct SquadSessionsEditor: View {
     @State private var loadingError: String?
     @State private var saving = false
     @State private var editingLabel: SquadSessionSlot? = nil
+    @State private var hasLoaded = false
 
     init(group: CoachGroup) {
         self.group = group
@@ -58,20 +59,30 @@ struct SquadSessionsEditor: View {
 
     @ViewBuilder
     private var content: some View {
-        if slots.isEmpty {
+        if !hasLoaded && loadingError == nil {
             ProgressView()
                 .tint(Color.accentCyan)
+        } else if let loadingError {
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(Color.accentAmber)
+                Text(loadingError)
+                    .font(.caption)
+                    .foregroundStyle(Color.textMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                Button("Retry") { Task { await load() } }
+                    .font(.caption)
+                    .foregroundStyle(Color.accentCyan)
+            }
+            .padding(.top, 60)
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     intro
                     grid
                     visibilitySection
-                    if let loadingError {
-                        Text(loadingError)
-                            .font(.caption)
-                            .foregroundStyle(Color.statusError)
-                    }
                 }
                 .padding(.vertical, 16)
             }
@@ -189,8 +200,10 @@ struct SquadSessionsEditor: View {
     private func load() async {
         do {
             slots = try await service.fetchAllSquadSlots(groupId: group.id)
+            hasLoaded = true
         } catch {
             loadingError = "Couldn't load this squad's sessions."
+            hasLoaded = true
         }
     }
 
