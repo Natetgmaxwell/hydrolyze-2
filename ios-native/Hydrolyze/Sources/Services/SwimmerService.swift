@@ -34,13 +34,6 @@ final class SwimmerService {
             let lastName: String?
             let birthdate: String?
             let gender: String?
-            enum CodingKeys: String, CodingKey {
-                case coachId = "coach_id"
-                case firstName = "first_name"
-                case lastName = "last_name"
-                case birthdate
-                case gender
-            }
         }
         let payload = CreatePayload(
             coachId: coachId,
@@ -53,26 +46,6 @@ final class SwimmerService {
             .insert(payload)
             .select()
             .single()
-            .execute()
-        return try JSONDecoder().decode(Swimmer.self, from: response.data)
-    }
-
-    /// Transfer a swimmer to a different coach. Calls the
-    /// transfer_swimmer SECURITY DEFINER RPC, which validates the
-    /// caller is the current coach, removes squad membership (the old
-    /// squad belongs to the old coach), and updates coach_id. The
-    /// swimmer's PBs and profile follow automatically via RLS.
-    /// Historical recorded_times stay with the old coach's sessions.
-    func transferSwimmer(swimmerId: String, toCoachId: String) async throws -> Swimmer {
-        struct Params: Encodable {
-            let pSwimmerId: String
-            let pNewCoachId: String
-            enum CodingKeys: String, CodingKey {
-                case pSwimmerId = "p_swimmer_id"
-                case pNewCoachId = "p_new_coach_id"
-            }
-        }
-        let response = try await supabase.rpc("transfer_swimmer", params: Params(pSwimmerId: swimmerId, pNewCoachId: toCoachId))
             .execute()
         return try JSONDecoder().decode(Swimmer.self, from: response.data)
     }
@@ -112,50 +85,11 @@ final class SwimmerService {
         return try JSONDecoder().decode([CoachGroup].self, from: response.data)
     }
 
-    /// Squad alias for fetching groups. Same query as `fetchGroups` but
-    /// named for the new squad-management feature surface.
-    func fetchSquadsForCoach(coachId: String) async throws -> [CoachGroup] {
-        return try await fetchGroups(coachId: coachId)
-    }
-
-    /// Create a new squad. Calls the create_squad RPC (SECURITY DEFINER)
-    /// to bypass the RLS WITH CHECK on groups — the same pattern as
-    /// create_swimmer_account and redeem_invite_code.
-    func createSquad(coachId: String, name: String) async throws -> CoachGroup {
-        struct Params: Encodable {
-            let pName: String
-            enum CodingKeys: String, CodingKey {
-                case pName = "p_name"
-            }
-        }
-        let response = try await supabase.rpc("create_squad", params: Params(pName: name))
-            .execute()
-        return try JSONDecoder().decode(CoachGroup.self, from: response.data)
-    }
-
-    /// Rename a squad by updating the `groups.name` column.
-    func renameSquad(groupId: String, name: String) async throws -> CoachGroup {
-        struct RenamePayload: Encodable {
-            let name: String
-        }
-        let response = try await supabase.from("groups")
-            .update(RenamePayload(name: name))
-            .eq("id", value: groupId)
-            .select()
-            .single()
-            .execute()
-        return try JSONDecoder().decode(CoachGroup.self, from: response.data)
-    }
-
     /// Create a new group.
     func createGroup(coachId: String, name: String) async throws -> CoachGroup {
         struct CreateGroupPayload: Encodable {
             let coachId: String
             let name: String
-            enum CodingKeys: String, CodingKey {
-                case coachId = "coach_id"
-                case name
-            }
         }
         let payload = CreateGroupPayload(coachId: coachId, name: name)
         let response = try await supabase.from("groups")
@@ -166,86 +100,11 @@ final class SwimmerService {
         return try JSONDecoder().decode(CoachGroup.self, from: response.data)
     }
 
-    /// Fetch swimmers assigned to a specific group/squad.
-    func fetchSwimmersInGroup(groupId: String) async throws -> [Swimmer] {
-        let response = try await supabase.from("swimmer_groups")
-            .select("""
-                swimmer_id,
-                swimmers!inner(
-                    id, coach_id, first_name, last_name, birthdate,
-                    gender, notes, preferred_gear, form_stroke,
-                    main_stroke, archived_at, created_at
-                )
-                """)
-            .eq("group_id", value: groupId)
-            .execute()
-
-        struct Row: Decodable {
-            let swimmer: Swimmer
-            enum CodingKeys: String, CodingKey {
-                case swimmer = "swimmers"
-            }
-        }
-        let rows = try JSONDecoder().decode([Row].self, from: response.data)
-        return rows.map { $0.swimmer }
-    }
-
-    /// Fetch coaches eligible for squad assignment. The owning coach plus
-    /// any other coaches already linked to this account.
-    func fetchCoachesForSquadManagement(coachId: String) async throws -> [Coach] {
-        let response = try await supabase.from("coaches")
-            .select()
-            .execute()
-        return try JSONDecoder().decode([Coach].self, from: response.data)
-    }
-
-    /// Fetch coaches currently assigned to a squad via the `coach_squads`
-    /// join table. Fails at runtime until the schema migration is applied.
-    func fetchCoachesForSquad(groupId: String) async throws -> [CoachSquadAssignment] {
-        let response = try await supabase.from("coach_squads")
-            .select()
-            .eq("group_id", value: groupId)
-            .execute()
-        return try JSONDecoder().decode([CoachSquadAssignment].self, from: response.data)
-    }
-
-    /// Add a coach to a squad. Fails at runtime until the `coach_squads`
-    /// schema migration is applied.
-    func addCoachToSquad(coachId: String, groupId: String, role: String = "assistant") async throws {
-        struct AddPayload: Encodable {
-            let coachId: String
-            let groupId: String
-            let role: String
-            enum CodingKeys: String, CodingKey {
-                case coachId = "coach_id"
-                case groupId = "group_id"
-                case role
-            }
-        }
-        try await supabase.from("coach_squads")
-            .insert(AddPayload(coachId: coachId, groupId: groupId, role: role))
-            .execute()
-    }
-
-    /// Remove a coach from a squad. Fails at runtime until the `coach_squads`
-    /// schema migration is applied.
-    func removeCoachFromSquad(coachId: String, groupId: String) async throws {
-        try await supabase.from("coach_squads")
-            .delete()
-            .eq("coach_id", value: coachId)
-            .eq("group_id", value: groupId)
-            .execute()
-    }
-
     /// Assign a swimmer to a group.
     func assignSwimmerToGroup(swimmerId: String, groupId: String) async throws {
         struct AssignPayload: Encodable {
             let swimmerId: String
             let groupId: String
-            enum CodingKeys: String, CodingKey {
-                case swimmerId = "swimmer_id"
-                case groupId = "group_id"
-            }
         }
         try await supabase.from("swimmer_groups")
             .insert(AssignPayload(swimmerId: swimmerId, groupId: groupId))
