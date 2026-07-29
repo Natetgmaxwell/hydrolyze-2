@@ -1448,6 +1448,8 @@ function parseRepGroup(lineText: string): RepGroup | null {
 }
 
 // Parse odd/even sub-lines
+// ponytail (iter 14, 2026-07-29): support both "odd:" (colon) and
+// "Odd -" (dash) separators. Coaches use both interchangeably.
 function parseOddEvenBlock(
   lines: RawLine[],
   startIdx: number,
@@ -1455,7 +1457,8 @@ function parseOddEvenBlock(
   if (startIdx >= lines.length) return null;
 
   const first = lines[startIdx];
-  const oddMatch = first.text.match(/^odd\s*:\s*(.+)/i);
+  // Accept "odd: <text>" or "odd - <text>" or "odd–<text>"
+  const oddMatch = first.text.match(/^odd\s*[:–-]\s*(.+)/i);
   if (!oddMatch) return null;
 
   const odd = oddMatch[1].trim();
@@ -1468,7 +1471,8 @@ function parseOddEvenBlock(
       endIdx++;
       continue;
     }
-    const evenMatch = line.text.match(/^even\s*:\s*(.+)/i);
+    // Accept "even: <text>" or "even - <text>" or "even–<text>"
+    const evenMatch = line.text.match(/^even\s*[:–-]\s*(.+)/i);
     if (!evenMatch) break;
     even = evenMatch[1].trim();
     endIdx++;
@@ -1506,7 +1510,8 @@ function parseWorkoutV2(input: string): Workout {
         continue;
       }
 
-      if (/^odd\s*:/i.test(line.text)) {
+      // ponytail (iter 14, 2026-07-29): match both "odd:" and "Odd -"
+      if (/^odd\s*[:–-]/i.test(line.text)) {
         const result = parseOddEvenBlock(block.lines, i);
         if (result) {
           const currentNs = namedSets[namedSets.length - 1];
@@ -1519,6 +1524,40 @@ function parseWorkoutV2(input: string): Workout {
           i = result.endIdx;
           continue;
         }
+      }
+
+      // ponytail (iter 14, 2026-07-29): instruction-line guard.
+      // Runs BEFORE extractLabel to catch "Build each 50" (which
+      // extractLabel would split into label="Build each" rest="50",
+      // creating a false set). Uses line.text directly.
+      const lineText = line.text.trim();
+      const isInstructionLine =
+        !/\d+\s*[x×]\s*\d+/.test(lineText) && // no NxM pattern
+        (
+          // Pattern 1: starts with a coaching word → instruction
+          /^\s*(?:build|descend|hold|focus|maintain|strong|smooth|underwater|breakout|streamline|dolphin|easy|fast|slow|controlled|relaxed|perfect|race|quality|explosive|turn|push|dive|kick|drill|scull|breathe|negative|positive|long|short|tall|high|low|tight|loose|steady|consistent|gradual|progressive|activation|recovery)\b/i.test(lineText) ||
+          // Pattern 2: starts with "N m" where N ≤ 25 + coaching words
+          (/^(\d+)\s*m?\b/.test(lineText) &&
+            (parseIntSafe(lineText.match(/^(\d+)\s*m?\b/)?.[1] ?? "") ?? 999) <= 25 &&
+            /\b(?:breakout|underwater|uw|streamline|dolphin|kick|turn|wall|drill|scull|breathe|smooth|build|fast|easy|slow|strong|controlled|relaxed|skill|recovery|effort)\b/i.test(lineText))
+        );
+
+      if (isInstructionLine) {
+        for (let si = namedSets.length - 1; si >= 0; si--) {
+          const ns = namedSets[si];
+          if (ns.repGroups.length > 0) {
+            const lastRg = ns.repGroups[ns.repGroups.length - 1];
+            if (!lastRg.note) {
+              lastRg.note = lineText;
+            } else {
+              lastRg.note = lastRg.note + "; " + lineText;
+            }
+            break;
+          }
+        }
+        pendingLabel = null;
+        i++;
+        continue;
       }
 
       let { label, rest } = extractLabel(line.text);
@@ -1603,6 +1642,8 @@ function parseWorkoutV2(input: string): Workout {
         continue;
       }
 
+      // (iter 14 instruction-line guard moved BEFORE extractLabel above)
+
       const rd = parseRepDist(rest);
       if (rd.reps === null && rd.distance === null) {
         // ponytail (autoresearch iter 4, 2026-07-19): a bare
@@ -1612,13 +1653,31 @@ function parseWorkoutV2(input: string): Workout {
         // on one line and "fast for time" on the next lose the
         // note attribution.
         const freeTextNote = parseFreeTextNote(line.text);
-        if (freeTextNote) {
+
+        // ponytail (iter 14, 2026-07-29): BROADER trailing-comment
+        // attachment. If a line has no set pattern, isn't a section
+        // header, and looks like a short instruction (≤ 80 chars,
+        // not a paragraph), attach it as a note to the previous rg.
+        // This catches "Build each 50", "Strong streamline off every
+        // wall", "Underwater dolphin to 10-15m", "Focus on catch", etc.
+        const trimmed = line.text.trim();
+        const isShortInstruction =
+          trimmed.length > 0 &&
+          trimmed.length <= 80 &&
+          !/^[A-Z][A-Z0-9 \-/&]+$/.test(trimmed) && // not ALL-CAPS header
+          /[a-z]/.test(trimmed); // has lowercase (real text)
+
+        if (freeTextNote || isShortInstruction) {
+          const noteText = freeTextNote ?? trimmed;
           for (let si = namedSets.length - 1; si >= 0; si--) {
             const ns = namedSets[si];
             if (ns.repGroups.length > 0) {
               const lastRg = ns.repGroups[ns.repGroups.length - 1];
               if (!lastRg.note) {
-                lastRg.note = freeTextNote;
+                lastRg.note = noteText;
+              } else {
+                // Append to existing note with separator
+                lastRg.note = lastRg.note + "; " + noteText;
               }
               break;
             }
