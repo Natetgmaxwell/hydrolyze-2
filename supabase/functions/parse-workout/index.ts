@@ -330,6 +330,22 @@ const SECTION_HEADERS = new Set([
   "broken",
   "emphasis",
   "focus",
+  // ponytail (iter 13, 2026-07-28): new section headers from inputs 11-17
+  "open water",
+  "sd",
+  "activation set",
+  "activation",
+  "skills finish",
+  "technique set",
+  "stroke connection",
+  "race priming",
+  "turn and breakout preparation",
+  "general warm-up",
+  "deck activation",
+  "race-skills finish",
+  "common race-skills finish",
+  "warm-down",
+  "important quality controls",
 ]);
 
 function isSectionHeader(line: RawLine): boolean {
@@ -379,6 +395,15 @@ function isSectionHeader(line: RawLine): boolean {
   // ponytail (iter 12, 2026-07-28): "Warm-up N" / "swim down N" —
   // section header with total distance. Don't emit as a set.
   if (/^(warm[\s-]?up|warm[\s-]?down|swim[\s-]?down|cool[\s-]?down)\s+\d+/i.test(t)) return true;
+  // ponytail (iter 13, 2026-07-28): "Option N: <name>" and
+  // "Group A/B/C/D — <name>" as section headers.
+  if (/^option\s+\d+\s*:/i.test(t)) return true;
+  if (/^group\s+[a-d]\s*[—\-]/i.test(t)) return true;
+  // ponytail (iter 13, 2026-07-28): "SD - N" (Swim Down abbreviation)
+  if (/^sd\s*[-–]\s*\d+/i.test(t)) return true;
+  // "Part N: <title>" already handled above.
+  // "N. <title>" numbered section (e.g. "2. Aerobic flush", "3. Stroke connection")
+  if (/^\d+\.\s+[a-z]/i.test(t) && !/\d+\s*[x×]\s*\d+/.test(t)) return true;
   // Legacy: bare keywords like "warm up", "main set", "cool down"
   if (SECTION_HEADERS.has(t)) return true;
   // Title-cased multi-word line without set pattern.
@@ -603,6 +628,29 @@ function defaultRPEForTerm(term: string): { low: number; high: number } | null {
 function parseIntensity(raw: string): ParsedIntensity | null {
   const n = normalize(raw);
 
+  // ponytail (iter 13, 2026-07-28): "Zone N" or "Zone N-low Zone M"
+  // as aerobic intensity. Coaches use heart-rate zones 1-5.
+  const zoneMatch = n.match(/zone\s+(\d)(?:\s*[-–]\s*(?:low\s+)?zone\s+(\d))?/i);
+  if (zoneMatch) {
+    const low = parseIntSafe(zoneMatch[1]) ?? 1;
+    const high = zoneMatch[2] ? parseIntSafe(zoneMatch[2]) ?? low : low;
+    return { type: "aerobic", label: `Zone ${low}-${high}` };
+  }
+
+  // ponytail (iter 13, 2026-07-28): "RPE: N-N/10" or "N/10" as RPE.
+  const rpeMatch = n.match(/rpe\s*:?\s*(\d+)\s*[-–]\s*(\d+)\s*\/\s*10/i);
+  if (rpeMatch) {
+    const low = parseIntSafe(rpeMatch[1]) ?? 5;
+    const high = parseIntSafe(rpeMatch[2]) ?? 6;
+    return { type: "percent_range", label: `RPE ${low}-${high}/10`, percentLow: low * 10, percentHigh: high * 10 };
+  }
+  // Bare "N/10" RPE rating (e.g. "8/10" after interval)
+  const bareRpeMatch = n.match(/\b(\d+)\s*\/\s*10\b/);
+  if (bareRpeMatch) {
+    const v = parseIntSafe(bareRpeMatch[1]) ?? 5;
+    return { type: "percent_range", label: `RPE ${v}/10`, percentLow: v * 10 - 5, percentHigh: v * 10 + 5 };
+  }
+
   const percentMatch = n.match(/(~?)(\d+)\s*[-–]\s*(\d+)\s*%/);
   if (percentMatch) {
     const low = parseIntSafe(percentMatch[2]) ?? 0;
@@ -661,6 +709,19 @@ function parseIntensity(raw: string): ParsedIntensity | null {
 
   // Pace target: "400 pace", "at 400 pace", "on 200 pace", "@100 pace"
   // The bare form (no preposition) is common in broken-swim notation.
+  // ponytail (iter 13, 2026-07-28): "goal pace" variants —
+  // "at goal 200m pace", "at goal 400m pace", "goal 200m pace"
+  const goalPaceMatch = n.match(/(?:at\s+)?goal\s+(\d+)\s*m?\s*pace/);
+  if (goalPaceMatch) {
+    const d = parseIntSafe(goalPaceMatch[1]);
+    if (d !== null && isKnownDistance(d))
+      return { type: "pace_target", label: `goal ${d} pace`, paceDistance: d };
+  }
+  // "goal race pace" (no distance)
+  if (/\bgoal\s+race\s+pace\b/i.test(raw)) {
+    return { type: "race_pace", label: "goal race pace" };
+  }
+
   const paceMatch = n.match(/(?:at\s+|on\s+|@\s*)?(\d+)\s*m?\s*(?:pace|effort)/);
   if (paceMatch) {
     const d = parseIntSafe(paceMatch[1]);
@@ -1107,6 +1168,13 @@ function parseRepGroup(lineText: string): RepGroup | null {
     t = t.replace(/#\d+\s+\w[^#]*/gi, "");
     t = t.replace(/\bodds?\s+.+?\s+evens?\s+.+?(?:@|$)/i, "");
     t = t.replace(/\b(?:odds?|evens?)\b/gi, "");
+    // ponytail (iter 13, 2026-07-28): strip coach-language noise words
+    // that leak to details across all real coach inputs (11-17).
+    // These are instruction/focus/reference words, not set metadata.
+    t = t.replace(
+      /\b(?:goal|breathing|stroke|with|silent|approximately|specialists?|BBB|PHF|FR-IM|A1|A2|front|mid|from|speed|end|race|connection|controlled|rest|seconds?|round|specialists?|swimmer|swimmers|athlete|athletes|open|water|surf|tri|school|nationals?|slightly|stronger|faster|slower|easier|harder|attack|lift|lifting|close|closing|rate|count|length|position|timing|execution|technique|explosive|quality|entry|opposite|next|previous|hold|maintain|repeat|opening|target|record|sustainable|technically|pool|sprint|unstructured|fatigue|competition|approaching|successful|valuable|rather|extra|repetitions?|minutes?|additional|before|between|after|first|second|third|fourth|remaining|following|above|below|through|group|part|option|specialists?|approximately|gradually|build(?:ing)?|descend(?:ing)?|negative|positive|smooth|perfect|competition|long|relaxed|underwater|breakout|streamline|turn|dive|push|start|wall|tempo|rhythm|effort|control|pace|focus|should|must|not|no|yes|if|then|than|but|and|or|the|a|an|of|for|to|in|on|at|by|up|down|out|off|over|under|into|onto|from|with|without|each|every|all|both|either|neither|this|that|these|those|which|what|when|where|why|how|who|can|could|would|should|will|shall|may|might|must|need|do|does|did|done|been|being|is|are|was|were|be|have|has|had|get|got|make|made|take|took|give|gave|keep|kept|let|leave|left|put|set|go|come|came|look|took|see|seen|use|used|allow|allowed|avoid|stop|record|recorded|encourage|monitor|choose|complete|emphasise|include|produce|reproduce|maintain|progress|deteriorate|preserve|simulate|adjust|provide|suggest|recommended?|approximately|gradually|throughout|throughout|approach|acceleration|final|included|total|though|racing|toward|four|as|slow|head|retraction|exit|flutter|explode|strokes|raced|dolphin|full|preparation|progression|drills?|silver|gold|only|add|swimming|shared|component|most|relevant|sprinting|breathe|skill|lower|their|heart|relax|best|possible|shape|equal|one|quarter|time|allowing|difference|remain|reflect|middle|section|maintaining|body|while|increasing|progressing|shortening|excessively|beginning|split|within|sec|side|uw|underwater)\b/gi,
+      "",
+    );
     // Strip pace/effort words so they don't show as details when
     // intensity is already pace_target. Also strip the bare numbers
     // that precede "pace" in broken-swim notation (e.g. "400 pace").
@@ -1122,9 +1190,12 @@ function parseRepGroup(lineText: string): RepGroup | null {
     // alternative.
     t = t.replace(/[,+\/\-|–]/g, " ");
     t = t.replace(/\([^)]*\)/g, "");
+    // ponytail (iter 13, 2026-07-28): strip plural distance abbreviations
+    // like "50s.", "100s" that leak through as details.
+    t = t.replace(/\b\d+s\.?\b/gi, "");
     const words = t
       .split(/\s+/)
-      .filter((w) => w.length > 2 && !/^\d+$/.test(w));
+      .filter((w) => w.length > 2 && !/^\d+$/.test(w) && !/^\d+s\.?$/.test(w));
     details = words.length > 0 ? words : null;
   }
 
@@ -1507,6 +1578,16 @@ function parseWorkoutV2(input: string): Workout {
       // ponytail (iter 12, 2026-07-28): false set suppression.
       // "<distance> swimmers" and "<distance> target" are not sets.
       if (/\b\d+\s*(swimmers|target)\b/i.test(rest)) {
+        pendingLabel = null;
+        i++;
+        continue;
+      }
+
+      // ponytail (iter 13, 2026-07-28): "N seconds rest" / "N sec rest"
+      // is a rest instruction, not a set. 15/10/20 are in SWIM_DISTANCES
+      // so they get parsed as sets. Guard: if the line is ONLY a rest
+      // instruction (no reps/distance pattern), skip it.
+      if (/^\d+\s*(?:seconds?|sec)\s+rest\b/i.test(rest.trim())) {
         pendingLabel = null;
         i++;
         continue;
