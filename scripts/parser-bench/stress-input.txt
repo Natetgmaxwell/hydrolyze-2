@@ -1,0 +1,54 @@
+# Ambiguous intensity vocabulary
+4 x 50 free moderate @ 1:00
+4 x 50 free hard @ 1:00
+4 x 50 free steady @ 1:00
+4 x 50 free cruise @ 1:00
+4 x 50 free light @ 1:00
+4 x 50 free strong @ 1:00
+4 x 50 free tough @ 1:00
+4 x 50 free all-out @ 1:00
+
+# Interval as bare seconds
+8 x 25 free @ :30
+10 x 50 free @ :45 rest
+
+# Words for distance
+4 x 100 free per 1:30
+4 x 100 free on 1:30
+4 x 100 free leaving on 1:30
+4 x 100 free on the 1:30
+4 x 100 free max effort
+
+# Mixed sets on one line
+200 free + 200 IM @ 3:00
+4 x 50 free + 4 x 50 kick @ 1:00
+
+# Free text the coach sprinkles around the workout
+Focus on streamline off every wall
+Focus: breakout tempo
+*emphasis on vertical line*
+
+# Race-day specific
+4 x 25 from a push @ :45
+3 x 100 race pace, smooth into the first 25
+400 with first 50 fast
+200 build to sprint with fast finish
+
+# Longer programs
+4 x 50 free easy
+2 x 100 free moderate
+6 x 100 free on 1:30 (2 fast, 4 easy)
+warm down 200 easy
+
+# Alternative gear/notation coaches use
+4 x 50 fly with fins @ 1:00 (race pace)
+4 x 50 freestyle w/ paddles @ 1:00
+6 x 50 w/ pull buoy @ 0:50
+8 x 25 w/snorkel on the 0:30
+
+# Solo word problems
+Two 400s
+three rounds thru:
+1 x 200 easy
+1 x 200 build
+Rest 30 seconds, repeat

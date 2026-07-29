@@ -123,6 +123,8 @@ const STROKE_PATTERNS: Array<[RegExp, Stroke]> = [
   [/\b(?:kick|kick\s+drill|flutter\s+kick|flutter|dolphin\s+kick)\b/i, "Kick"],
   [/\b(?:drill)\b/i, "Drill"],
   [/\b(?:choice|free[\s-]?choice)\b/i, "Choice"],
+  // ponytail (iter 11, 2026-07-28): scull is a drill-like stroke
+  [/\b(?:scull)\b/i, "Form"],
 ];
 
 // ─── Dive / Suit detection ───────────────────────────────────────────────────
@@ -135,6 +137,10 @@ const DIVE_PATTERNS: RegExp[] = [
   /\bracing\s+dive\b/i,
   /\bdive\s+entry\b/i,
   /\bdive\b(?!.*(?:drill|kick|recover|depth))/i,
+  // ponytail (iter 11, 2026-07-28): push start variants
+  /\bfrom\s+a\s+push\b/i,
+  /\bpush\s+start\b/i,
+  /\bdive\s+or\s+race[-\s]?specific\s+start\b/i,
 ];
 
 const SUIT_PATTERNS: RegExp[] = [
@@ -156,21 +162,29 @@ function parseSuit(text: string): boolean {
 const GEAR_PATTERNS: Array<[RegExp, string]> = [
   [/\bfins\b/i, "fins"],
   [/\bflippers\b/i, "fins"],
-  [/\bpaddles?\b/i, "paddles"],
+  // ponytail (iter 11, 2026-07-28): fix duplicate — 'pull paddle' must
+  // match before 'paddles' to avoid double-counting. Use negative
+  // lookbehind for 'pull ' to skip 'pull paddle'.
+  [/\bpull\s*paddle\b/i, "pull_paddle"],
+  [/(?<!pull\s)paddles?\b/i, "paddles"],
   [/\b(?:pull[\s-]?buoy|buoy)\b/i, "pull_buoy"],
+  [/\bPB\b/i, "pull_buoy"], // PB = pull buoy in gear context
   [/\bkickboard\b/i, "kickboard"],
   [/\bkick\s*board\b/i, "kickboard"],
+  [/\bKBO\b/i, "kickboard"], // KBO = Kick Board Order
   [/\bsnorkel\b/i, "snorkel"],
   [/\bdrum\s*parachute\b/i, "parachute"],
   [/\bparachute\b/i, "parachute"],
   [/\bresistance\s*(?:band|cord|tubing)\b/i, "resistance_band"],
+  [/\bbungees?\b/i, "resistance_band"],
+  [/\bbands?\b/i, "resistance_band"], // 'Band swings' context
   [/\bpower\s*tower\b/i, "power_tower"],
   [/\bweight\s*belt\b/i, "weight_belt"],
   [/\b(?:tennis|golf)\s*balls?\b/i, "tennis_balls"],
   [/\bankle\s*bands?\b/i, "ankle_band"],
-  [/\bpull\s*paddle\b/i, "pull_paddle"],
   [/\bfinger\s*paddle\b/i, "finger_paddle"],
   [/\bdrag\s*(?:suit|shorts?)\b/i, "drag_suit"],
+  [/\bdrags?\b/i, "drag_suit"], // 'Bungees then drags'
   [/\bstretchcordz\b/i, "stretchcordz"],
 ];
 
@@ -178,6 +192,8 @@ const GEAR_PATTERNS: Array<[RegExp, string]> = [
 
 function normalize(text: string): string {
   let out = text.toLowerCase().trim();
+  // Strip commas from numbers: "4,000" -> "4000"
+  out = out.replace(/(\d),(?=\d{3}\b)/g, "$1");
   for (const [word, num] of Object.entries(WORD_NUMBERS)) {
     out = out.replace(new RegExp(`\\b${word}\\b`, "g"), String(num));
   }
@@ -189,8 +205,36 @@ function normalize(text: string): string {
   // decimal). The colonMatch regex requires a literal ":". Normalize
   // any "<digits>.<two-digits>" pattern to "<digits>:<two-digits>".
   // The \b at the end prevents eating decimal numbers like "1.5".
-  out = out.replace(/(\d+)\.(\d{2})\b/g, "$1:$2");
+  //
+  // ponytail (iter 11, 2026-07-28): half-distance guard. Coaches write
+  // "12.5" as a half-pool distance. The dot→colon conversion turns it
+  // into "12:5", killing the distance. Guard: skip conversion when the
+  // number (as a decimal) is a known swim distance (12.5, 37.5, 62.5, etc.).
+  out = out.replace(/(\d+)\.(\d{2})\b/g, (match, p1, p2) => {
+    const asDecimal = parseFloat(match);
+    if (SWIM_DISTANCES.has(asDecimal)) return match; // keep as-is (12.5, 37.5, etc.)
+    return `${p1}:${p2}`;
+  });
+  // ponytail (iter 11, 2026-07-28): compact interval conversion. Coaches
+  // write "140" meaning "1:40", "230" meaning "2:30". Only convert 3-4
+  // digit numbers where the first 1-2 digits are < 60 (minutes) and the
+  // last 2 digits are < 60 (seconds). Must be in interval context (after
+  // @, on, or at the end of a set line). We do a conservative pass here
+  // — the interval parser will validate.
+  // CRITICAL: \b before 'on' to prevent matching the end of words like
+  // "position" which ends with "on" + space + digits.
+  out = out.replace(/(?:@|\bon\s+)(\d)(\d{2})\b/g, (match, prefix, rest) => {
+    const mins = parseInt(prefix, 10);
+    const secs = parseInt(rest, 10);
+    if (mins > 0 && mins < 60 && secs < 60) {
+      return match.replace(/(\d)(\d{2})\b/, `$1:$2`);
+    }
+    return match;
+  });
   out = out.replace(/–/g, "-");
+  // ponytail (iter 11, 2026-07-28): normalise gear preposition "w/" to "with"
+  // so gear patterns like "w/ paddles" get detected.
+  out = out.replace(/\bw\/\s*/g, "with ");
   return out;
 }
 
@@ -200,6 +244,13 @@ function isKnownDistance(n: number): boolean {
 
 function parseIntSafe(s: string): number | null {
   const n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
+}
+
+// ponytail (iter 11, 2026-07-28): parseFloatSafe for half-pool distances
+// (12.5, 37.5, 62.5, 87.5) that parseInt would truncate.
+function parseFloatSafe(s: string): number | null {
+  const n = parseFloat(s);
   return isNaN(n) ? null : n;
 }
 
@@ -233,10 +284,12 @@ function tokenize(input: string): RawLine[] {
     // strip bullet markers at line start: "* ", "- ", "+ ", "1. "
     .replace(/^\s*(?:[*+\-]|\d+\.)\s+/gm, "")
     // strip bold/italic markdown: **text**, *text*, __text__, _text_
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, "$1")
-    .replace(/(?<!_)_(?!_)([^_]+)_(?!_)/g, "$1");
+    // ponytail (iter 11, 2026-07-28): insert spaces around stripped markdown
+    // so "50**Race-quality" becomes "50 Race-quality" not "50Race-quality".
+    .replace(/\*\*([^*]+)\*\*/g, " $1 ")
+    .replace(/__([^_]+)__/g, " $1 ")
+    .replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, " $1 ")
+    .replace(/(?<!_)_(?!_)([^_]+)_(?!_)/g, " $1 ");
   const lines = cleaned.split("\n");
   return lines.map((text, index) => ({
     text: text.trim(),
@@ -259,6 +312,24 @@ const SECTION_HEADERS = new Set([
   "pre-set",
   "pre set",
   "warmdown",
+  // ponytail (iter 11, 2026-07-28): new section headers from real coach inputs
+  "race warm up",
+  "race warm-up",
+  "race warmup",
+  "drill progression",
+  "drill set",
+  "drills",
+  "aerobic finish",
+  "aerobic set",
+  "aerobic flush",
+  "recovery",
+  "finish",
+  "swim down",
+  "swimdown",
+  "swim-down",
+  "broken",
+  "emphasis",
+  "focus",
 ]);
 
 function isSectionHeader(line: RawLine): boolean {
@@ -271,6 +342,10 @@ function isSectionHeader(line: RawLine): boolean {
   // swimmers", "Part 1: Race-segment 75s — 900m", "Main set — 2,600m")
   // — they all have digits and em-dashes. Allow them.
   if (/\d+\s*[x×]\s*\d+/.test(t)) return false; // set line
+  // ponytail (iter 12, 2026-07-28): don't reject "N Rounds" or
+  // "N x through" as set lines — they're round multipliers.
+  if (/^\d+\s+rounds?\s*(:|$)/i.test(t)) return true;
+  if (/^\d+\s*[x×]\s*(thru|through)\s*$/i.test(t)) return true;
   if (/^\d+\s/.test(t)) return false; // starts with a number
   if (/^odds?\s*:/i.test(t)) return false; // odd: / odds:
   if (/^evens?\s*:/i.test(t)) return false;
@@ -294,6 +369,16 @@ function isSectionHeader(line: RawLine): boolean {
   if (/^part\s+\d+\s*:/i.test(t)) return true;
   // Pattern: "Two rounds:", "Three rounds:", "One round:"
   if (/^(two|three|four|five|one)\s+rounds?\s*:/i.test(t)) return true;
+  // ponytail (iter 12, 2026-07-28): "N Rounds", "N rounds of:",
+  // "Two Rounds" (without colon), "2 x through", "Each round"
+  if (/^\d+\s+rounds?\s*(:|$)/i.test(t)) return true;
+  if (/^(two|three|four|five|one)\s+rounds?\s*$/i.test(t)) return true;
+  if (/^\d+\s*[x×]\s*(thru|through)\s*$/i.test(t)) return true;
+  if (/^each\s+round\s*$/i.test(t)) return true;
+  if (/^repeat\s*(the\s+entire\s+round|round)?\s*\.?$/i.test(t)) return true;
+  // ponytail (iter 12, 2026-07-28): "Warm-up N" / "swim down N" —
+  // section header with total distance. Don't emit as a set.
+  if (/^(warm[\s-]?up|warm[\s-]?down|swim[\s-]?down|cool[\s-]?down)\s+\d+/i.test(t)) return true;
   // Legacy: bare keywords like "warm up", "main set", "cool down"
   if (SECTION_HEADERS.has(t)) return true;
   // Title-cased multi-word line without set pattern.
@@ -324,6 +409,10 @@ function isSectionHeader(line: RawLine): boolean {
   // Filter out words that start with "@" or are pure punctuation
   const meaningfulWords = words.filter((w) => /^[A-Za-z0-9]/.test(w));
   if (meaningfulWords.length === 0) return false;
+  // ponytail (iter 11, 2026-07-28): reject pure number ranges like
+  // "27.5-28.0" or "12.8-13.2" that leak through as false section headers.
+  const hasTextWord = meaningfulWords.some((w) => /[A-Za-z]/.test(w));
+  if (!hasTextWord) return false;
   const titleCased = meaningfulWords.every(
     (w) =>
       /^[A-Z0-9\d,/:]+$/.test(w) ||
@@ -404,20 +493,32 @@ function parseRepDist(raw: string): {
   distance: number | null;
 } {
   const n = normalize(raw);
-  const m = n.match(/(\d+)\s*[x×]\s*(\d+)/);
+  // ponytail (iter 11, 2026-07-28): support decimal distances (12.5, 37.5)
+  // in the distance slot. Reps are always integers.
+  const m = n.match(/(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)/);
   if (m) {
     const a = parseIntSafe(m[1]);
-    const b = parseIntSafe(m[2]);
+    const b = parseFloatSafe(m[2]);
     if (a !== null && b !== null) {
       if (isKnownDistance(b)) return { reps: a, distance: b };
       if (isKnownDistance(a)) return { reps: b, distance: a };
       return { reps: Math.min(a, b), distance: Math.max(a, b) };
     }
   }
-  const solo = n.match(/^(\d+)\s*/);
+  const solo = n.match(/^(\d+(?:\.\d+)?)\s*/);
   if (solo) {
-    const d = parseIntSafe(solo[1]);
-    if (d !== null && isKnownDistance(d)) return { reps: 1, distance: d };
+    const d = parseFloatSafe(solo[1]);
+    if (d !== null && isKnownDistance(d)) {
+      // ponytail (iter 12, 2026-07-28): trailing × N or x N multiplier
+      // after a bare distance. "100 Back × 2" → reps=2, dist=100.
+      // Note: no \b before x/× because × (U+00D7) is not a word char.
+      const trailingMult = n.match(/(?:x|×)\s*(\d+)\s*$/);
+      if (trailingMult) {
+        const r = parseIntSafe(trailingMult[1]);
+        if (r !== null) return { reps: r, distance: d };
+      }
+      return { reps: 1, distance: d };
+    }
   }
   return { reps: null, distance: null };
 }
@@ -437,14 +538,55 @@ const AMBIGUOUS_INTENSITY_TERMS: Array<[RegExp, string]> = [
   [/\btough\b/i, "tough"],
   [/\bstrong\b/i, "strong"],
   [/\ball[-\s]?out\b/i, "all-out"],
+  // ponytail (iter 11, 2026-07-28): new ambiguous terms from real coach inputs
+  [/\brelaxed\b/i, "relaxed"],
+  [/\bprogressive\b/i, "progressive"],
+  [/\bactivation\b/i, "activation"],
+  [/\bmaximal\b/i, "maximal"],
+  [/\brace\s+rhythm\b/i, "race rhythm"],
+  [/\bfaster\s+than\s+race\s+pace\b/i, "faster than race pace"],
+  [/\bfast\b/i, "fast"],
+  [/\bmax\b/i, "max"],
 ];
 
 // TIER 2 — AUTO-RESOLVE: industry-standard swimming vocabulary. Don't prompt;
 // the parser resolves to a default RPE range that the coach can override
 // later by mapping the term in coach_vocabulary.
+// ponytail (iter 11, 2026-07-28): expanded from 2 to 30+ terms covering
+// the full intensity vocabulary observed in real coach inputs (6-10).
 const DEFAULT_RPE_BY_TERM: Record<string, { low: number; high: number }> = {
+  // Recovery / easy zone
   "easy": { low: 4, high: 5 },
+  "relaxed": { low: 3, high: 4 },
+  "recovery": { low: 3, high: 4 },
+  "light": { low: 4, high: 5 },
+  // Aerobic zone
+  "moderate": { low: 5, high: 6 },
+  "aerobic": { low: 5, high: 7 },
+  "steady": { low: 6, high: 7 },
+  "cruise": { low: 6, high: 7 },
+  "progressive": { low: 6, high: 7 },
+  "activation": { low: 5, high: 6 },
+  // Threshold zone
   "tempo": { low: 8, high: 9 },
+  "threshold": { low: 8, high: 9 },
+  "hard": { low: 7, high: 8 },
+  "tough": { low: 7, high: 8 },
+  "strong": { low: 7, high: 8 },
+  // Race pace zone
+  "race pace": { low: 8, high: 9 },
+  "race rhythm": { low: 8, high: 9 },
+  "faster than race pace": { low: 9, high: 10 },
+  // Sprint / max zone
+  "all-out": { low: 9, high: 10 },
+  "max": { low: 9, high: 10 },
+  "maximal": { low: 9, high: 10 },
+  "sprint": { low: 9, high: 10 },
+  "fast": { low: 8, high: 9 },
+  "blast": { low: 9, high: 10 },
+  // Build / descend (intensity progression)
+  "build": { low: 7, high: 8 },
+  "descend": { low: 7, high: 8 },
 };
 
 function detectAmbiguousTerm(raw: string): string | null {
@@ -607,10 +749,58 @@ function parseInterval(text: string): string | null {
   // seconds part of "1:40" or "2:50".
   const bareSecMatch = n.match(/@\s*:(\d{2})\b/);
   if (bareSecMatch) return `0:${bareSecMatch[1]}`;
+
+  // ponytail (iter 11, 2026-07-28): bare :NN without @ prefix.
+  // Coaches write "8 x 50 strong :55" or "4 x 25 @ :40" — the :NN
+  // appears at end of line without @. Match :(NN) preceded by space
+  // or start, but NOT inside a larger time like 1:40 (has digits before :).
+  const bareSecNoAt = n.match(/(?:^|\s):(\d{2})\b/);
+  if (bareSecNoAt) return `0:${bareSecNoAt[1]}`;
+
+  // ponytail (iter 11, 2026-07-28): interval ranges like "2:20-2:30",
+  // "1:40-1:50", ":50-1:00", "1:15-1:30". Take the first value as
+  // the interval; store the range in the label later.
+  const rangeMatch = n.match(
+    /(?:on\s+|@\s*)?(\d+):(\d{2})\s*[-–]\s*(\d+):(\d{2})/,
+  );
+  if (rangeMatch) return `${rangeMatch[1]}:${rangeMatch[2]}`;
+
+  // ponytail (iter 11, 2026-07-28): rest intervals like ":15 Rest",
+  // ":10 Rest" — bare seconds followed by "rest". Must come before
+  // the bare :NN match above to attach the "rest" keyword.
+  const restSecMatch = n.match(/:(\d{2})\s*rest\b/i);
+  if (restSecMatch) return `0:${restSecMatch[1]}`;
+
+  // ponytail (iter 11, 2026-07-28): "N s rest" or "N-N s rest" like
+  // "10-15 s rest" or "15 s rest"
+  const restSecRangeMatch = n.match(/(\d+)\s*[-–]\s*(\d+)\s*s(?:ec)?\s*rest/i);
+  if (restSecRangeMatch) {
+    const s = parseIntSafe(restSecRangeMatch[1]) ?? 0;
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+  const restSecSingleMatch = n.match(/(\d+)\s*s(?:ec)?\s*rest/i);
+  if (restSecSingleMatch) {
+    const s = parseIntSafe(restSecSingleMatch[1]) ?? 0;
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  // ponytail (iter 11, 2026-07-28): "Send off @ N:NN" or "send-off @ N:NN"
+  const sendOffMatch = n.match(/send[\s-]?off\s+@?\s*(\d+):(\d{2})/i);
+  if (sendOffMatch) return `${sendOffMatch[1]}:${sendOffMatch[2]}`;
+
   const colonMatch = n.match(
     /(?:on\s+)?(\d+):(\d{2})(?:\s+(?:interval|rest|i\/?)?)?/,
   );
   if (colonMatch) return `${colonMatch[1]}:${colonMatch[2]}`;
+
+  // ponytail (iter 11, 2026-07-28): bare "N s" or "Ns" seconds interval
+  // (e.g. "6 x 100 @ 15 s" or "4 x 50m @ 10-15 s rest")
+  const bareSecsMatch = n.match(/(?:@|on\s+)(\d+)\s*s\b/);
+  if (bareSecsMatch) {
+    const s = parseIntSafe(bareSecsMatch[1]) ?? 0;
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
   const minSecMatch = n.match(/on\s+(\d+)\s*min(?:ute)?s?\s+(\d+)/);
   if (minSecMatch)
     return `${minSecMatch[1]}:${minSecMatch[2].padStart(2, "0")}`;
@@ -864,6 +1054,22 @@ function parseRepGroup(lineText: string): RepGroup | null {
   const ambiguousTerm = detectAmbiguousTerm(text);
   const defaultRpe = ambiguousTerm ? defaultRPEForTerm(ambiguousTerm) : null;
 
+  // ponytail (iter 12, 2026-07-28): #N per-rep intensity modifiers.
+  // "#1 moderate #2 build to strong finish" → store as note.
+  const perRepIntensity = text.match(/#\d+\s+\w[^#]*/gi);
+  const perRepNote = perRepIntensity
+    ? perRepIntensity.map((m) => m.trim()).join("; ")
+    : null;
+
+  // ponytail (iter 12, 2026-07-28): odds/evens inline pattern.
+  // "odds uw fast evens easy back" → store as note.
+  const oddsEvensMatch = text.match(
+    /\bodds?\s+(.+?)\s+evens?\s+(.+?)\s*(?:@|$)/i,
+  );
+  const oddsEvensNote = oddsEvensMatch
+    ? `odds: ${oddsEvensMatch[1].trim()}; evens: ${oddsEvensMatch[2].trim()}`
+    : null;
+
   let details: string[] | null = null;
   {
     let t = text;
@@ -882,13 +1088,25 @@ function parseRepGroup(lineText: string): RepGroup | null {
     t = t.replace(/\b\d+\s*(?:m|meters?|yards?|yds?)?\b/gi, "");
     t = t.replace(/\b\d+\s*(?:seconds?|sec|minutes?|min)\s+rest\b/gi, "");
     t = t.replace(
-      /\b(?:free|back|breast|fly|IM|medley|freestyle|backstroke|breaststroke|butterfly|pull)\b/gi,
+      /\b(?:free|back|breast|fly|IM|medley|freestyle|backstroke|breaststroke|butterfly|pull|kick|drill|form|choice|swim|scull)\b/gi,
       "",
     );
+    // ponytail (iter 11, 2026-07-28): strip intensity words that were
+    // already consumed by parseIntensity, plus gear/dive/suit words
+    // consumed by their parsers. Previously these leaked to details.
     t = t.replace(
-      /\b(?:easy|moderate|aerobic|threshold|sprint|descend|negative[\s-]?split|race[\s-]?pace|hard|maximum|vo2|build(?:ing)?|choice|very|each|last|into|the|wall)\b/gi,
+      /\b(?:easy|moderate|aerobic|threshold|sprint|descend|negative[\s-]?split|race[\s-]?pace|race[\s-]?rhythm|hard|maximum|vo2|build(?:ing)?|choice|very|each|last|into|the|wall|fast|max|maximal|tough|strong|steady|cruise|light|all[-\s]?out|relaxed|recovery|tempo|activation|progressive|quality|rough|finish)\b/gi,
       "",
     );
+    // Strip dive/suit words consumed by parseDive/parseSuit
+    t = t.replace(/\b(?:dive|blocks?|start|push|suit|tech)\b/gi, "");
+    // Strip gear words consumed by parseGear
+    t = t.replace(/\b(?:fins|flippers|paddles?|pull[\s-]?buoy|buoy|kickboard|kick\s*board|snorkel|parachute|resistance\s*(?:band|cord|tubing)|power\s*tower|weight\s*belt|tennis\s*balls?|ankle\s*bands?|pull\s*paddle|finger\s*paddle|drag\s*(?:suit|shorts?)|stretchcordz|bungees?|band|drags|KBO)\b/gi, "");
+    // ponytail (iter 12, 2026-07-28): strip #N per-rep intensity and
+    // odds/evens patterns consumed by their note extractors.
+    t = t.replace(/#\d+\s+\w[^#]*/gi, "");
+    t = t.replace(/\bodds?\s+.+?\s+evens?\s+.+?(?:@|$)/i, "");
+    t = t.replace(/\b(?:odds?|evens?)\b/gi, "");
     // Strip pace/effort words so they don't show as details when
     // intensity is already pace_target. Also strip the bare numbers
     // that precede "pace" in broken-swim notation (e.g. "400 pace").
@@ -1093,6 +1311,13 @@ function parseRepGroup(lineText: string): RepGroup | null {
     }
   }
 
+  // ponytail (iter 12, 2026-07-28): merge per-rep intensity and
+  // odds/evens notes into the existing note (if any).
+  const allNotes = [note, perRepNote, oddsEvensNote].filter(
+    (n) => n !== null && n !== undefined,
+  );
+  const mergedNote = allNotes.length > 0 ? allNotes.join("; ") : null;
+
   return {
     reps: rd.reps,
     distance: rd.distance,
@@ -1100,7 +1325,7 @@ function parseRepGroup(lineText: string): RepGroup | null {
     interval,
     intensity: intensityOverride ?? intensity ?? null,
     pacing,
-    note,
+    note: mergedNote,
     gear,
     gearOptional,
     descend,
@@ -1267,6 +1492,26 @@ function parseWorkoutV2(input: string): Workout {
         continue;
       }
 
+      // ponytail (iter 12, 2026-07-28): pace table / reference row
+      // detection. Lines like "National senior 2:10-2:20 Send off @ 2:30"
+      // or "First 200 Aerobic 2:28-2:32" are pace reference tables,
+      // not sets. Skip them if the line has 2+ time ranges and no
+      // rep pattern (NxM).
+      const timeRanges = (rest.match(/\d+:\d{2}\s*[-–]\s*\d+:\d{2}/g) || []).length;
+      if (timeRanges >= 2 && !/\d+\s*[x×]\s*\d+/.test(rest)) {
+        pendingLabel = null;
+        i++;
+        continue;
+      }
+
+      // ponytail (iter 12, 2026-07-28): false set suppression.
+      // "<distance> swimmers" and "<distance> target" are not sets.
+      if (/\b\d+\s*(swimmers|target)\b/i.test(rest)) {
+        pendingLabel = null;
+        i++;
+        continue;
+      }
+
       const rd = parseRepDist(rest);
       if (rd.reps === null && rd.distance === null) {
         // ponytail (autoresearch iter 4, 2026-07-19): a bare
@@ -1354,6 +1599,32 @@ function parseWorkoutV2(input: string): Workout {
               if (!subRep.interval) subRep.interval = rg.interval;
               if (!subRep.intensity) subRep.intensity = rg.intensity;
               namedSet.repGroups.push(subRep);
+            }
+          }
+        }
+
+        // ponytail (iter 12, 2026-07-28): comma-separated multi-set
+        // lines. Coaches write "300m relaxed choice, 100m freestyle,
+        // 100m backstroke or choice, 100m freestyle" on one line.
+        // Split on commas when each segment has a distance + stroke.
+        // Don't split inside "as 1.kick, 2.drill, 3.swim" (the as-notation
+        // already handles commas via its own splitter).
+        if (!/\bas[\s:]/i.test(rest) && rest.includes(",")) {
+          const segments = rest.split(/,(?!\s*(?:and|&)\b)/i).map((s) => s.trim()).filter((s) => s.length > 0);
+          if (segments.length > 1) {
+            const allHaveDist = segments.every((seg) => {
+              const segRd = parseRepDist(seg);
+              return segRd.reps !== null || segRd.distance !== null;
+            });
+            if (allHaveDist) {
+              for (let si = 1; si < segments.length; si++) {
+                const segRg = parseRepGroup(segments[si]);
+                if (segRg) {
+                  if (!segRg.interval) segRg.interval = rg.interval;
+                  if (!segRg.intensity) segRg.intensity = rg.intensity;
+                  namedSet.repGroups.push(segRg);
+                }
+              }
             }
           }
         }
