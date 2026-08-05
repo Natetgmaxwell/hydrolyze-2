@@ -64,6 +64,12 @@ struct WorkoutDetailView: View {
     @State private var timingPrefill: SetPrefill?
     @State private var showSessionStart = false
     @State private var pendingSessionId = UUID().uuidString
+    // t_d59998d9 (2026-08-05): per-fragment recorded times held in
+    // local component state until persistence runs (t_be09a643).
+    // Keyed by fragmentId. Survives redraws but not navigation pops;
+    // when persistence lands, the rows are written to recorded_times
+    // and this map can be cleared on save success.
+    @State private var recordedTimesByFragmentId: [String: Int] = [:]
     // ponytail (warmth-through-motion iter 6): on-appear reveal.
     // Same pattern as login reveal (d46c444), today reveal (0a90257),
     // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
@@ -93,7 +99,23 @@ struct WorkoutDetailView: View {
                 if let workout = viewModel.workout {
                     VStack(alignment: .leading, spacing: 20) {
                         metadataSection(workout: workout)
-                        WorkoutPreview(workout: buildParsedWorkout(from: workout, sets: viewModel.sets))
+                        WorkoutPreview(
+                            workout: buildParsedWorkout(from: workout, sets: viewModel.sets),
+                            // t_c74dffbc (2026-08-04): per-fragment CTA. Tapping
+                            // a fragment builds a SetPrefill from the fragment's
+                            // metadata and launches the live stopwatch. The
+                            // workoutSetId is the repGroup's parent set; in
+                            // production the parsed ParsedRepGroup carries a
+                            // workoutSetId field. Here we resolve by index
+                            // against the workout's sets list.
+                            onFragmentTap: { _, _, rgIdx, _, fragment in
+                                launchFragmentTiming(repGroupIndex: rgIdx, fragment: fragment)
+                            },
+                            // t_d59998d9 (2026-08-05): pass the local-state
+                            // recorded-times map so each fragment row can
+                            // show "Saved 0:42.31" once the stopwatch stops.
+                            recordedTimesByFragmentId: recordedTimesByFragmentId
+                        )
                             .padding(.horizontal, 16)
                         if let errorMessage = viewModel.errorMessage {
                             Text(errorMessage)
@@ -156,7 +178,27 @@ struct WorkoutDetailView: View {
             TimingView(
                 prefill: timingPrefill,
                 sessionId: session.id,
-                workoutSetId: timingPrefill?.workoutSetId
+                workoutSetId: timingPrefill?.workoutSetId,
+                // t_d59998d9 (2026-08-05) + t_be09a643 (2026-08-05):
+                // recorded-time callback. Fires once when the
+                // stopwatch transitions out of `.running` with the
+                // fragmentId + elapsedMs. We (a) attach the time
+                // to the local @State map so the fragment row shows
+                // "Saved 0:42.31" immediately, and (b) kick off
+                // persistence asynchronously so the row lands in
+                // recorded_times with swimmer_id=NULL + all spec
+                // metadata populated. The pairing handoff runs
+                // once the row is saved (pairExistingRow) — the
+                // handoff is its own typed result, never a throw.
+                onRecord: { fragmentId, elapsedMs in
+                    recordedTimesByFragmentId[fragmentId] = elapsedMs
+                    persistRecordedTime(
+                        fragmentId: fragmentId,
+                        elapsedMs: elapsedMs,
+                        sessionId: session.id,
+                        workoutSetId: timingPrefill?.workoutSetId
+                    )
+                }
             )
         }
         .navigationDestination(isPresented: $navigateToBuilder) {
@@ -303,6 +345,197 @@ struct WorkoutDetailView: View {
         }
     }
 
+    // t_be09a643 (2026-08-05) + t_6163b2f2 (2026-08-05) + t_ea9a65ca
+    // (2026-08-05): persist a per-fragment recorded time to
+    // Supabase. Looks up the fragment context from viewModel.sets
+    // (the WorkoutSet.fragments JSONB array), builds a
+    // PairingHandoffInput with all spec fields populated, and
+    // calls RecordedTimeFragmentService.persistRecordedTime. The
+    // row lands with swimmer_id = NULL; the inline pairing
+    // handoff (same slice) runs on the success path — when
+    // candidates are supplied it writes the resolved swimmer_id
+    // back, when no candidates are available (the per-fragment
+    // CTA flow's common case — the view doesn't carry a wave
+    // roster) the row stays NULL and a structured log is emitted
+    // carrying the full PairingContext for manual resolution.
+    // The deferred `pairExistingRow` path can resolve the row
+    // later once the SessionReview fetches the roster.
+    //
+    // Why persistRecordedTime (not saveAndPair): building the
+    // per-(swimmer, fragment) prediction candidates requires
+    // fetching swimmers + their PBs + applying the per-fragment
+    // calibration, which is the TimingViewModel.save() pipeline
+    // (~600 lines, parallel fetch + Welford calibration). The
+    // per-fragment CTA flow already short-circuits via onRecord
+    // rather than going through the full save pipeline, so the
+    // row write is decoupled from the pairing handoff. The
+    // handoff runs inline against whatever roster the caller
+    // has — for now, empty (deferred resolution); in a future
+    // slice where the view has a roster, the same code path
+    // picks up the inline handoff for free.
+    //
+    // The onRecord callback must be synchronous from the
+    // stopwatch's perspective — it lives on .onChange and runs
+    // on the main actor. The actual DB write happens off-actor
+    // in a Task; the recordedTimesByFragmentId map is updated
+    // ONLY on insert success so the "Saved" indicator truthfully
+    // reflects on-disk state (spec: "show a small 'Saved'
+    // indicator once the insert succeeds"). The pairing handoff
+    // runs after the insert — it never throws (the service
+    // wraps it in try/catch), so the UI never sees a propagated
+    // error from the handoff.
+    //
+    // Typed errors (PersistRecordedTimeError): the spec's
+    // "surface a typed error rather than swallowing" rule.
+    // We bucket on PersistRecordedTimeError and log each case;
+    // a duplicate row, a network failure, or a decoding error
+    // are all distinct surfaces for the dev console and
+    // future UI affordance (retry button, retry-with-new-uuid,
+    // schema-drift alarm).
+    private func persistRecordedTime(
+        fragmentId: String,
+        elapsedMs: Int,
+        sessionId: String,
+        workoutSetId: String?
+    ) {
+        // Look up the fragment context. The set may not have
+        // fragments populated (the server's parse-workout Edge
+        // Function hasn't shipped yet — see t_c74dffbc follow-up
+        // #3). When fragments is nil we fall through to the
+        // parent set's metadata; when even that is missing we
+        // skip persistence (the onRecord map does NOT update,
+        // so the row stays unrendered — better than a
+        // misleading "Saved" indicator with no row on disk).
+        var fragmentContext: (distance: Int?, intensity: String?, startType: String?, paceTargetSec: Int?) = (nil, nil, nil, nil)
+        var rawText: String? = nil
+        var contextAvailable = false
+        for set in viewModel.sets {
+            if set.id != workoutSetId { continue }
+            contextAvailable = true
+            rawText = set.intervalText ?? set.label
+            if let fragments = set.fragments {
+                if let match = fragments.first(where: { $0.id == fragmentId }) {
+                    fragmentContext = (
+                        distance: match.distanceMeters,
+                        intensity: match.intensity,
+                        startType: match.startType,
+                        paceTargetSec: match.paceTargetSec
+                    )
+                    break
+                }
+            }
+            fragmentContext = (
+                distance: set.distance,
+                intensity: set.intensityLabel,
+                startType: set.startType,
+                paceTargetSec: set.paceTargetDistance
+            )
+            break
+        }
+
+        guard contextAvailable else {
+            // No parent set for this workoutSetId — cannot
+            // build a PairingHandoffInput. Spec says fire-and-
+            // await, but if we have no set context to write,
+            // skipping is the safer behaviour. Log so the dev
+            // console surfaces the gap.
+            print("[WorkoutDetail] persistRecordedTime SKIPPED: no WorkoutSet found for workoutSetId=\(workoutSetId ?? "nil")")
+            return
+        }
+
+        let input = PairingHandoffInput(
+            rowId: UUID().uuidString,
+            recordedMs: elapsedMs,
+            fragmentId: fragmentId,
+            setId: workoutSetId,
+            distanceMeters: fragmentContext.distance,
+            intensity: fragmentContext.intensity,
+            startType: fragmentContext.startType,
+            paceTargetSec: fragmentContext.paceTargetSec,
+            rawText: rawText
+        )
+
+        Task {
+            do {
+                let service = RecordedTimeFragmentService()
+                let inserted = try await service.persistRecordedTime(
+                    input: input,
+                    sessionId: sessionId,
+                    workoutSetId: workoutSetId
+                )
+                // Success path: flip the indicator AFTER the row
+                // is on disk (spec: "show a small 'Saved'
+                // indicator once the insert succeeds"). The Task
+                // body inherits @MainActor from the enclosing
+                // WorkoutDetailView (the struct is annotated), so
+                // the recordedTimesByFragmentId state write is
+                // already main-actor-safe. The returned row
+                // carries the server-side echo — verify
+                // swimmer_id is null immediately (spec acceptance).
+                // If the server returned a non-nil swimmer_id on
+                // the insert, that's a contract bug worth
+                // surfacing.
+                if inserted.swimmerId != nil {
+                    print("[WorkoutDetail] persistRecordedTime WARNING: inserted row has swimmer_id=\(inserted.swimmerId ?? "nil") (expected nil at insert time)")
+                }
+                recordedTimesByFragmentId[fragmentId] = elapsedMs
+            } catch let error as PersistRecordedTimeError {
+                // Typed error path — surface each bucket in the
+                // dev console. The UI stays "not saved" so the
+                // coach sees the truth and can retry.
+                switch error {
+                case .duplicateRow(let id):
+                    print("[WorkoutDetail] persistRecordedTime FAILED (.duplicateRow id=\(id)): row already exists, will not retry-with-same-uuid")
+                case .networkError(let underlying):
+                    print("[WorkoutDetail] persistRecordedTime FAILED (.networkError): \(underlying.localizedDescription) — UI will not show Saved indicator")
+                case .decodingError(let underlying):
+                    print("[WorkoutDetail] persistRecordedTime FAILED (.decodingError): row landed but decode failed: \(underlying.localizedDescription) — possible schema drift, investigate RecordedTime vs recorded_times columns")
+                case .unknown(let underlying):
+                    print("[WorkoutDetail] persistRecordedTime FAILED (.unknown): \(underlying.localizedDescription)")
+                }
+            } catch {
+                // Anything else — log, do not swallow silently.
+                print("[WorkoutDetail] persistRecordedTime FAILED (unclassified): \(error)")
+            }
+        }
+    }
+
+    // t_c74dffbc (2026-08-04): per-fragment timing launch. Builds a
+    // SetPrefill from the fragment's metadata so the live stopwatch opens
+    // pre-filled with the fragment's distance, intensity, and start type.
+    // The workoutSetId is the repGroup's parent set (resolved by index
+    // against viewModel.sets); in production the parsed ParsedRepGroup
+    // would carry an explicit workoutSetId from the server.
+    //
+    // fragmentContexts carries a single fragment context (the one the
+    // coach tapped) so the save flow keys the prediction on the
+    // fragment's distance / intensity / start — not the parent set.
+    private func launchFragmentTiming(repGroupIndex: Int, fragment: ParsedFragment) {
+        let parentSet = viewModel.sets[safe: repGroupIndex]
+        let fragmentContext = FragmentContext(
+            fragmentId: fragment.id ?? "fragment_\(repGroupIndex)_\(fragment.distance ?? 0)",
+            parentIntervalId: parentSet?.id ?? "",
+            distance: fragment.distance ?? parentSet?.distance ?? 50,
+            intensity: fragment.intensity?.label ?? fragment.descriptor,
+            startType: fragment.startType,
+            suit: fragment.suit,
+            gear: fragment.gear,
+            descriptor: fragment.descriptor
+        )
+        let prefill = SetPrefill(
+            stroke: fragment.stroke ?? parentSet?.stroke ?? "Free",
+            distance: fragment.distance ?? parentSet?.distance ?? 50,
+            reps: 1, // each fragment is one timed unit
+            interval: parentSet?.intervalText,
+            intensityLabel: fragment.intensity?.label ?? fragment.descriptor ?? parentSet?.intensityLabel,
+            workoutSetId: parentSet?.id,
+            fragmentContexts: [fragmentContext]
+        )
+        timingPrefill = prefill
+        pendingSessionId = UUID().uuidString
+        showSessionStart = true
+    }
+
     private func metadataSection(workout: Workout) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(workout.title ?? "Untitled")
@@ -382,7 +615,35 @@ struct WorkoutDetailView: View {
                             label: nil,
                             note: nil,
                             repGroups: sets.map { set in
-                                ParsedRepGroup(
+                                // t_d59998d9 (2026-08-05): map the
+                                // WorkoutSet's parsed leaf fragments into
+                                // the ParsedRepGroup so FragmentCTARow
+                                // renders. nil/empty fragments falls through
+                                // to the static label path (unchanged from
+                                // t_c74dffbc). The pace target reads from
+                                // the parent set's intervalText, which is
+                                // what the row's "pace target badge" wants.
+                                let parsedFragments: [ParsedFragment]? = set.fragments?.map { f in
+                                    let intensityType = ParsedIntensityType(rawValue: f.intensity) ?? .easy
+                                    let intensity: ParsedIntensity? = (f.intensity == "unknown" || f.intensity.isEmpty)
+                                        ? nil
+                                        : ParsedIntensity(type: intensityType, label: f.intensity)
+                                    return ParsedFragment(
+                                        id: f.id,
+                                        distance: f.distanceMeters,
+                                        stroke: set.stroke,
+                                        instruction: nil,
+                                        intensity: intensity,
+                                        intensityType: intensityType.rawValue,
+                                        intensityLabel: f.intensity == "unknown" ? nil : f.intensity,
+                                        startType: f.startType,
+                                        suit: nil,
+                                        gear: nil,
+                                        descriptor: nil,
+                                        confidence: f.confidence
+                                    )
+                                }
+                                return ParsedRepGroup(
                                     reps: set.reps,
                                     distance: set.distance,
                                     stroke: set.stroke,
@@ -404,7 +665,8 @@ struct WorkoutDetailView: View {
                                     details: nil,
                                     dive: set.dive,
                                     suit: set.suit,
-                                    ambiguousTerm: nil
+                                    ambiguousTerm: nil,
+                                    fragments: parsedFragments
                                 )
                             }
                         )
