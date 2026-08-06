@@ -470,7 +470,15 @@ public final class RecordedTimeFragmentService {
     ///     the call site simple — the iOS view layer doesn't
     ///     need a second post-insert call when the roster is on
     ///     hand.
-    public func persistRecordedTime(
+    ///
+    /// Internal (not public): the return type `RecordedTime` is
+    /// internal-by-default; declaring a `public` method whose
+    /// result uses an internal type is illegal under Swift's
+    /// access-control rules and trips the strict-concurrency
+    /// build. Only the iOS module calls this today
+    /// (WorkoutDetailView.persistRecordedTime), so internal is
+    /// the correct scope.
+    func persistRecordedTime(
         input: PairingHandoffInput,
         sessionId: String?,
         workoutSetId: String?,
@@ -554,7 +562,13 @@ public final class RecordedTimeFragmentService {
     /// instead — that variant reads the row back from the DB and
     /// runs the same handoff + write-back; it's not invoked from
     /// the inline path because we already have the row in scope.
-    public func pairRecordedTimeViaHandoff(
+    ///
+    /// Internal (not public): the `inserted: RecordedTime`
+    /// parameter type is internal-by-default; declaring a
+    /// `public` method whose parameter uses an internal type is
+    /// illegal under Swift's access-control rules and trips the
+    /// strict-concurrency build.
+    func pairRecordedTimeViaHandoff(
         inserted: RecordedTime,
         candidates: [HandoffSwimmerCandidate]
     ) async {
@@ -570,21 +584,15 @@ public final class RecordedTimeFragmentService {
             rawText: inserted.rawText
         )
 
-        // Run the pure handoff. PairingHandoff.run never throws —
-        // unmatched is a typed result, not an error. We still wrap
-        // the whole path in try/catch because the follow-up UPDATE
-        // can fail (network, DB) and we must not surface that to
-        // the stopwatch UI. The spec is explicit: "The handoff
-        // must NEVER throw — wrap in try/catch and log on error."
-        let result: PairingHandoffResult
-        do {
-            result = PairingHandoff.run(input: handoffInput, candidates: candidates)
-        } catch {
-            // PairingHandoff.run is pure and doesn't throw today,
-            // but guard against future regressions. Log + swallow.
-            print("[RecordedTimeFragmentService] pairRecordedTimeViaHandoff: PairingHandoff.run raised (should never happen): \(error)")
-            return
-        }
+        // Run the pure handoff. PairingHandoff.run is a pure
+        // function and does NOT throw — unmatched is a typed
+        // result, not an error. The follow-up UPDATE can fail
+        // (network, DB) and we must not surface that to the
+        // stopwatch UI. The spec is explicit: "The handoff
+        // must NEVER throw — wrap in try/catch and log on
+        // error." So the pure handoff call is unconditional;
+        // the try/catch sits around the UPDATE.
+        let result = PairingHandoff.run(input: handoffInput, candidates: candidates)
 
         switch result {
         case .matched(let swimmerId, let swimmerName, let confidence, let fallbackTier, let ctx):
@@ -594,11 +602,18 @@ public final class RecordedTimeFragmentService {
             // uses for its integer confidence column).
             let confidenceInt = matchedConfidence(from: result)
             do {
+                // Confidence fields are Int?/Double? — both
+                // conform to Encodable. The previous `as Any?`
+                // cast tripped Swift's "Type 'Any' cannot conform
+                // to 'Encodable'" error under strict-concurrency;
+                // passing the typed optionals lets the supabase
+                // SDK's [String: any Encodable] dict accept
+                // them.
                 try await supabase.from("recorded_times")
                     .update([
                         "swimmer_id": swimmerId,
-                        "confidence": confidenceInt as Any?,
-                        "assignment_confidence": confidence as Any?
+                        "confidence": confidenceInt,
+                        "assignment_confidence": confidence
                     ])
                     .eq("id", value: inserted.id)
                     .execute()
@@ -741,8 +756,13 @@ public final class RecordedTimeFragmentService {
         let result = PairingHandoff.run(input: input, candidates: candidates)
 
         let resolvedSwimmerId = self.resolvedSwimmerId(from: result)
+        // `String?` is Encodable; the previous `as Any?` cast
+        // tripped the strict-concurrency "Type 'Any' cannot
+        // conform to 'Encodable'" error. Pass the typed optional
+        // through; the supabase SDK's [String: any Encodable]
+        // dict accepts it.
         try await supabase.from("recorded_times")
-            .update(["swimmer_id": resolvedSwimmerId as Any?])
+            .update(["swimmer_id": resolvedSwimmerId])
             .eq("id", value: rowId)
             .execute()
 
