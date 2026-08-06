@@ -179,25 +179,24 @@ struct WorkoutDetailView: View {
                 prefill: timingPrefill,
                 sessionId: session.id,
                 workoutSetId: timingPrefill?.workoutSetId,
-                // t_d59998d9 (2026-08-05) + t_be09a643 (2026-08-05):
-                // recorded-time callback. Fires once when the
-                // stopwatch transitions out of `.running` with the
-                // fragmentId + elapsedMs. We (a) attach the time
-                // to the local @State map so the fragment row shows
-                // "Saved 0:42.31" immediately, and (b) kick off
-                // persistence asynchronously so the row lands in
-                // recorded_times with swimmer_id=NULL + all spec
-                // metadata populated. The pairing handoff runs
-                // once the row is saved (pairExistingRow) — the
-                // handoff is its own typed result, never a throw.
-                onRecord: { fragmentId, elapsedMs in
-                    recordedTimesByFragmentId[fragmentId] = elapsedMs
-                    persistRecordedTime(
-                        fragmentId: fragmentId,
-                        elapsedMs: elapsedMs,
-                        sessionId: session.id,
-                        workoutSetId: timingPrefill?.workoutSetId
-                    )
+                // t_d59998d9 (2026-08-05) + t_be09a643 (2026-08-05)
+                // + t_bec2b88b (2026-08-06): recorded-time callback.
+                // Fires once when the stopwatch transitions out of
+                // `.running` with the full StopwatchCapturePayload
+                // (the canonical handoff shape). The payload carries
+                // recordedTimeMs, fragment metadata, the original
+                // set text, and session/coach/swimmer context —
+                // everything the persistence layer needs. We (a)
+                // attach the time to the local @State map so the
+                // fragment row shows "Saved 0:42.31" immediately,
+                // and (b) kick off persistence asynchronously so the
+                // row lands in recorded_times with swimmer_id=NULL
+                // + all spec metadata populated. The pairing handoff
+                // runs once the row is saved (pairExistingRow) —
+                // the handoff is its own typed result, never a throw.
+                onRecord: { payload in
+                    recordedTimesByFragmentId[payload.fragment.fragmentId] = payload.recordedTimeMs
+                    persistRecordedTime(payload: payload)
                 }
             )
         }
@@ -346,122 +345,52 @@ struct WorkoutDetailView: View {
     }
 
     // t_be09a643 (2026-08-05) + t_6163b2f2 (2026-08-05) + t_ea9a65ca
-    // (2026-08-05): persist a per-fragment recorded time to
-    // Supabase. Looks up the fragment context from viewModel.sets
-    // (the WorkoutSet.fragments JSONB array), builds a
-    // PairingHandoffInput with all spec fields populated, and
-    // calls RecordedTimeFragmentService.persistRecordedTime. The
-    // row lands with swimmer_id = NULL; the inline pairing
-    // handoff (same slice) runs on the success path — when
-    // candidates are supplied it writes the resolved swimmer_id
-    // back, when no candidates are available (the per-fragment
-    // CTA flow's common case — the view doesn't carry a wave
-    // roster) the row stays NULL and a structured log is emitted
-    // carrying the full PairingContext for manual resolution.
-    // The deferred `pairExistingRow` path can resolve the row
-    // later once the SessionReview fetches the roster.
+    // (2026-08-05) + t_bec2b88b (2026-08-06): persist a
+    // per-fragment recorded time to Supabase. Takes the full
+    // `StopwatchCapturePayload` (the canonical handoff shape) and
+    // projects it to a `PairingHandoffInput` via the payload's
+    // `toPersistInput()` method (1:1 with the TS schema's
+    // `toPersistInput`). The persistence layer (task 3,
+    // t_1789d5c7) consumes the projected input.
     //
-    // Why persistRecordedTime (not saveAndPair): building the
-    // per-(swimmer, fragment) prediction candidates requires
-    // fetching swimmers + their PBs + applying the per-fragment
-    // calibration, which is the TimingViewModel.save() pipeline
-    // (~600 lines, parallel fetch + Welford calibration). The
-    // per-fragment CTA flow already short-circuits via onRecord
-    // rather than going through the full save pipeline, so the
-    // row write is decoupled from the pairing handoff. The
-    // handoff runs inline against whatever roster the caller
-    // has — for now, empty (deferred resolution); in a future
-    // slice where the view has a roster, the same code path
-    // picks up the inline handoff for free.
+    // Why project in the view: keeps the persistence layer
+    // (RecordedTimeFragmentService) decoupled from the payload
+    // type. The view is the only place that holds both the
+    // payload (from the stopwatch) and the candidate roster (the
+    // future per-fragment PB prediction). For now `candidates: []`
+    // — the deferred `pairExistingRow` path resolves swimmer_id
+    // once the SessionReview fetches the roster.
     //
-    // The onRecord callback must be synchronous from the
-    // stopwatch's perspective — it lives on .onChange and runs
-    // on the main actor. The actual DB write happens off-actor
-    // in a Task; the recordedTimesByFragmentId map is updated
-    // ONLY on insert success so the "Saved" indicator truthfully
-    // reflects on-disk state (spec: "show a small 'Saved'
-    // indicator once the insert succeeds"). The pairing handoff
-    // runs after the insert — it never throws (the service
-    // wraps it in try/catch), so the UI never sees a propagated
-    // error from the handoff.
+    // Why fire-and-await + typed error (PersistRecordedTimeError):
+    // the spec's "fire-and-await is fine, but show a 'Saved'
+    // indicator once the insert succeeds" rule depends on the
+    // caller being able to distinguish success from failure.
+    // Catching the typed error and not flipping the indicator is
+    // the UI contract. The pairing handoff runs after the insert
+    // — it never throws (the service wraps it in try/catch), so
+    // the UI never sees a propagated error from the handoff.
     //
-    // Typed errors (PersistRecordedTimeError): the spec's
-    // "surface a typed error rather than swallowing" rule.
-    // We bucket on PersistRecordedTimeError and log each case;
-    // a duplicate row, a network failure, or a decoding error
-    // are all distinct surfaces for the dev console and
-    // future UI affordance (retry button, retry-with-new-uuid,
-    // schema-drift alarm).
-    private func persistRecordedTime(
-        fragmentId: String,
-        elapsedMs: Int,
-        sessionId: String,
-        workoutSetId: String?
-    ) {
-        // Look up the fragment context. The set may not have
-        // fragments populated (the server's parse-workout Edge
-        // Function hasn't shipped yet — see t_c74dffbc follow-up
-        // #3). When fragments is nil we fall through to the
-        // parent set's metadata; when even that is missing we
-        // skip persistence (the onRecord map does NOT update,
-        // so the row stays unrendered — better than a
-        // misleading "Saved" indicator with no row on disk).
-        var fragmentContext: (distance: Int?, intensity: String?, startType: String?, paceTargetSec: Int?) = (nil, nil, nil, nil)
-        var rawText: String? = nil
-        var contextAvailable = false
-        for set in viewModel.sets {
-            if set.id != workoutSetId { continue }
-            contextAvailable = true
-            rawText = set.intervalText ?? set.label
-            if let fragments = set.fragments {
-                if let match = fragments.first(where: { $0.id == fragmentId }) {
-                    fragmentContext = (
-                        distance: match.distanceMeters,
-                        intensity: match.intensity,
-                        startType: match.startType,
-                        paceTargetSec: match.paceTargetSec
-                    )
-                    break
-                }
-            }
-            fragmentContext = (
-                distance: set.distance,
-                intensity: set.intensityLabel,
-                startType: set.startType,
-                paceTargetSec: set.paceTargetDistance
-            )
-            break
-        }
-
-        guard contextAvailable else {
-            // No parent set for this workoutSetId — cannot
-            // build a PairingHandoffInput. Spec says fire-and-
-            // await, but if we have no set context to write,
-            // skipping is the safer behaviour. Log so the dev
-            // console surfaces the gap.
-            print("[WorkoutDetail] persistRecordedTime SKIPPED: no WorkoutSet found for workoutSetId=\(workoutSetId ?? "nil")")
-            return
-        }
-
-        let input = PairingHandoffInput(
-            rowId: UUID().uuidString,
-            recordedMs: elapsedMs,
-            fragmentId: fragmentId,
-            setId: workoutSetId,
-            distanceMeters: fragmentContext.distance,
-            intensity: fragmentContext.intensity,
-            startType: fragmentContext.startType,
-            paceTargetSec: fragmentContext.paceTargetSec,
-            rawText: rawText
-        )
+    // Re-entry handling: each payload carries a fresh `eventId`
+    // + `idempotencyKey`. The persistence layer inserts a new
+    // row per payload (no upsert collapse on the same fragment).
+    // This is the spec's "re-entering a fragment produces an
+    // independent timing run" acceptance gate, satisfied at the
+    // iOS + persistence layer.
+    private func persistRecordedTime(payload: StopwatchCapturePayload) {
+        // Project the payload to the persist-input shape the
+        // RecordedTimeFragmentService.persistRecordedTime(...) call
+        // site accepts. The projection is the iOS mirror of the
+        // TS `toPersistInput()` function — every spec field is
+        // mapped field-for-field.
+        let input = payload.toPersistInput()
 
         Task {
             do {
                 let service = RecordedTimeFragmentService()
                 let inserted = try await service.persistRecordedTime(
                     input: input,
-                    sessionId: sessionId,
-                    workoutSetId: workoutSetId
+                    sessionId: payload.context.sessionId,
+                    workoutSetId: payload.context.workoutSetId
                 )
                 // Success path: flip the indicator AFTER the row
                 // is on disk (spec: "show a small 'Saved'
@@ -478,7 +407,7 @@ struct WorkoutDetailView: View {
                 if inserted.swimmerId != nil {
                     print("[WorkoutDetail] persistRecordedTime WARNING: inserted row has swimmer_id=\(inserted.swimmerId ?? "nil") (expected nil at insert time)")
                 }
-                recordedTimesByFragmentId[fragmentId] = elapsedMs
+                recordedTimesByFragmentId[payload.fragment.fragmentId] = payload.recordedTimeMs
             } catch let error as PersistRecordedTimeError {
                 // Typed error path — surface each bucket in the
                 // dev console. The UI stays "not saved" so the

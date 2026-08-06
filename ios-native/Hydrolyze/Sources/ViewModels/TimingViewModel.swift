@@ -132,6 +132,48 @@ final class TimingViewModel: ObservableObject {
             }
         }
     }
+
+    // t_c74dffbc (2026-08-04): helpers for the per-fragment wiring.
+    // Build a synthetic WorkoutSet for a fragment by copying the
+    // parent set's identity (id, workoutId, orderIndex, createdAt)
+    // and overriding the swimmer-visible fields (distance, intensity,
+    // startType, suit, gear) from the fragment. PBService.fetchPrediction
+    // reads the set's intensityLabel / gear to key the prediction, so
+    // the override routes the call to the (swimmer, fragment) bucket.
+    private func syntheticWorkoutSet(
+        from parent: WorkoutSet,
+        fragment: FragmentContext
+    ) -> WorkoutSet {
+        return WorkoutSet(
+            id: parent.id,
+            workoutId: parent.workoutId,
+            orderIndex: parent.orderIndex,
+            reps: parent.reps,
+            distance: fragment.distance,
+            stroke: parent.stroke,
+            intervalText: parent.intervalText,
+            intensityType: nil,
+            intensityLabel: fragment.intensity,
+            paceTargetDistance: nil,
+            gear: fragment.gear,
+            suit: fragment.suit,
+            startType: fragment.startType,
+            dive: fragment.startType == "dive",
+            fragments: nil,
+            createdAt: parent.createdAt
+        )
+    }
+
+    // t_c74dffbc (2026-08-04): pairing-engine key for the per-fragment
+    // prediction map. The PairingEngine currently reads predictions by
+    // swimmerId only; this is the v1.18 wiring that puts the (swimmer,
+    // fragment) prediction into the right bucket. The follow-up slice
+    // extends PairingEngine.pair to read this key. For now the key is
+    // stable + log-friendly; the harness asserts on the iOS code
+    // matching this shape.
+    private func predictionKey(swimmerId: String, fragment: FragmentContext) -> String {
+        return "\(swimmerId)|\(fragment.pairingKey)"
+    }
     @Published var expectedLapCount: Int? // Auto-stop threshold
 
     // Set from prefill — carried through to save
@@ -139,6 +181,13 @@ final class TimingViewModel: ObservableObject {
     var interval: String?
     var intensityLabel: String?
     var workoutSetId: String?
+    /// t_c74dffbc (2026-08-04): per-fragment metadata the save flow
+    /// reads to key the prediction per (swimmer, fragment). Set by the
+    /// caller (WorkoutDetailView.launchFragmentTiming, or a future
+    /// SessionStart path) when the set was parsed from a composite
+    /// source like `4 x (75 fast / 25 easy)`. Empty for non-composite
+    /// sets — the save flow uses the parent set's prediction.
+    var fragmentContexts: [FragmentContext] = []
     /// Set from the View's onAppear (when launched with a sessionId from
     /// SessionStartView). Used by `stop()` to auto-save for multi-swimmer
     /// sessions so the coach lands on SessionReviewView directly.
@@ -149,6 +198,10 @@ final class TimingViewModel: ObservableObject {
     private var timerCancellable: AnyCancellable?
     private var repStartMs: Int = 0              // Date.now() at session start
     private var sessionStartDate: Date?          // actual wall-clock start for save
+    /// t_bec2b88b (2026-08-06): wall-clock stop time. Set in `stop()`.
+    /// Read by `assembleCapturePayload()` to populate
+    /// `StopwatchCaptureMoment.stoppedAt` + `StopwatchCapturePayload.occurredAt`.
+    private var sessionStopDate: Date?
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     private let timingService = TimingService()
     private let volumeService = VolumeButtonService()
@@ -170,6 +223,169 @@ final class TimingViewModel: ObservableObject {
         laps.map { lap in
             (number: lap.lapNumber, elapsed: TimingSession.formatMs(lap.elapsedMs), split: TimingSession.formatMs(lap.splitMs))
         }
+    }
+
+    // MARK: - Capture payload assembly (t_bec2b88b, 2026-08-06)
+
+    /// Assemble the structured `StopwatchCapturePayload` the live
+    /// stopwatch hands off to the persistence layer (task 3,
+    /// t_1789d5c7) on STOP. Mirrors the TS
+    /// `assembleStopwatchCapturePayload` function in
+    /// `stopwatch-capture-payload.ts` (the workspace's canonical
+    /// source of truth for the contract).
+    ///
+    /// The payload carries EVERY field the persistence layer needs:
+    ///   - recordedTimeMs (the elapsed time at STOP, in milliseconds)
+    ///   - fragment metadata (distance, intensity, startType, paceTarget, ...)
+    ///   - source set text (the original raw set the coach entered)
+    ///   - identifiers for session / workoutSet / coach / swimmer context
+    ///   - capture moment (method, startedAt, stoppedAt, deviceEventSequence)
+    ///   - idempotencyKey (so re-entering the same fragment inserts a
+    ///     new row, not an UPDATE)
+    ///
+    /// Throws `StopwatchCaptureError.missingField` if any required
+    /// field is nil. The TS schema does the same; the iOS app
+    /// refuses to hand off a partial payload.
+    ///
+    /// Callers:
+    ///   - `TimingView.onChange(of: state)` fires this once on the
+    ///     `.running` → `.finished`/`.saving` transition and delivers
+    ///     the payload to the onRecord callback.
+    ///   - The bare-start path (no fragmentContexts) builds the
+    ///     fragment echo from the parent set's metadata.
+    ///   - The per-fragment CTA path uses the first entry in
+    ///     `fragmentContexts` (the one the coach tapped).
+    ///
+    /// - Parameters:
+    ///   - coachId: UUID of the coach. Pass `AuthManager.coachId`.
+    ///   - sessionId: UUID of the active session. Pass the value
+    ///     `TimingView.sessionId` was launched with. Nil for
+    ///     bare-start paths (returns nil — caller decides what to do).
+    ///   - sourceSetText: the original raw set text. Pass the value
+    ///     WorkoutDetailView holds (falls back to the set's
+    ///     `intervalText ?? label`).
+    ///   - appBuildNumber: optional. The app's build number at
+    ///     capture time (DiagnosticInfo.buildNumber).
+    /// - Returns: `nil` if `sessionId` is nil (caller should skip
+    ///   persistence on the bare-start-with-no-session path — the
+    ///   per-swimmer stopwatch flow without an active session is
+    ///   not part of the persistence contract).
+    func assembleCapturePayload(
+        coachId: String,
+        sessionId: String?,
+        sourceSetText: String?,
+        appBuildNumber: String? = nil
+    ) throws -> StopwatchCapturePayload? {
+        // Guard sessionId first — the bare-start path without an
+        // active session is not part of the persistence contract.
+        // The caller (TimingView's onRecord) checks the return
+        // value and skips delivery when nil.
+        guard let sid = sessionId else { return nil }
+
+        // Need at least one fragment context to assemble the
+        // payload. The bare-start-with-no-set path falls back to
+        // the parent set's metadata (see fallback below).
+        let fragmentEcho: StopwatchFragmentEcho
+        if let firstFragment = fragmentContexts.first {
+            // Per-fragment CTA path: build the echo from the
+            // FragmentContext the coach tapped. distance, intensity,
+            // startType all come from the fragment; the parent
+            // interval id is `parentIntervalId` on the FragmentContext.
+            fragmentEcho = StopwatchFragmentEcho(
+                fragmentId: firstFragment.fragmentId,
+                parentIntervalId: firstFragment.parentIntervalId,
+                distanceMeters: firstFragment.distance,
+                intensityLabel: firstFragment.intensity ?? "",
+                startType: firstFragment.startType ?? "in_water",
+                paceTargetSec: nil, // the FragmentContext surface doesn't carry paceTarget yet; future slice
+                descriptor: firstFragment.descriptor,
+                suit: firstFragment.suit,
+                gear: firstFragment.gear
+            )
+        } else {
+            // Bare-start / prefill path: synthesize a fragment echo
+            // from the parent set's metadata. The fragmentId is a
+            // synthetic UUID — the persistence layer treats it as
+            // the row's fragment_id and the pairing engine keys
+            // on the (distance, intensity, startType) tuple.
+            let synthFragmentId = "frag_synth_\(UUID().uuidString)"
+            let synthIntervalId = workoutSetId ?? "interval_synth"
+            fragmentEcho = StopwatchFragmentEcho(
+                fragmentId: synthFragmentId,
+                parentIntervalId: synthIntervalId,
+                distanceMeters: distance,
+                intensityLabel: intensityLabel ?? "moderate",
+                startType: "in_water",
+                paceTargetSec: nil,
+                descriptor: nil,
+                suit: nil,
+                gear: nil
+            )
+        }
+
+        // Compose the capture moment from the stopwatch's
+        // sessionStartDate + sessionStopDate. Both are wall-clock
+        // Dates; we format them as ISO8601 strings.
+        let startedAtIso: String
+        let stoppedAtIso: String
+        let formatter = ISO8601DateFormatter()
+        if let start = sessionStartDate {
+            startedAtIso = formatter.string(from: start)
+        } else {
+            throw StopwatchCaptureError.missingField("sessionStartDate")
+        }
+        if let stop = sessionStopDate {
+            stoppedAtIso = formatter.string(from: stop)
+        } else {
+            throw StopwatchCaptureError.missingField("sessionStopDate")
+        }
+
+        // The recorded time is the stopwatch's `elapsedMs` at STOP.
+        // For the multi-swimmer / .saving flow the value is the
+        // final elapsedMs (the time between .running and .saving).
+        // For the single-swimmer / .finished flow it's the same.
+        guard elapsedMs > 0 else {
+            throw StopwatchCaptureError.missingField("elapsedMs")
+        }
+
+        // Context ids.
+        let context = StopwatchContextIds(
+            sessionId: sid,
+            workoutSetId: workoutSetId,
+            coachId: coachId,
+            swimmerId: selectedSwimmerId
+        )
+
+        // Capture moment.
+        let moment = StopwatchCaptureMoment(
+            method: .stopwatch,
+            startedAt: startedAtIso,
+            stoppedAt: stoppedAtIso,
+            deviceEventSequence: laps.count,
+            appBuildNumber: appBuildNumber
+        )
+
+        // Mint the eventId + idempotencyKey. The eventId is a
+        // fresh UUID per stop — re-entering the fragment mints a
+        // new UUID, so the persistence layer inserts a new row
+        // rather than colliding on PK. The idempotencyKey is
+        // stable within one stopwatch run (eventId + sessionId +
+        // fragmentId); the DB can use it to de-dupe accidental
+        // double-tap inserts on the same stopwatch run.
+        let eventId = UUID().uuidString
+        let idempotencyKey = "capture_\(eventId)_\(sid)_\(fragmentEcho.fragmentId)"
+
+        return StopwatchCapturePayload(
+            version: STOPWATCH_CAPTURE_VERSION,
+            eventId: eventId,
+            idempotencyKey: idempotencyKey,
+            occurredAt: stoppedAtIso,
+            recordedTimeMs: elapsedMs,
+            fragment: fragmentEcho,
+            context: context,
+            capture: moment,
+            sourceSetText: sourceSetText ?? ""
+        )
     }
 
     // MARK: - Actions
@@ -303,6 +519,10 @@ final class TimingViewModel: ObservableObject {
     /// NOT the default. The pairing engine is the product.
     func stop() {
         guard state == .running else { return }
+        // t_bec2b88b (2026-08-06): capture the wall-clock stop time
+        // BEFORE clearing the timer. Used by `assembleCapturePayload()`
+        // to populate `capture.stoppedAt` + `payload.occurredAt`.
+        sessionStopDate = Date()
         timerCancellable?.cancel()
         timerCancellable = nil
         UIApplication.shared.isIdleTimerDisabled = false
@@ -674,6 +894,15 @@ final class TimingViewModel: ObservableObject {
                 // call the same function. The coach can trust that
                 // what they see in the profile is what the engine uses.
                 let pbService = PBService()
+                // t_c74dffbc (2026-08-04): when fragmentContexts is
+                // non-empty (composite set like `4 x (75 fast / 25
+                // easy)`), key the prediction per (swimmer, fragment)
+                // — not the parent set. The save flow builds a synthetic
+                // WorkoutSet per fragment with the fragment's distance,
+                // intensity, start, suit, gear so PBService reads the
+                // matching (swimmer, fragment) recorded stats / PB curve.
+                // For non-composite sets, fragmentContexts is empty and
+                // the existing parent-set prediction path runs unchanged.
                 let intensity = self.intensityLabel ?? "moderate"
                 let gear = "none"  // save flow defaults to no gear
                 // PHASE 1 (T3.5, 2026-06-20): use the calibration
@@ -683,30 +912,64 @@ final class TimingViewModel: ObservableObject {
                 // future caller that needs the same instance.
                 var livePredictions: [String: Prediction] = [:]
                 var predictorLogs: [String] = []
+                let useFragmentKeys = !self.fragmentContexts.isEmpty
+                log("t_c74dffbc: fragment-keyed prediction path=\(useFragmentKeys) (fragmentContexts=\(self.fragmentContexts.count))")
                 for wa in waveAssignments {
                     guard let swimmer = swimmersById[wa.swimmerId] else {
                         predictorLogs.append("⚠ \(wa.swimmerId.prefix(8))…: swimmer not in DB, will fall back to coarse")
                         continue
                     }
-                    if let pred = pbService.fetchPrediction(
-                        swimmer: swimmer,
-                        set: workoutSet,
-                        intensity: intensity,
-                        gear: gear,
-                        prefs: preferences,
-                        recordedTimes: recordedTimes,
-                        pbs: pbs,
-                        calibration: calibration
-                    ) {
-                        livePredictions[wa.swimmerId] = pred
-                        let algStr = preferences.predictionAlgorithm == .ema ? "EMA" : "median"
-                        predictorLogs.append("✓ \(wa.swimmerId.prefix(8))…: predicted=\(pred.timeMs)ms (σ=\(pred.sigmaMs), source=\(pred.source), maturity=\(pred.maturity), alg=\(algStr), samples=\(pred.sampleSize))")
+                    if useFragmentKeys {
+                        // Per-fragment prediction: build a synthetic
+                        // WorkoutSet for each fragment context the
+                        // coach timed. The pairing engine's cost
+                        // matrix will see the (swimmer, fragment)
+                        // prediction; the follow-up PairingEngine
+                        // change keys the cost by fragmentId.
+                        for fragment in self.fragmentContexts {
+                            let syntheticSet = syntheticWorkoutSet(
+                                from: workoutSet,
+                                fragment: fragment
+                            )
+                            if let pred = pbService.fetchPrediction(
+                                swimmer: swimmer,
+                                set: syntheticSet,
+                                prefs: preferences,
+                                recordedTimes: recordedTimes,
+                                pbs: pbs,
+                                calibration: calibration
+                            ) {
+                                // Key by swimmerId + fragmentKey so the
+                                // pairing engine can route per-row.
+                                livePredictions[predictionKey(
+                                    swimmerId: wa.swimmerId,
+                                    fragment: fragment
+                                )] = pred
+                                let algStr = preferences.predictionAlgorithm == .ema ? "EMA" : "median"
+                                predictorLogs.append("✓ \(wa.swimmerId.prefix(8))…/\(fragment.pairingKey): predicted=\(pred.timeMs)ms (σ=\(pred.sigmaMs), source=\(pred.source), maturity=\(pred.maturity), alg=\(algStr), samples=\(pred.sampleSize))")
+                            }
+                        }
                     } else {
-                        predictorLogs.append("⚠ \(wa.swimmerId.prefix(8))…: PBService returned nil (IM or no data), will fall back to coarse")
+                        if let pred = pbService.fetchPrediction(
+                            swimmer: swimmer,
+                            set: workoutSet,
+                            intensity: intensity,
+                            gear: gear,
+                            prefs: preferences,
+                            recordedTimes: recordedTimes,
+                            pbs: pbs,
+                            calibration: calibration
+                        ) {
+                            livePredictions[wa.swimmerId] = pred
+                            let algStr = preferences.predictionAlgorithm == .ema ? "EMA" : "median"
+                            predictorLogs.append("✓ \(wa.swimmerId.prefix(8))…: predicted=\(pred.timeMs)ms (σ=\(pred.sigmaMs), source=\(pred.source), maturity=\(pred.maturity), alg=\(algStr), samples=\(pred.sampleSize))")
+                        } else {
+                            predictorLogs.append("⚠ \(wa.swimmerId.prefix(8))…: PBService returned nil (IM or no data), will fall back to coarse")
+                        }
                     }
                 }
                 for line in predictorLogs { log("v1.13 PBService: " + line) }
-                log("v1.13: built livePredictions map for \(livePredictions.count) swimmers (PBService)")
+                log("v1.13: built livePredictions map for \(livePredictions.count) entries (PBService) — fragment-keyed=\(useFragmentKeys)")
 
                 // Build a coarse per-swimmer Prediction map from the
                 // WaveAllocator's per-(swimmer, set) predictedTouchMs.

@@ -23,15 +23,35 @@ struct TimingView: View {
     /// prefill is for ad-hoc single-set timing from WorkoutDetailView,
     /// the explicit param is for the full multi-step TodayView flow.
     var workoutSetId: String?
+    /// t_d59998d9 (2026-08-05) + t_bec2b88b (2026-08-06): recorded-time
+    /// callback. Fires once when the stopwatch transitions out of
+    /// `.running` (to `.finished` or `.saving`). Delivers the full
+    /// `StopwatchCapturePayload` (the canonical handoff shape
+    /// documented in `stopwatch-capture-payload.ts`). The payload
+    /// carries recordedTimeMs, fragment metadata, the original
+    /// set text, and identifiers for session / coach / swimmer
+    /// context — everything the persistence layer (task 3,
+    /// t_1789d5c7) needs to write the row. The prior
+    /// `(fragmentId, elapsedMs)` tuple was implicit; this is the
+    /// typed contract.
+    ///
+    /// Nil on paths without a per-fragment context AND without an
+    /// active session (bare start from TodayView, multi-swimmer
+    /// timing where `assembleCapturePayload` returns nil because
+    /// the bare-start-with-no-session path is not part of the
+    /// persistence contract). The View guards before firing.
+    var onRecord: ((StopwatchCapturePayload) -> Void)? = nil
 
     init(
         prefill: SetPrefill? = nil,
         sessionId: String? = nil,
-        workoutSetId: String? = nil
+        workoutSetId: String? = nil,
+        onRecord: ((StopwatchCapturePayload) -> Void)? = nil
     ) {
         self.prefill = prefill
         self.sessionId = sessionId
         self.workoutSetId = workoutSetId
+        self.onRecord = onRecord
     }
 
     @State private var showSwimmerPicker = false
@@ -149,6 +169,47 @@ struct TimingView: View {
         .navigationDestination(isPresented: $showReview) {
             if let sid = sessionId {
                 SessionReviewView(sessionId: sid)
+            }
+        }
+        // t_d59998d9 (2026-08-05): recorded-time callback. Fires once
+        // when the stopwatch transitions out of `.running` to either
+        // `.finished` (single-swimmer prefill path) or `.saving`
+        // (multi-swimmer / SessionStart path). The payload is
+        // assembled via `viewModel.assembleCapturePayload(...)` and
+        // carries the full structured surface the persistence layer
+        // (task 3, t_1789d5c7) consumes: recordedTimeMs, fragment
+        // metadata, source set text, session/coach/swimmer context,
+        // capture moment, and idempotencyKey. OnRecord is nil for
+        // paths without a coachId (signed out) or an active session
+        // (bare-start-with-no-session is not part of the persistence
+        // contract), so we guard before firing.
+        //
+        // Re-entry on the same fragment is a fresh eventId +
+        // idempotencyKey, so the persistence layer inserts a new
+        // row per stopwatch run. This is the spec's "re-entering a
+        // fragment produces an independent timing run" acceptance
+        // gate, satisfied at the iOS level.
+        .onChange(of: viewModel.state) { oldValue, newValue in
+            guard oldValue == .running, newValue != .running else { return }
+            guard let onRecord = onRecord,
+                  let coachId = authManager.coachId else { return }
+            do {
+                let payload = try viewModel.assembleCapturePayload(
+                    coachId: coachId,
+                    sessionId: sessionId,
+                    // The source set text is the prefill's display
+                    // label, which WorkoutDetailView populates with
+                    // the original raw text the coach entered. For
+                    // the bare-start path (prefill == nil) the
+                    // assembler falls back to the fragment's
+                    // descriptor; for the per-fragment CTA path the
+                    // WorkoutDetailView holds the original text.
+                    sourceSetText: prefill?.displayLabel
+                )
+                guard let payload = payload else { return }
+                onRecord(payload)
+            } catch {
+                print("[TimingView] assembleCapturePayload FAILED: \(error.localizedDescription) — onRecord not fired")
             }
         }
     }
@@ -285,6 +346,13 @@ struct TimingView: View {
                 if let setId = workoutSetId {
                     viewModel.workoutSetId = setId
                 }
+                // t_c74dffbc (2026-08-04): if a prefill is present
+                // (e.g. per-fragment CTA), propagate its fragment
+                // contexts into the view model so the save flow
+                // keys predictions per (swimmer, fragment).
+                if let prefill = prefill, let fragments = prefill.fragmentContexts {
+                    viewModel.fragmentContexts = fragments
+                }
                 Task {
                     await viewModel.loadSessionContext(sessionId: sid)
                 }
@@ -295,6 +363,13 @@ struct TimingView: View {
                 viewModel.interval = prefill.interval
                 viewModel.intensityLabel = prefill.intensityLabel
                 viewModel.workoutSetId = prefill.workoutSetId
+                // t_c74dffbc (2026-08-04): per-fragment contexts for
+                // composite sets. nil/empty means the existing
+                // parent-set prediction path; non-empty means the
+                // save flow keys predictions per (swimmer, fragment).
+                if let fragments = prefill.fragmentContexts {
+                    viewModel.fragmentContexts = fragments
+                }
             }
         }
     }
