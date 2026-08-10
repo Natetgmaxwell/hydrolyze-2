@@ -46,6 +46,22 @@ struct RecordedTime: Codable, Identifiable, Sendable, Hashable {
     /// is untitled.
     let workout: WorkoutRef?
 
+    /// t_be09a643 (2026-08-05): fragment metadata columns added by
+    /// migration `extend_recorded_times_with_fragment_metadata`. Each
+    /// row written by the per-fragment CTA flow carries the fragment
+    /// context so the pairing engine can evaluate the tap against the
+    /// right (swimmer, distance, intensity, start) prediction rather
+    /// than the parent workout_set's generic PB.
+    ///
+    /// All four fields are nullable for backward compatibility with
+    /// legacy rows that pre-date per-fragment timing — the decoder
+    /// tolerates missing keys via `decodeIfPresent`.
+    let fragmentId: String?
+    let distanceMeters: Int?
+    let fragmentStartType: String?
+    let paceTargetSec: Int?
+    let rawText: String?
+
     /// Convenience accessor used by the view model.
     var workoutTitle: String? { workout?.title }
 
@@ -69,6 +85,11 @@ struct RecordedTime: Codable, Identifiable, Sendable, Hashable {
         case assignmentConfidence = "assignment_confidence"
         case stroke
         case workout
+        case fragmentId = "fragment_id"
+        case distanceMeters = "distance_meters"
+        case fragmentStartType = "start_type"
+        case paceTargetSec = "pace_target_sec"
+        case rawText = "raw_text"
     }
 }
 

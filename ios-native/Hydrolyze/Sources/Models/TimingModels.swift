@@ -44,6 +44,12 @@ struct TimingSession: Sendable {
 /// When present, stroke/distance pickers are hidden in TimingView.setup.
 /// workoutSetId is load-bearing — the future pairing algorithm uses it to
 /// join set context (stroke, distance, pace, intensity, PBs).
+///
+/// t_c74dffbc (2026-08-04): fragmentContexts carries the per-fragment
+/// metadata for composite sets (e.g. `4 x (75 fast / 25 easy)`). When
+/// non-empty, the save flow keys the prediction per (swimmer, fragment)
+/// — not the parent set. The WorkoutDetailView populates this from the
+/// parsed `ParsedRepGroup.fragments[]` when the per-fragment CTA is used.
 struct SetPrefill: Sendable, Hashable {
     let stroke: String
     let distance: Int
@@ -51,6 +57,9 @@ struct SetPrefill: Sendable, Hashable {
     let interval: String?
     let intensityLabel: String?
     let workoutSetId: String?
+    /// t_c74dffbc (2026-08-04): optional per-fragment contexts. nil for
+    /// non-composite sets (the existing prefill path).
+    let fragmentContexts: [FragmentContext]?
 
     /// Rich display label for the setup screen, e.g. "4 × 100 Free @ 1:30"
     var displayLabel: String {

@@ -61,6 +61,14 @@ struct WorkoutSet: Codable, Identifiable, Sendable {
     /// Whether this set is dive-started (Phase 1, 2026-07-25).
     /// Denormalized from start_type='dive' and/or parser detection.
     var dive: Bool?
+    /// t_d59998d9 (2026-08-05): parsed leaf fragments for this set.
+    /// nil for non-composite sets or for rows where the parser did
+    /// not emit fragments. Decoded if present so the iOS app renders
+    /// the parsed tree when the server's parse-workout Edge Function
+    /// ships fragments to the DB. Until that server-side change
+    /// lands, fragments is nil and the FragmentCTARow does not
+    /// render — this is the documented follow-up from t_c74dffbc.
+    var fragments: [WorkoutSetFragment]?
     var createdAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -78,6 +86,7 @@ struct WorkoutSet: Codable, Identifiable, Sendable {
         case suit
         case startType = "start_type"
         case dive
+        case fragments
         case createdAt = "created_at"
     }
 
