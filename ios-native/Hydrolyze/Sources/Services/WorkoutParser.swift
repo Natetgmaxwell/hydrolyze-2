@@ -111,7 +111,10 @@ enum WorkoutParser {
             interval: interval,
             intensity: parsedIntensity,
             pacing: pacing,
-            pattern: pattern,
+            // ponytail (2026-08-01): pattern and gearOptional are now optional
+            // in the Codable type after the LLM-swap changes. Pass them as
+            // values directly — the memberwise init accepts optionals.
+            pattern: pattern.isEmpty ? nil : pattern,
             patternType: patternType,
             connectors: nil,
             note: inlineNote.note,

@@ -17,7 +17,11 @@ final class SupabaseService {
 
     private init() {
         let authOptions = SupabaseClientOptions.AuthOptions(
-            flowType: .pkce
+            flowType: .pkce,
+            // ponytail: opt-in to the new session behavior (supabase-swift PR #822/#844).
+            // The locally stored session is always emitted, even if expired.
+            // AuthManager.checkSession() handles the expiry check.
+            emitLocalSessionAsInitialSession: true
         )
 
         let clientOptions = SupabaseClientOptions(
