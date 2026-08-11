@@ -22,6 +22,11 @@ interface LLMFragment {
   distance: number | null;
   stroke: string | null;
   instruction: string | null;
+  // ponytail (2026-08-11): fragment intensity is the pairing engine's
+  // key (distance + intensity + start type). The old schema stuffed
+  // "fast"/"easy" into stroke and never carried intensity at all —
+  // pairing saw "75m @ unknown". Now explicit: {type, label}.
+  intensity: { type: string; label: string } | null;
 }
 
 interface LLMRepGroup {
@@ -91,15 +96,25 @@ const WORKOUT_SCHEMA = {
                 note: { type: ["string", "null"], description: "Instructions, descriptions, or notes attached to this set. Include technique focus, breathing patterns, rep-range instructions." },
                 fragments: {
                   type: "array",
-                  description: "Sub-segments for composite sets. '4 x (75 fast / 25 easy)' → fragments [{distance:75, stroke:'fast'}, {distance:25, stroke:'easy'}]. 'Each 100: 25 Drill/25 Build/25 Race Skill/25 Easy' → 4 fragments. Empty array for simple sets.",
+                  description: "Sub-segments for composite sets. '4 x (75 fast / 25 easy)' → fragments [{distance:75, stroke:null, intensity:{type:'sprint',label:'fast'}}, {distance:25, stroke:null, intensity:{type:'easy',label:'easy'}}]. 'Each 100: 25 Drill/25 Build/25 Race Skill/25 Easy' → 4 fragments. Empty array for simple sets.",
                   items: {
                     type: "object",
                     properties: {
                       distance: { type: ["integer", "null"], description: "Sub-segment distance in meters" },
-                      stroke: { type: ["string", "null"], description: "Sub-segment stroke or activity ('drill', 'build', 'race skill', 'easy', 'fast', etc.)" },
-                      instruction: { type: ["string", "null"], description: "Specific instruction for this sub-segment" }
+                      stroke: { type: ["string", "null"], description: "Sub-segment stroke if stated ('free', 'back', 'drill', 'kick'). NULL for pure intensity segments like 'fast' or 'easy' — those go in intensity, not stroke." },
+                      instruction: { type: ["string", "null"], description: "Specific instruction for this sub-segment" },
+                      intensity: {
+                        type: ["object", "null"],
+                        description: "Intensity of this sub-segment: {type, label}. type ∈ easy|aerobic|threshold|race_pace|pace_target|sprint|descend|build|negative_split|percent_range. label is the coach's exact word ('fast', 'easy', 'maximal finish', 'race rhythm', '75%'). NULL when the segment has no intensity word.",
+                        properties: {
+                          type: { type: "string", description: "One of: easy, aerobic, threshold, race_pace, pace_target, sprint, descend, build, negative_split, percent_range" },
+                          label: { type: "string", description: "The coach's exact intensity word or phrase, lowercased" }
+                        },
+                        required: ["type", "label"],
+                        additionalProperties: false
+                      }
                     },
-                    required: ["distance", "stroke", "instruction"],
+                    required: ["distance", "stroke", "instruction", "intensity"],
                     additionalProperties: false
                   }
                 },
@@ -168,10 +183,10 @@ Each 100:
           reps: 8, distance: 100, stroke: null, interval: "2:00",
           note: "race skill = breakout timing, breathing pattern",
           fragments: [
-            { distance: 25, stroke: "drill", instruction: null },
-            { distance: 25, stroke: "build", instruction: null },
-            { distance: 25, stroke: "race skill", instruction: null },
-            { distance: 25, stroke: "easy", instruction: null }
+            { distance: 25, stroke: "drill", instruction: null, intensity: null },
+            { distance: 25, stroke: "build", instruction: null, intensity: { type: "build", label: "build" } },
+            { distance: 25, stroke: "race skill", instruction: null, intensity: null },
+            { distance: 25, stroke: "easy", instruction: null, intensity: { type: "easy", label: "easy" } }
           ],
           sourceLine: "8 x 100 @ 2:00 / Each 100: 25 Drill/25 Build/25 Race Skill/25 Easy"
         }]
@@ -209,6 +224,22 @@ Each 100:
         ]
       }]
     }
+  },
+  {
+    input: `4 x (75 fast / 25 easy)`,
+    output: {
+      sections: [{
+        title: null,
+        repGroups: [{
+          reps: 4, distance: 100, stroke: null, interval: null, note: null,
+          fragments: [
+            { distance: 75, stroke: null, instruction: null, intensity: { type: "sprint", label: "fast" } },
+            { distance: 25, stroke: null, instruction: null, intensity: { type: "easy", label: "easy" } }
+          ],
+          sourceLine: "4 x (75 fast / 25 easy)"
+        }]
+      }]
+    }
   }
 ];
 
@@ -229,9 +260,10 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
 5. **Round multipliers**: "twice through" or "2 x through" means repeat the preceding block. Do NOT create a set from it.
 
 6. **Composite sets / fragments**:
-   - Inline parens: "4 x (75 fast / 25 easy)" → 1 repGroup with reps=4, distance=100, fragments=[{distance:75, stroke:"fast"}, {distance:25, stroke:"easy"}]
+   - Inline parens: "4 x (75 fast / 25 easy)" → 1 repGroup with reps=4, distance=100, fragments=[{distance:75, stroke:null, intensity:{type:"sprint",label:"fast"}}, {distance:25, stroke:null, intensity:{type:"easy",label:"easy"}}]
    - "Each N: 25 Drill/25 Build/..." → fragments on the parent repGroup
    - Sub-segments sum to the parent's distance.
+   - **Fragment intensity is CRITICAL**: each fragment carries its own intensity {type,label}. Map the coach's word to a type: fast/sprint/all-out/max → sprint; easy/recovery/warm-up → easy; moderate/steady/cruise/aerobic → aerobic; tempo/threshold → threshold; race pace/race rhythm/r.p. → race_pace; descend → descend; build → build. label is the coach's exact word lowercased ("fast", "maximal finish", "race rhythm"). Pure intensity words ("fast", "easy") go in intensity — NOT in stroke. Stroke stays null unless a real stroke is stated.
 
 7. **Strokes**: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater kick. "scull" = drill. If multiple (e.g. "fly back or free"), use the first mentioned.
 
@@ -383,7 +415,7 @@ function parseIntensity(text: string): { type: string; label: string } | null {
   if (/\bdesc(?:end)?\b/i.test(text)) return { type: "descend", label: "descend" };
   if (/\bbuild\b/i.test(text)) return { type: "build", label: "build" };
   if (/\bneg(?:ative)?\s*split\b/i.test(text)) return { type: "negative_split", label: "negative split" };
-  if (/\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|atp)\b/i.test(text)) return { type: "sprint", label: "ATP" };
+  if (/\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|atp|fast|maximal)\b/i.test(text)) return { type: "sprint", label: "ATP" };
   if (/\b(?:race\s+pace|r\.?p\.?)\b/i.test(text)) return { type: "race_pace", label: "race pace" };
   if (/\b(?:threshold|css|t[\s-]?pace)\b/i.test(text)) return { type: "threshold", label: "threshold" };
   if (/\b(?:easy|recovery|warm[\s-]?up|ez)\b/i.test(text)) return { type: "easy", label: "easy" };
@@ -410,7 +442,13 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
         dive: detectDive(derivationText),
         suit: detectSuit(derivationText),
         note: rg.note,
-        fragments: rg.fragments,
+        // ponytail (2026-08-11): fragments carry per-segment intensity.
+        // If the LLM left any null, derive it from the segment's own text
+        // (stroke/instruction) as a fallback — pairing keys on this.
+        fragments: (rg.fragments || []).map((f) => ({
+          ...f,
+          intensity: f.intensity ?? parseIntensity([f.stroke, f.instruction].filter(Boolean).join(" "))
+        })),
         sourceLine: rg.sourceLine
       };
     })

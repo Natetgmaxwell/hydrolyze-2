@@ -827,7 +827,7 @@ function parseIntensity(raw: string): ParsedIntensity | null {
   if (/\bbuild(?:ing)?\b/i.test(raw)) return { type: "build", label: "build" };
 
   if (
-    /\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|fast|atp)\b/i.test(raw)
+    /\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|fast|maximal|atp)\b/i.test(raw)
   ) {
     return { type: "sprint", label: "ATP" };
   }
@@ -1928,6 +1928,11 @@ function parseWorkoutV2(input: string): Workout {
       const lineText = line.text.trim();
       const isInstructionLine =
         !/\d+\s*[x×]\s*\d+/.test(lineText) && // no NxM pattern
+        // ponytail (2026-08-11): composite-set openers (N x (...) ) are
+        // SET LINES, never instructions. Without this, "4 x (75 fast /
+        // 25 easy)" matches Pattern 2 (leading digit ≤25 + fast/easy
+        // coaching words) and the whole set is swallowed as a note.
+        !/\d+\s*[x×]\s*\(/.test(lineText) &&
         (
           // Pattern 1: starts with a coaching word → instruction
           /^\s*(?:build|descend|hold|focus|maintain|strong|smooth|underwater|breakout|streamline|dolphin|easy|fast|slow|controlled|relaxed|perfect|race|quality|explosive|turn|push|dive|kick|drill|scull|breathe|negative|positive|long|short|tall|high|low|tight|loose|steady|consistent|gradual|progressive|activation|recovery)\b/i.test(lineText) ||

@@ -869,7 +869,7 @@ function parseIntensity(raw: string): ParsedIntensity | null {
   if (/\bbuild(?:ing)?\b/i.test(raw)) return { type: "build", label: "build" };
 
   if (
-    /\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|fast|atp)\b/i.test(raw)
+    /\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|fast|maximal|atp)\b/i.test(raw)
   ) {
     return { type: "sprint", label: "ATP" };
   }
@@ -1393,7 +1393,11 @@ function parseRepGroup(lineText: string): RepGroup | null {
   const stroke = parseStroke(preAsText);
   // Always parse interval from the full text. For inline composite
   // sets, the interval may appear inside or outside the parens.
-  const interval = parseInterval(text);
+  // 2026-08-11 (sync with edge function index.ts): composite sets
+  // carry rest on the fragment (restAfter), NOT as a group send-off —
+  // null the group interval so "4 x (75 / :15 Rest / 25)" doesn't
+  // render as "4 x 100 @ 0:15".
+  const interval = fragments !== null ? null : parseInterval(text);
   // Distinguish rest intervals from send-off cycles. A bare ":NN" or
   // "N:NN" WITHOUT @/on/send-off prefix is a rest interval. With those
   // prefixes it's a send-off cycle.
@@ -2023,6 +2027,11 @@ function parseWorkoutV2(input: string): Workout {
       const lineText = line.text.trim();
       const isInstructionLine =
         !/\d+\s*[x×]\s*\d+/.test(lineText) && // no NxM pattern
+        // ponytail (2026-08-11): composite-set openers (N x (...) ) are
+        // SET LINES, never instructions. Without this, "4 x (75 fast /
+        // 25 easy)" matches Pattern 2 (leading digit ≤25 + fast/easy
+        // coaching words) and the whole set is swallowed as a note.
+        !/\d+\s*[x×]\s*\(/.test(lineText) &&
         (
           // Pattern 1: starts with a coaching word → instruction
           /^\s*(?:build|descend|hold|focus|maintain|strong|smooth|underwater|breakout|streamline|dolphin|easy|fast|slow|controlled|relaxed|perfect|race|quality|explosive|turn|push|dive|kick|drill|scull|breathe|negative|positive|long|short|tall|high|low|tight|loose|steady|consistent|gradual|progressive|activation|recovery)\b/i.test(lineText) ||
