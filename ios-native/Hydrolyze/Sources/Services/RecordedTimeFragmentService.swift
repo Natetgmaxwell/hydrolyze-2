@@ -87,6 +87,16 @@ public struct PairingHandoffContext: Codable, Sendable, Hashable {
 ///     is unmatchable, e.g. tap time wildly out of distribution,
 ///     or roster is empty). The context is preserved verbatim so
 ///     the coach can resolve manually.
+/// Concrete Encodable for the recorded_times write-back. The SDK's
+/// update(_:) takes  — a heterogeneous dictionary
+/// literal can't satisfy the generic, and  can't
+/// conform to Encodable. A concrete struct is the clean fix.
+private struct RecordedTimeUpdate: Encodable {
+    let swimmer_id: String
+    let confidence: Int?
+    let assignment_confidence: Double
+}
+
 public enum PairingHandoffResult: Codable, Sendable {
     case matched(swimmerId: String, swimmerName: String, confidence: Double, fallbackTier: FallbackTier, context: PairingHandoffContext)
     case unmatched(reason: UnmatchedReason, context: PairingHandoffContext)
@@ -610,11 +620,11 @@ public final class RecordedTimeFragmentService {
                 // SDK's [String: any Encodable] dict accept
                 // them.
                 try await supabase.from("recorded_times")
-                    .update([
-                        "swimmer_id": swimmerId,
-                        "confidence": confidenceInt,
-                        "assignment_confidence": confidence
-                    ])
+                    .update(RecordedTimeUpdate(
+                        swimmer_id: swimmerId,
+                        confidence: confidenceInt,
+                        assignment_confidence: confidence
+                    ))
                     .eq("id", value: inserted.id)
                     .execute()
                 print("[RecordedTimeFragmentService] pairRecordedTimeViaHandoff: row=\(inserted.id) MATCHED swimmer=\(swimmerName)(\(swimmerId)) confidence=\(String(format: "%.4f", confidence)) tier=\(fallbackTier.rawValue)")

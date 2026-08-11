@@ -837,6 +837,10 @@ struct ParsedFragment: Codable {
         gear = try c.decodeIfPresent([String].self, forKey: .gear)
         descriptor = try c.decodeIfPresent(String.self, forKey: .descriptor)
         confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
+        // Flat-shape mirrors: decode if the server sent the flat form,
+        // nil otherwise (the nested shape below is preferred).
+        intensityType = try c.decodeIfPresent(String.self, forKey: .intensityType)
+        intensityLabel = try c.decodeIfPresent(String.self, forKey: .intensityLabel)
         // Resolve intensity from whichever shape the LLM emitted (nested
         // or flat). Mirrors the ParsedRepGroup pattern at line 630.
         if let nested = try c.decodeIfPresent(ParsedIntensity.self, forKey: .intensity) {

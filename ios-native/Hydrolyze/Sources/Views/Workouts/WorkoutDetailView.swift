@@ -270,7 +270,8 @@ struct WorkoutDetailView: View {
             reps: set.reps,
             interval: set.intervalText,
             intensityLabel: set.intensityLabel,
-            workoutSetId: set.id
+            workoutSetId: set.id,
+            fragmentContexts: nil
         )
         let isTimeable = set.distance != nil && set.distance! > 0
 
@@ -387,8 +388,22 @@ struct WorkoutDetailView: View {
         Task {
             do {
                 let service = RecordedTimeFragmentService()
+                // Project the persist input to the handoff input the
+                // service consumes (fields map 1:1; the handoff input
+                // carries the fragment context the pairing engine keys on).
+                let handoffInput = PairingHandoffInput(
+                    rowId: input.rowId,
+                    recordedMs: input.recordedMs,
+                    fragmentId: input.fragmentId,
+                    setId: input.setId,
+                    distanceMeters: input.distanceMeters,
+                    intensity: input.intensity,
+                    startType: input.startType,
+                    paceTargetSec: input.paceTargetSec,
+                    rawText: input.rawText
+                )
                 let inserted = try await service.persistRecordedTime(
-                    input: input,
+                    input: handoffInput,
                     sessionId: payload.context.sessionId,
                     workoutSetId: payload.context.workoutSetId
                 )
