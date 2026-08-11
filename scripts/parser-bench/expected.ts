@@ -21,6 +21,7 @@ export interface ExpectedRepGroup {
   dive?: boolean;                   // true if the set is dive-started (default false)
   suit?: boolean;                   // true if the set is swum in a suit (default false)
   gear?: string[];                  // extracted gear (e.g. ['fins', 'paddles'])
+  fragments?: number;               // count of fragments (composite sets only; 0/null for regular)
   source: string;                   // the human source line this came from, for diagnostics
 }
 
@@ -214,6 +215,20 @@ export const EXPECTED: Record<string, ExpectedLine> = {
     ],
   },
 
+  'real-input-18.txt': {
+    notes: [],
+    repGroups: [
+      // Case 1: multi-line composite (Nathan's original example)
+      { reps: 4, distance: 100, interval: null, stroke: null, pattern: null, note: null, subReps: 0, fragments: 2, source: "4 x (75 at race rhythm / :15 Rest / 25 maximal finish)" },
+      // Case 2: single-line comma (same structure, different syntax)
+      { reps: 4, distance: 100, interval: null, stroke: null, pattern: null, note: null, subReps: 0, fragments: 2, source: "4 x (75 at race rhythm, :15 Rest, 25 maximal finish)" },
+      // Case 3: short fragments (25+25)
+      { reps: 4, distance: 50, interval: null, stroke: null, pattern: null, note: null, subReps: 0, fragments: 2, source: "4 x (25 dive, 25 max finish)" },
+      // Case 4: single-line slash (same as case 1 but slash syntax)
+      { reps: 4, distance: 100, interval: null, stroke: null, pattern: null, note: null, subReps: 0, fragments: 2, source: "4 x (75 race rhythm / :15 Rest / 25 maximal finish)" },
+    ],
+  },
+
 };
 
 // Normalize interval: "1.20" <-> "1:20", trim leading zero
@@ -249,6 +264,7 @@ export function matchesExpected(
     dive?: boolean;
     suit?: boolean;
     gear?: string[] | null;
+    fragments?: number | null;
   },
   expected: ExpectedRepGroup,
 ): boolean {
@@ -283,6 +299,11 @@ export function matchesExpected(
     for (const g of expectedGear) {
       if (!actualGear.includes(g)) return false;
     }
+  }
+  // v4: fragment count (composite sets)
+  if (expected.fragments !== undefined) {
+    const actualFragCount = actual.fragments ?? 0;
+    if (actualFragCount !== expected.fragments) return false;
   }
   return true;
 }

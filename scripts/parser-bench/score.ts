@@ -17,6 +17,7 @@ interface FlatRepGroup {
   dive: boolean;
   suit: boolean;
   gear: string[] | null;
+  fragments: number;
   source: string;
 }
 
@@ -66,6 +67,7 @@ function flatten(parsed: ReturnType<typeof parseWorkoutV2>): FlatRepGroup[] {
           dive: rg.dive ?? false,
           suit: rg.suit ?? false,
           gear: rg.gear,
+          fragments: rg.fragments?.length ?? 0,
           source: (rg.details || []).join(" ").slice(0, 60),
         });
       }

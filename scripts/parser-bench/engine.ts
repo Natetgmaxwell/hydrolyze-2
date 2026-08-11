@@ -77,11 +77,27 @@ type Rep =
       intensity?: ParsedIntensity;
     };
 
+// Composite-set fragment — each independently-describable swim segment
+// inside a parenthesized composite rep like:
+//   4 x (75 at race rhythm / :15 Rest / 25 maximal finish)
+// Each fragment is a separate workout_sets row downstream, carrying its
+// own distance + intensity so the prediction engine can target it
+// precisely. restAfter (seconds) attaches to the PRECEDING swim segment.
+interface Fragment {
+  distance: number;
+  stroke: Stroke | null;
+  intensity: ParsedIntensity | null;
+  note: string | null;
+  restAfter: number | null; // seconds of rest AFTER this fragment
+  order: number;
+}
+
 interface RepGroup {
   reps: number | null;
   distance: number | null;
   stroke: Stroke | null;
   interval: string | null;
+  restInterval: boolean; // true = "rest :20" (between reps), false = "@ 1:30" (send-off cycle)
   intensity: ParsedIntensity | null;
   pacing: string | null;
   pattern: Rep[];
@@ -102,6 +118,7 @@ interface RepGroup {
   suit: boolean;
   ambiguousTerm: string | null;
   defaultRpe: { low: number; high: number } | null;
+  fragments: Fragment[] | null;
 }
 
 interface NamedSet {
@@ -291,8 +308,12 @@ function tokenize(input: string): RawLine[] {
     .replace(/^\s*(?:[-*_]\s*){3,}$/gm, "")
     // strip heading hashes: "# Title", "## Title", etc.
     .replace(/^\s*#{1,6}\s+/gm, "")
-    // strip bullet markers at line start: "* ", "- ", "+ ", "1. "
-    .replace(/^\s*(?:[*+\-]|\d+\.)\s+/gm, "")
+    // strip bullet markers at line start: "* ", "- ", "+ "
+    // NOTE: numbered markers ("1. ") are preserved — the main loop's
+    // numbered instruction detector needs them to distinguish drill lists
+    // (1. Fists / 2. 1 arm) from plain text lines. Stripping them here
+    // destroys the structure the parser needs downstream.
+    .replace(/^\s*(?:[*+\-])\s+/gm, "")
     // strip bold/italic markdown: **text**, *text*, __text__, _text_
     // ponytail (iter 11, 2026-07-28): insert spaces around stripped markdown
     // so "50**Race-quality" becomes "50 Race-quality" not "50Race-quality".
@@ -301,11 +322,91 @@ function tokenize(input: string): RawLine[] {
     .replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, " $1 ")
     .replace(/(?<!_)_(?!_)([^_]+)_(?!_)/g, " $1 ");
   const lines = cleaned.split("\n");
-  return lines.map((text, index) => ({
+  const rawLines = lines.map((text, index) => ({
     text: text.trim(),
     index,
     isBlank: text.trim() === "",
   }));
+  return joinCompositeLines(rawLines);
+}
+
+// Pre-processing pass: join multi-line parenthetical composite reps into
+// a single logical line so the existing single-pass parser can handle them.
+//
+//   4 x (75 at race rhythm
+//   :15 Rest
+//   25 maximal finish)
+//
+// becomes one RawLine:
+//   "4 x (75 at race rhythm / :15 Rest / 25 maximal finish)"
+//
+// The slash separator is the same one the broken-swim notation uses, so
+// the segment-splitting logic in parseRepGroup can process it uniformly.
+// This is additive — non-composite lines pass through untouched.
+function joinCompositeLines(lines: RawLine[]): RawLine[] {
+  const result: RawLine[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // Detect a composite-rep opener: "N x (" somewhere in the line.
+    // Two forms:
+    //   (a) "4 x ("          — paren at end, segments start on next line
+    //   (b) "4 x (75 at..."  — first segment on the SAME line as the paren
+    // Both forms: the line has an UNCLOSED "(" (no matching ")" on same line).
+    // We detect by: "N x (" present AND no ")" after the "(".
+    const parenIdx = line.text.indexOf("(");
+    const closeIdx = line.text.indexOf(")");
+    const hasOpener =
+      /\d+\s*[x×]\s*\(/.test(line.text) &&
+      parenIdx !== -1 &&
+      (closeIdx === -1 || closeIdx < parenIdx);
+
+    if (hasOpener) {
+      // Split into prefix ("4 x") and whatever's after the "("
+      // ("75 at race rhythm" or "" if paren was at end of line)
+      const afterParen = line.text.slice(parenIdx + 1).trim();
+      const prefix = line.text.slice(0, parenIdx).trim(); // "4 x"
+
+      const segments: string[] = [];
+      if (afterParen.length > 0) segments.push(afterParen);
+
+      let endIdx = i + 1;
+      let closed = false;
+      while (endIdx < lines.length) {
+        const segLine = lines[endIdx];
+        let segText = segLine.text.trim();
+        // Check for closing paren — may be at end of a segment line
+        // ("25 maximal finish)") or on its own (")").
+        if (segText.endsWith(")")) {
+          segText = segText.slice(0, -1).trim();
+          if (segText.length > 0) segments.push(segText);
+          closed = true;
+          endIdx++;
+          break;
+        }
+        if (segText === ")") {
+          closed = true;
+          endIdx++;
+          break;
+        }
+        if (segText.length > 0) segments.push(segText);
+        endIdx++;
+      }
+      if (closed && segments.length >= 2) {
+        // Join into a single composite line with slash separators.
+        const joined = `${prefix} (${segments.join(" / ")})`;
+        result.push({ text: joined, index: line.index, isBlank: false });
+        i = endIdx;
+        continue;
+      }
+      // Not a valid composite (no closing paren or <2 segments) — fall
+      // through and emit the opener line as-is. The parser will handle
+      // it as best it can.
+    }
+    result.push(line);
+    i++;
+  }
+  return result;
 }
 
 // ─── Pass 2: Section detection ───────────────────────────────────────────────
@@ -368,10 +469,9 @@ function isSectionHeader(line: RawLine): boolean {
   // swimmers", "Part 1: Race-segment 75s — 900m", "Main set — 2,600m")
   // — they all have digits and em-dashes. Allow them.
   if (/\d+\s*[x×]\s*\d+/.test(t)) return false; // set line
-  // ponytail (iter 12, 2026-07-28): don't reject "N Rounds" or
-  // "N x through" as set lines — they're round multipliers.
-  if (/^\d+\s+rounds?\s*(:|$)/i.test(t)) return true;
-  if (/^\d+\s*[x×]\s*(thru|through)\s*$/i.test(t)) return true;
+  // NOTE: Round multipliers are NOT section headers. They're handled by
+  // the round-multiplier detector in parseWorkoutV2. The patterns that
+  // were here (N rounds, Nx through) have been removed.
   if (/^\d+\s/.test(t)) return false; // starts with a number
   if (/^odds?\s*:/i.test(t)) return false; // odd: / odds:
   if (/^evens?\s*:/i.test(t)) return false;
@@ -391,17 +491,12 @@ function isSectionHeader(line: RawLine): boolean {
       return true;
     }
   }
-  // Pattern: "Part N: Title" — round markers
+  // Pattern: "Part N: Title" — section markers
   if (/^part\s+\d+\s*:/i.test(t)) return true;
-  // Pattern: "Two rounds:", "Three rounds:", "One round:"
-  if (/^(two|three|four|five|one)\s+rounds?\s*:/i.test(t)) return true;
-  // ponytail (iter 12, 2026-07-28): "N Rounds", "N rounds of:",
-  // "Two Rounds" (without colon), "2 x through", "Each round"
-  if (/^\d+\s+rounds?\s*(:|$)/i.test(t)) return true;
-  if (/^(two|three|four|five|one)\s+rounds?\s*$/i.test(t)) return true;
-  if (/^\d+\s*[x×]\s*(thru|through)\s*$/i.test(t)) return true;
-  if (/^each\s+round\s*$/i.test(t)) return true;
-  if (/^repeat\s*(the\s+entire\s+round|round)?\s*\.?$/i.test(t)) return true;
+  // NOTE: Round multipliers ("N rounds:", "Nx through", "N times through",
+  // "each round", "repeat") were previously classified as section headers,
+  // which caused them to be SKIPPED. They are now handled by the
+  // round-multiplier detector in the main loop (parseWorkoutV2).
   // ponytail (iter 12, 2026-07-28): "Warm-up N" / "swim down N" —
   // section header with total distance. Don't emit as a set.
   if (/^(warm[\s-]?up|warm[\s-]?down|swim[\s-]?down|cool[\s-]?down)\s+\d+/i.test(t)) return true;
@@ -411,6 +506,15 @@ function isSectionHeader(line: RawLine): boolean {
   if (/^group\s+[a-d]\s*[—\-]/i.test(t)) return true;
   // ponytail (iter 13, 2026-07-28): "SD - N" (Swim Down abbreviation)
   if (/^sd\s*[-–]\s*\d+/i.test(t)) return true;
+  // 2026-07-31: Colon-form section headers. Coaches write:
+  //   "Warm-Up:" / "Warm Up:" / "Warmup:"
+  //   "Cool-Down:" / "Cool Down:" / "Cooldown:"
+  //   "Main Set:" / "Main Set (Lactate Overload):"
+  //   "Aerobic Flush Block:" / "Pre-Set:" / "Drill Set:"
+  // The colon terminator distinguishes these from sets ("N x 100 @ 1:30").
+  if (/^(warm[\s-]?up|cool[\s-]?down|main\s+set|main\s+set\b.*|pre[\s-]?set|drill\s+set|activation\s+set|pre[\s-]?activation|build\s+set|activation|warm[\s-]?down|cool[\s-]?down|aerobic\s+flush|lactate\s+overload|finish\s+set|cool[\s-]?down|cool[\s-]?up|technique\s+set)\s*[^\d]*$/i.test(t)) {
+    return true;
+  }
   // "Part N: <title>" already handled above.
   // "N. <title>" numbered section (e.g. "2. Aerobic flush", "3. Stroke connection")
   if (/^\d+\.\s+[a-z]/i.test(t) && !/\d+\s*[x×]\s*\d+/.test(t)) return true;
@@ -453,7 +557,15 @@ function isSectionHeader(line: RawLine): boolean {
       /^[A-Z0-9\d,/:]+$/.test(w) ||
       (w[0] === w[0].toUpperCase() && !strokeWords.has(w.toLowerCase())),
   );
-  if (titleCased && meaningfulWords.length <= 8) return true;
+  if (titleCased && meaningfulWords.length <= 8) {
+    // Don't treat round multipliers as section headers — they're block
+    // multipliers handled by the round-multiplier detector in parseWorkoutV2.
+    if (/^(\d+)\s*times?\s+through/i.test(t)) return false;
+    if (/^(\d+)\s+rounds?\s*:?/i.test(t)) return false;
+    if (/^(two|three|four|five|one)\s+rounds?/i.test(t)) return false;
+    if (/^\d+\s*[x×]\s*(?:thru|through)/i.test(t)) return false;
+    return true;
+  }
   return false;
 }
 
@@ -814,7 +926,32 @@ function parseIntensity(raw: string): ParsedIntensity | null {
 
 function parseInterval(text: string): string | null {
   const n = normalize(text);
-  // ponytail (autoresearch iter 8, 2026-07-22): bare-seconds
+  // R:I / R:I. / RI — Rest Interval marker (Swim Richmond glossary).
+  // "R:I 20" means "Rest Interval of 20 seconds". The restInterval
+  // flag in parseRepGroup checks for "R:I" presence to set the flag.
+  // Match: optional @, then R:I or R:I. or RI, then a value.
+  // E.g. "@ R:I 20", "@ R:I. 20", "@ RI 20", "@ R:I :20".
+  const riMatch = n.match(/(?:@|on\s+)?\s*(?:r:?i\.?)\s*(\d+):?(\d{2})?/);
+  if (riMatch) {
+    const mins = parseIntSafe(riMatch[1]);
+    const secs = parseIntSafe(riMatch[2]);
+    if (mins !== null && secs !== null) {
+      return mins + ":" + String(secs).padStart(2, "0");
+    }
+    if (mins !== null && riMatch[2] === undefined) {
+      return "0:" + String(mins).padStart(2, "0");
+    }
+  }
+  // Bare-seconds form: "R:I 20" without minutes
+  const riBareSec = n.match(/(?:@|on\s+)?\s*(?:r:?i\.?)\s*(\d{1,2})\b/);
+  if (riBareSec) {
+    const s = parseIntSafe(riBareSec[1]);
+    if (s !== null && s < 60) {
+      return "0:" + String(s).padStart(2, "0");
+    }
+  }
+
+  // ponytail (autoresearch iter 8, 2022-07-22): bare-seconds
   // intervals like "@ :40", "@ :45", "@ :50" — coaches omit the
   // leading zero. Require the @ prefix to avoid matching the
   // seconds part of "1:40" or "2:50".
@@ -1090,14 +1227,162 @@ function parseSubReps(text: string): SubRep[] {
 
 // ─── RepGroup parsing ─────────────────────────────────────────────────────────
 
+// Parse a rest segment: ":15 Rest", "15 seconds rest", "30 sec rest".
+// Returns rest duration in seconds, or null if not a rest segment.
+function parseRestSegment(text: string): number | null {
+  // ":NN" form — the bare-seconds notation (most common in composite sets)
+  const bareColon = text.match(/^:(\d+)\s*(?:rest)?$/i);
+  if (bareColon) {
+    const s = parseIntSafe(bareColon[1]);
+    if (s !== null) return s;
+  }
+  // "NN seconds rest" / "NN sec rest" / "NN min rest"
+  const secRest = text.match(
+    /^\d+\s*(?:seconds?|sec|minutes?|min)\s+rest$/i,
+  );
+  if (secRest) {
+    const n = text.match(/^(\d+)/);
+    if (n) {
+      const v = parseIntSafe(n[1]);
+      if (v !== null) {
+        return /min/i.test(text) ? v * 60 : v;
+      }
+    }
+  }
+  return null;
+}
+
+// Parse composite-set fragments from parenthetical content.
+//
+// Input: the text INSIDE the parens, already slash-split into segments.
+// e.g. ["75 at race rhythm", ":15 Rest", "25 maximal finish"]
+//
+// Returns Fragment[] with rest durations attached to the preceding swim
+// segment via restAfter. If fewer than 2 swim segments, returns null
+// (not a real composite — let normal parsing handle it).
+function parseCompositeFragments(
+  segments: string[],
+  parentStroke: Stroke | null,
+): Fragment[] | null {
+  const fragments: Fragment[] = [];
+  let order = 0;
+
+  for (const seg of segments) {
+    const trimmed = seg.trim();
+
+    // Is this a rest segment?
+    const rest = parseRestSegment(trimmed);
+    if (rest !== null) {
+      // Attach rest to the preceding fragment (if any). If there's no
+      // preceding fragment, the rest is a leading rest — we just skip
+      // it (unusual notation, not worth modeling).
+      if (fragments.length > 0) {
+        fragments[fragments.length - 1].restAfter = rest;
+      }
+      continue;
+    }
+
+    // Parse the swim segment: "75 at race rhythm" → distance=75, intensity=...
+    const rd = parseRepDist(trimmed);
+    if (rd.distance === null) continue; // skip unparseable segments
+
+    const intensity = parseIntensity(trimmed);
+    const stroke = parseStroke(trimmed) ?? parentStroke;
+    // Extract any remaining note after stripping distance + intensity words
+    let segNote: string | null = null;
+    {
+      let t = trimmed;
+      t = t.replace(/\d+\s*[x×]\s*\d+\s*m*/gi, "");
+      t = t.replace(/\d+(?:\.\d+)?\s*m?\b/gi, "");
+      if (intensity) {
+        const labelRe = new RegExp(
+          intensity.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+          "gi",
+        );
+        t = t.replace(labelRe, "");
+      }
+      t = t.replace(/\bat\b/gi, "").trim();
+      if (t.length > 2) segNote = t;
+    }
+
+    fragments.push({
+      distance: rd.distance,
+      stroke,
+      intensity,
+      note: segNote,
+      restAfter: null,
+      order: order++,
+    });
+  }
+
+  // Need at least 2 swim segments to be a real composite
+  const swimCount = fragments.filter((f) => f.distance > 0).length;
+  return swimCount >= 2 ? fragments : null;
+}
+
 function parseRepGroup(lineText: string): RepGroup | null {
   let text = lineText;
+  let note: string | null = null;
 
-  const { cleaned, note } = extractInlineNote(text);
-  text = cleaned;
+  // Composite-set detection runs FIRST — before extractInlineNote,
+  // because extractInlineNote would strip the "(...)" content as a note,
+  // leaving just the prefix "4 x". For composite sets we need the full text.
+  let fragments: Fragment[] | null = null;
+  let isComposite = /\d+\s*[x×]\s*\(/.test(text);
+  // 2026-07-31: "by NN's" / "by NN" / "broken by NN" broken-swim notation.
+  // "4 x 100 by 25's" = each rep broken into 100/25 = 4 segments of 25m.
+  // Convert to the parenthetical composite form so the existing fragment
+  // path handles it: "4 x 100 (25 / 25 / 25 / 25)".
+  if (!isComposite) {
+    const byMatch = text.match(/\b(?:broken\s+)?by\s+(\d+)\s*m?\s*'?s?\b/i);
+    if (byMatch) {
+      const segDist = parseIntSafe(byMatch[1]);
+      // Get the parent distance from the prefix before "by"
+      const prefix = text.substring(0, byMatch.index!).trim();
+      const prefixRd = parseRepDist(prefix);
+      if (segDist !== null && prefixRd.distance !== null && prefixRd.distance % segDist === 0) {
+        const numSegs = prefixRd.distance / segDist;
+        const slashForm = Array(numSegs).fill(segDist + "m").join(" / ");
+        // Replace the "by NN's" suffix with a parenthetical composite
+        text = prefix + " (" + slashForm + ")" + text.substring(byMatch.index! + byMatch[0].length);
+        isComposite = true;
+      }
+    }
+  }
+  if (isComposite) {
+    const compositeMatch = text.match(/\(\s*(.+?)\s*\)/);
+    if (compositeMatch) {
+      const inner = compositeMatch[1];
+      const segments = inner
+        .split(/[\/,]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      const preParen = text.split("(")[0];
+      const parentStroke = parseStroke(preParen);
+      fragments = parseCompositeFragments(segments, parentStroke);
+    }
+    // For composite sets, skip extractInlineNote — the parens ARE the set,
+    // not a trailing note. Keep the original text.
+  } else {
+    const inlineNote = extractInlineNote(text);
+    text = inlineNote.cleaned;
+    note = inlineNote.note;
+  }
 
   const rd = parseRepDist(text);
-  if (rd.reps === null && rd.distance === null) return null;
+  // For composite sets, parseRepDist may fail (no "N x M" pattern — the
+  // "M" is inside parens). But we already have reps from the prefix and
+  // distance from fragments. Don't bail.
+  if (rd.reps === null && rd.distance === null && fragments === null) {
+    return null;
+  }
+
+  // For composite sets, extract reps from the prefix if parseRepDist missed it
+  let reps = rd.reps;
+  if (fragments !== null && reps === null) {
+    const prefixReps = text.match(/(\d+)\s*[x×]\s*\(/);
+    reps = prefixReps ? parseIntSafe(prefixReps[1]) : null;
+  }
 
   // ponytail (autoresearch iter 7, 2026-07-19): when there's an
   // "as" notation, the parent's stroke should be parsed from the
@@ -1106,7 +1391,31 @@ function parseRepGroup(lineText: string): RepGroup | null {
   // (e.g. IM in "4 x 50 IM @ 1:00 as 1.kick, 2.drill, ...").
   const preAsText = text.match(/as[\s:]/i) ? text.split(/as[\s:]/i)[0] : text;
   const stroke = parseStroke(preAsText);
+  // Always parse interval from the full text. For inline composite
+  // sets, the interval may appear inside or outside the parens.
   const interval = parseInterval(text);
+  // Distinguish rest intervals from send-off cycles. A bare ":NN" or
+  // "N:NN" WITHOUT @/on/send-off prefix is a rest interval. With those
+  // prefixes it's a send-off cycle.
+  // restInterval = true means "rest between reps" (not a send-off cycle).
+  // True when:
+  //   (a) no @-prefixed or on-prefixed send-off pattern is present, AND
+  //   (b) the text DOES contain a Rest Interval marker (R:I, RI, etc.)
+  //       OR a bare rest pattern (:NN, :NN rest)
+  const hasRestMarker =
+    /(?:r:?i\.?|ri)\s*:?\s*\d/i.test(text) || // R:I, R:I., RI (Swim Richmond glossary)
+    /:(\d{2})\s*rest\b/i.test(text) ||             // ":15 rest"
+    /(\d+)\s*s(?:ec)?\s*rest\b/i.test(text) ||      // "15s rest" / "15 sec rest"
+    /\brest\s*:?\s*\d/i.test(text);                 // "rest :20" (rest keyword before value)
+  const restInterval =
+    interval !== null &&
+    fragments === null &&
+    hasRestMarker &&
+    // Send-off patterns: @ N:NN or on N:NN. Exclude lines with "rest"
+    // keyword so "@ :20 rest" is NOT classified as send-off.
+    !/@\s*\d(?!.*\brest)/.test(text) &&
+    !/@\s*:(?!.*\brest)/.test(text) &&
+    !/\bon\s+\d(?!.*\brest)/.test(text);
 
   const pacingMatch = text.match(/\b(build|smooth|strong|moderate)\b/i);
   const pacing: string | null = pacingMatch
@@ -1286,8 +1595,27 @@ function parseRepGroup(lineText: string): RepGroup | null {
         else patternType = "simple";
       }
     }
-  }
 
+    // Fallback: if as-notation was detected but produced no sub-reps
+    // (e.g. "as 1.fists 2.1-arm" — drill names with no distances),
+    // capture the content as a per-rep note.
+    if (asMatch && subReps.length === 0) {
+      const asContent = asMatch[1].trim();
+      // Parse numbered drill names: "1.fists 2.1-arm 3.catch-up"
+      // Split on the numbered markers (N.) to get each drill name.
+      // Use a lookahead split: split before each \d+. that follows space or start
+      const drillParts = asContent
+        .split(/\s+(?=\d+\.)/)
+        .map((s) => s.replace(/^\d+\.\s*/, "").trim().replace(/[,;]+$/, "").trim())
+        .filter((s) => s.length > 0);
+      if (drillParts.length >= 2) {
+        const drillNote = drillParts
+          .map((d, i) => `Rep ${i + 1}: ${d}`)
+          .join("; ");
+        note = note ? `${note}; ${drillNote}` : drillNote;
+      }
+    }
+  }
 
   // ponytail (opus-3, 2026-07-22): detect a drill/swim split
   // (explicit meters like "25 drill/25 swim", or implicit like
@@ -1400,10 +1728,14 @@ function parseRepGroup(lineText: string): RepGroup | null {
   const mergedNote = allNotes.length > 0 ? allNotes.join("; ") : null;
 
   return {
-    reps: rd.reps,
-    distance: rd.distance,
+    reps: reps ?? rd.reps,
+    distance:
+      fragments !== null
+        ? fragments.reduce((sum, f) => sum + f.distance, 0)
+        : rd.distance,
     stroke,
     interval,
+    restInterval,
     intensity: intensityOverride ?? intensity ?? null,
     pacing,
     note: mergedNote,
@@ -1444,6 +1776,7 @@ function parseRepGroup(lineText: string): RepGroup | null {
     }),
     patternType: subReps.length > 0 ? (patternType ?? "simple") : null,
     connectors: [],
+    fragments,
   };
 }
 
@@ -1495,16 +1828,45 @@ function parseWorkoutV2(input: string): Workout {
     const namedSets: NamedSet[] = [];
     let i = 0;
     let pendingLabel: string | null = null;
+    let roundMultiplier = 1; // set by "N times through:" / "N rounds:" markers
 
     while (i < block.lines.length) {
       const line = block.lines[i];
 
       if (line.isBlank) {
+        // Blank lines are FORMAT ONLY — do not reset the round multiplier.
+        // The multiplier persists until the next round marker or section
+        // header, including across blank lines between sets in the same round.
         i++;
         continue;
       }
 
       if (isSectionHeader(line)) {
+        pendingLabel = null;
+        roundMultiplier = 1;
+        i++;
+        continue;
+      }
+
+      // Round multiplier detection: "3 times through:", "2 Rounds:",
+      // "3x through", "2x through:", "each round", "repeat"
+      const roundMatch =
+        line.text.match(/^(\d+)\s*times?\s+through\s*:?\s*$/i) ||
+        line.text.match(/^(\d+)\s+rounds?\s*:?\s*$/i) ||
+        line.text.match(/^(\d+)\s*[x×]\s*(?:thru|through)\s*:?\s*$/i) ||
+        line.text.match(/^(two|three|four|five|one)\s+rounds?\s*:?\s*$/i);
+      if (roundMatch) {
+        const wordToNum: Record<string, number> = { two: 2, three: 3, four: 4, five: 5, one: 1 };
+        const captured = roundMatch[1];
+        roundMultiplier = parseIntSafe(captured) ?? wordToNum[captured?.toLowerCase() ?? ""] ?? 1;
+        pendingLabel = null;
+        i++;
+        continue;
+      }
+      // "repeat the entire round" / "each round" — repeat the previous block
+      if (/^repeat\s*(?:the\s+entire\s+round|round)?\s*\.?$/i.test(line.text) ||
+          /^each\s+round\s*$/i.test(line.text)) {
+        roundMultiplier = 2; // "repeat" means do it again (x2 total)
         pendingLabel = null;
         i++;
         continue;
@@ -1524,6 +1886,134 @@ function parseWorkoutV2(input: string): Workout {
           i = result.endIdx;
           continue;
         }
+      }
+
+      // Multi-line odds/evens without colon separator:
+      //   odds kick
+      //   evens swim
+      // OR:
+      //   odds: 25 fist / 25 swim
+      //   evens: 25 1-arm / 25 swim
+      if (/^odds?\s+/i.test(line.text) && !/^\d+\s*[x×]\s*\d+/.test(line.text)) {
+        const oddText = line.text.replace(/^odds?\s+/i, "").trim();
+        let evenText = "";
+        let endIdx = i + 1;
+        while (endIdx < block.lines.length) {
+          const evLine = block.lines[endIdx];
+          if (evLine.isBlank) { endIdx++; continue; }
+          const evMatch = evLine.text.match(/^evens?\s+(.+)/i);
+          if (evMatch) {
+            evenText = evMatch[1].trim();
+            endIdx++;
+            break;
+          }
+          break;
+        }
+        if (evenText.length > 0) {
+          const currentNs = namedSets[namedSets.length - 1];
+          if (currentNs && currentNs.repGroups.length > 0) {
+            const lastRg = currentNs.repGroups[currentNs.repGroups.length - 1];
+            const noteText = `odds: ${oddText}; evens: ${evenText}`;
+            if (!lastRg.note) {
+              lastRg.note = noteText;
+            } else {
+              lastRg.note = lastRg.note + "; " + noteText;
+            }
+            lastRg.patternType = "odd_even";
+          }
+          pendingLabel = null;
+          i = endIdx;
+          continue;
+        }
+      }
+
+      // Composite-set trailing description: "Each 100:" followed by
+      // segment lines like "25 Drill/25 Build/25 Race Skill/25 Easy".
+      // Attach as fragments to the most recent rep group whose distance
+      // matches the "Each N" value.
+      const eachMatch = line.text.match(/^each\s+(\d+)\s*m?\s*:/i);
+      if (eachMatch) {
+        const eachDist = parseIntSafe(eachMatch[1]);
+        // Consume following lines as fragment segments. Skip blank lines
+        // (the coach may have blank lines between "Each 100:" and the
+        // segment description). Stop at section headers or new sets.
+        const segLines: string[] = [];
+        let endIdx = i + 1;
+        while (endIdx < block.lines.length) {
+          const segLine = block.lines[endIdx];
+          const segText = segLine.text.trim();
+          if (segLine.isBlank) { endIdx++; continue; }
+          if (isSectionHeader(segLine)) break;
+          if (/\d+\s*[x×]\s*\d+/.test(segText)) break; // new set
+          if (/^each\s+\d+/i.test(segText)) break; // another "Each" block
+          segLines.push(segText);
+          endIdx++;
+        }
+        if (segLines.length > 0 && eachDist !== null) {
+          // Join all segment lines, then split on /
+          const joined = segLines.join(" / ");
+          const segments = joined
+            .split(/[\/]/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+          const frags = parseCompositeFragments(segments, null);
+          if (frags !== null && frags.length >= 2) {
+            // Find the most recent rep group with matching distance
+            for (let si = namedSets.length - 1; si >= 0; si--) {
+              const ns = namedSets[si];
+              for (let ri = ns.repGroups.length - 1; ri >= 0; ri--) {
+                const rg = ns.repGroups[ri];
+                if (rg.distance === eachDist && !rg.fragments) {
+                  rg.fragments = frags;
+                  // Also set patternType to indicate composite
+                  break;
+                }
+              }
+            }
+          }
+          pendingLabel = null;
+          i = endIdx;
+          continue;
+        }
+      }
+
+      // Numbered per-rep instructions: "1. 50 free breathe 3 / 50 free catch up drill"
+      // These describe how each rep of the PREVIOUS set should be performed.
+      // Attach as a structured note AND build a pattern array when the
+      // numbered lines have slash-separated segments summing to the parent
+      // rep distance (composite per-rep rotation).
+      const numberedMatch = line.text.match(/^(\d+)\.\s+(.+)/);
+      // Skip numbered detection inside "as" notation — the dots after N
+      // are part of the as-notation, not numbered list items.
+      if (numberedMatch && !/\d+\s*[x×]\s*\d+/.test(line.text) && !/\bas\s/i.test(line.text)) {
+        const repNum = numberedMatch[1];
+        const repDesc = numberedMatch[2].trim();
+        for (let si = namedSets.length - 1; si >= 0; si--) {
+          const ns = namedSets[si];
+          if (ns.repGroups.length > 0) {
+            const lastRg = ns.repGroups[ns.repGroups.length - 1];
+            // Existing note-based behavior (always)
+            const prefix = `Rep ${repNum}: ${repDesc}`;
+            if (!lastRg.note) {
+              lastRg.note = prefix;
+            } else {
+              lastRg.note = lastRg.note + "; " + prefix;
+            }
+            // New: collect into a temporary batch for pattern building.
+            // The batch is cleared when a non-numbered line is seen (handled
+            // after the main loop). For now, stash on a module-level array.
+            // Use the rg object itself as the carrier — store the batch on
+            // a WeakMap-like pattern using the rg's pattern array.
+            if (!Array.isArray((lastRg as any).__numberedBatch)) {
+              (lastRg as any).__numberedBatch = [];
+            }
+            (lastRg as any).__numberedBatch.push({ num: repNum, desc: repDesc });
+            break;
+          }
+        }
+        pendingLabel = null;
+        i++;
+        continue;
       }
 
       // ponytail (iter 14, 2026-07-29): instruction-line guard.
@@ -1558,6 +2048,84 @@ function parseWorkoutV2(input: string): Workout {
         pendingLabel = null;
         i++;
         continue;
+      }
+
+      // Time-based sets: "Free - 8:00 kick on side, 1 shoulder out"
+      // The N:NN is a DURATION (swim for 8 minutes), not a send-off.
+      // The stroke prefix and dash signal this is a continuous effort.
+      // Create a rep group with reps=1, distance=null, interval=duration.
+      const timeSetMatch = line.text.match(
+        /^(free|back|breast|fly|im|choice)\s*[-–]\s*(\d+):(\d{2})\s+(.+)/i,
+      );
+      if (timeSetMatch) {
+        const stroke = parseStroke(timeSetMatch[1]);
+        const duration = `${timeSetMatch[2]}:${timeSetMatch[3]}`;
+        const activity = timeSetMatch[4].trim();
+        const namedSet: NamedSet = {
+          label: null,
+          note: null,
+          repGroups: [],
+        };
+        namedSet.repGroups.push({
+          reps: 1,
+          distance: null,
+          stroke,
+          interval: duration,
+          restInterval: false,
+          intensity: null,
+          pacing: null,
+          pattern: [],
+          patternType: null,
+          connectors: [],
+          note: activity.length > 0 ? activity : null,
+          gear: null,
+          gearOptional: false,
+          descend: null,
+          details: null,
+          dive: false,
+          suit: false,
+          ambiguousTerm: null,
+          defaultRpe: null,
+          fragments: null,
+        });
+        namedSets.push(namedSet);
+        pendingLabel = null;
+        i++;
+        continue;
+      }
+
+      // Per-rep variant instructions: after a set like "8 x 100 :20", the
+      // coach writes slash-separated segments that sum to the parent distance:
+      //   "50 free breathe 3 / 50 free catch up drill"
+      // These describe HOW to swim each rep, not separate sets. Detect by:
+      // line has "/" + segments sum to the last rep group's distance.
+      if (line.text.includes("/")) {
+        const lastNs = namedSets[namedSets.length - 1];
+        if (lastNs && lastNs.repGroups.length > 0) {
+          const lastRg = lastNs.repGroups[lastNs.repGroups.length - 1];
+          const parentDist = lastRg.distance;
+          if (parentDist !== null && lastRg.reps && lastRg.reps > 1) {
+            const segments = line.text.split("/").map((s) => s.trim());
+            const segDists = segments
+              .map((s) => {
+                const m = s.match(/(\d+)\s*m?\b/);
+                return m ? parseIntSafe(m[1]) : null;
+              })
+              .filter((d): d is number => d !== null);
+            const segSum = segDists.reduce((a, b) => a + b, 0);
+            if (segSum === parentDist && segDists.length >= 2) {
+              const noteText = line.text.trim();
+              if (!lastRg.note) {
+                lastRg.note = noteText;
+              } else if (!lastRg.note.includes(noteText)) {
+                lastRg.note = lastRg.note + "; " + noteText;
+              }
+              pendingLabel = null;
+              i++;
+              continue;
+            }
+          }
+        }
       }
 
       let { label, rest } = extractLabel(line.text);
@@ -1645,7 +2213,11 @@ function parseWorkoutV2(input: string): Workout {
       // (iter 14 instruction-line guard moved BEFORE extractLabel above)
 
       const rd = parseRepDist(rest);
-      if (rd.reps === null && rd.distance === null) {
+      // Composite-set bypass: "N x (...)" has no "N x M" for parseRepDist,
+      // but parseRepGroup handles it via the fragment path. Don't bail —
+      // fall through to parseRepGroup.
+      const isCompositeSet = /\d+\s*[x×]\s*\(/.test(rest);
+      if (rd.reps === null && rd.distance === null && !isCompositeSet) {
         // ponytail (autoresearch iter 4, 2026-07-19): a bare
         // "fast for time" / "for time" / "no breath" line (no reps,
         // no distance) should be attached to the PREVIOUS rep
@@ -1661,10 +2233,15 @@ function parseWorkoutV2(input: string): Workout {
         // This catches "Build each 50", "Strong streamline off every
         // wall", "Underwater dolphin to 10-15m", "Focus on catch", etc.
         const trimmed = line.text.trim();
+        // 2026-07-31: Skip the short-instruction guard when the line
+        // contains distance-stroke patterns (e.g. "400 kick ... 100 free").
+        // Those are multi-set lines, not trailing instructions.
+        const hasSetPattern = /\b\d+\s*m?\s+(?:free|back|breast|fly|im|kick|pull|choice|swim|drill|form)\b/i.test(trimmed);
         const isShortInstruction =
           trimmed.length > 0 &&
           trimmed.length <= 80 &&
           !/^[A-Z][A-Z0-9 \-/&]+$/.test(trimmed) && // not ALL-CAPS header
+          !hasSetPattern && // not a multi-set line
           /[a-z]/.test(trimmed); // has lowercase (real text)
 
         if (freeTextNote || isShortInstruction) {
@@ -1720,6 +2297,10 @@ function parseWorkoutV2(input: string): Workout {
             rg.patternType = sameAsAbovePrev.patternType;
           }
         }
+        // Apply round multiplier to reps
+        if (roundMultiplier > 1 && rg.reps !== null) {
+          rg.reps = rg.reps * roundMultiplier;
+        }
         namedSet.repGroups.push(rg);
 
         // ponytail (autoresearch iter 1, 2026-07-15): detect multiple
@@ -1739,16 +2320,53 @@ function parseWorkoutV2(input: string): Workout {
         // (`'...source...'/gi`) which JS parses as a literal regex
         // containing the STRING `(?=' + STROKE_RE.source + ')` instead
         // of interpolating. Use new RegExp() to build dynamically.
-        const STROKE_RE = /(?:free|back|breast|fly|im|kick|pull|choice|form)/i;
-        const allSetMatches = [...line.text.matchAll(new RegExp("\\b(\\d+)\\s*m?\\s+(?=" + STROKE_RE.source + ")", "gi"))];
-        if (allSetMatches.length > 1) {
-          for (let mi = 1; mi < allSetMatches.length; mi++) {
-            const m = allSetMatches[mi];
-            const subRep = parseRepGroup(line.text.slice(m.index!));
-            if (subRep) {
-              if (!subRep.interval) subRep.interval = rg.interval;
-              if (!subRep.intensity) subRep.intensity = rg.intensity;
-              namedSet.repGroups.push(subRep);
+        // 2026-07-31: Multi-set detection on one line. Two paths:
+        //   (a) Slash-separated: "400 Swim / 200 Pull / 100 Kick"
+        //   (b) Space-separated with `<N> m? <STROKE>` patterns:
+        //       "400 kick for body/head position 100 free 100 back"
+        // Don't split inside "as N.fists/swim" notation.
+        const isAsNotation = /\bas\s/i.test(line.text);
+        if (!isAsNotation) {
+          // (a) Slash-separated — only if the slash is surrounded by
+          // spaces (a set separator, not part of a compound word like
+          // "body/head") and each side has a distance-stroke pattern.
+          let slashProduced = false;
+          if (/\s\/\s|\s\/$|^\/\s/.test(line.text)) {
+            const slashSegments = line.text
+              .split("/")
+              .map((s) => s.trim())
+              .filter((s) => /\b\d+\s*m?\s+(?:free|back|breast|fly|im|kick|pull|choice|swim|drill|form)\b/i.test(s));
+            if (slashSegments.length > 1) {
+              slashProduced = true;
+              for (let si = 1; si < slashSegments.length; si++) {
+                const subRep = parseRepGroup(slashSegments[si]);
+                if (subRep) {
+                  if (!subRep.interval) subRep.interval = rg.interval;
+                  if (!subRep.intensity) subRep.intensity = rg.intensity;
+                  namedSet.repGroups.push(subRep);
+                }
+              }
+            }
+          }
+          // (b) Space-separated distance-stroke patterns — only if slash
+          // path didn't already produce multiple segments.
+          if (!slashProduced) {
+            const STROKE_RE = /(?:free|back|breast|fly|im|kick|pull|choice|form|swim|kick|drill)/i;
+            const allSetMatches = [...line.text.matchAll(new RegExp("\\b(\\d+)\\s*m?\\s+(?=" + STROKE_RE.source + ")", "gi"))];
+            if (allSetMatches.length > 1) {
+              for (let mi = 1; mi < allSetMatches.length; mi++) {
+                const m = allSetMatches[mi];
+                let subText = line.text.slice(m.index!);
+                // Stop at next comma, slash, or " - "
+                const stopIdx = subText.search(/\s*[,/]|\s+-\s+/);
+                if (stopIdx > 0) subText = subText.slice(0, stopIdx);
+                const subRep = parseRepGroup(subText);
+                if (subRep) {
+                  if (!subRep.interval) subRep.interval = rg.interval;
+                  if (!subRep.intensity) subRep.intensity = rg.intensity;
+                  namedSet.repGroups.push(subRep);
+                }
+              }
             }
           }
         }
@@ -1801,6 +2419,54 @@ function parseWorkoutV2(input: string): Workout {
       }
 
       i++;
+    }
+
+    // Post-processing: convert numbered-instruction batches into structured
+    // pattern arrays. A batch is "valid" when each item's slash-separated
+    // segments sum to the parent rep group's distance (composite structure).
+    for (const ns of namedSets) {
+      for (const rg of ns.repGroups) {
+        const batch = (rg as any).__numberedBatch as
+          | Array<{ num: string; desc: string }>
+          | undefined;
+        if (!batch || batch.length < 2) continue;
+        if (rg.distance === null || rg.distance === undefined) continue;
+        const patternItems: any[] = [];
+        let allValid = true;
+        for (const item of batch) {
+          // Parse each numbered line as a composite sub-rep
+          const parts = item.desc.split("/").map((s) => s.trim());
+          const segDists = parts
+            .map((s) => {
+              const m = s.match(/(\d+)\s*m?\b/);
+              return m ? parseIntSafe(m[1]) : null;
+            })
+            .filter((d): d is number => d !== null);
+          const segSum = segDists.reduce((a, b) => a + b, 0);
+          if (segSum !== rg.distance || segDists.length < 2) {
+            allValid = false;
+            break;
+          }
+          // Build a "simple" pattern item per segment
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const meters = segDists[i];
+            const stroke = parseStroke(part);
+            patternItems.push({
+              type: "simple",
+              meters,
+              stroke,
+              note: part.replace(/\d+\s*m?\b/, "").trim() || undefined,
+            });
+          }
+        }
+        if (allValid && patternItems.length > 0) {
+          rg.pattern = patternItems;
+          rg.patternType = "simple";
+        }
+        // Clean up the temp batch field
+        delete (rg as any).__numberedBatch;
+      }
     }
 
     return {
