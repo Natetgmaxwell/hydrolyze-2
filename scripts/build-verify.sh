@@ -61,7 +61,8 @@ APP_BUNDLE='/Users/nathanmaxwell/Library/Developer/Xcode/DerivedData/Hydrolyze-g
 BUNDLE_ID='com.hydrolyze.mobile'
 
 # SSH alias. macstudio is configured in ~/.ssh/config.
-SSH_HOST='macstudio'
+# Override with SSH_HOST=... for alternate routes (e.g. tailnet IP).
+SSH_HOST="${SSH_HOST:-macstudio}"
 
 # xcodegen absolute path — NOT on non-interactive SSH PATH.
 XCODEGEN='/opt/homebrew/bin/xcodegen'
