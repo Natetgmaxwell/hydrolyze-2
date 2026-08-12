@@ -285,11 +285,14 @@ final class WorkoutService {
             let suit: Bool            // Phase 1 metadata
             let start_type: String    // Phase 1 metadata: derived from dive
             let order_index: Int
+            // V0.35 (2026-08-12): parsed leaf fragments, persisted as JSONB.
+            let fragments: [WorkoutSetFragment]?
 
             enum CodingKeys: String, CodingKey {
                 case workout_id, reps, distance, stroke
                 case interval_text, intensity_type, intensity_label
                 case gear, dive, suit, start_type, order_index
+                case fragments
             }
         }
 
@@ -302,6 +305,27 @@ final class WorkoutService {
                         continue
                     }
                     let dive = group.dive ?? false
+                    // V0.35 (2026-08-12): persist the parser's leaf fragments
+                    // so the on-the-day detail view can render tappable
+                    // fragment rows. Fragments without a deterministic id
+                    // (pre-V0.35 server, on-device parser) are skipped — a
+                    // fragment that can't be keyed by fragment_id is untimeable.
+                    let fragments: [WorkoutSetFragment]? = group.fragments?.enumerated().compactMap { idx, f in
+                        guard let id = f.id, !id.isEmpty else {
+                            print("⚠️ Skipping fragment without id for workout \(workoutId)")
+                            return nil
+                        }
+                        return WorkoutSetFragment(
+                            id: id,
+                            orderIndex: idx,
+                            distanceMeters: f.distance ?? 0,
+                            reps: group.reps ?? 1,
+                            intensity: f.intensity?.label ?? "unknown",
+                            startType: dive ? "dive" : "in_water",
+                            paceTargetSec: Self.paceTargetSeconds(from: group.interval),
+                            confidence: f.confidence
+                        )
+                    }
                     let row = SetRow(
                         workout_id: workoutId,
                         reps: group.reps ?? 1,
@@ -315,7 +339,8 @@ final class WorkoutService {
                         suit: group.suit ?? false,
                         // Derive start_type from dive flag: dive → 'dive', else default 'in_water'
                         start_type: dive ? "dive" : "in_water",
-                        order_index: sortOrder
+                        order_index: sortOrder,
+                        fragments: fragments
                     )
                     sortOrder += 1
                     _ = try await supabase.from("workout_sets")
@@ -324,6 +349,15 @@ final class WorkoutService {
                 }
             }
         }
+    }
+
+    /// V0.35 (2026-08-12): parse a send-off interval ("1:30" → 90) into
+    /// seconds for the fragment's pace_target_sec. nil for open intervals.
+    private static func paceTargetSeconds(from interval: String?) -> Int? {
+        guard let interval = interval else { return nil }
+        let parts = interval.split(separator: ":")
+        guard parts.count == 2, let minutes = Int(parts[0]), let seconds = Int(parts[1]) else { return nil }
+        return minutes * 60 + seconds
     }
 
     /// Replace all sets for a workout — delete then re-insert.

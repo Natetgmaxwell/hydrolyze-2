@@ -59,6 +59,10 @@ struct WorkoutSetFragment: Codable, Identifiable, Sendable, Hashable {
         case id
         case orderIndex = "order_index"
         case distanceMeters = "distance_meters"
-        case reps, intensity, startType, paceTargetSec = "pace_target_sec", confidence
+        case reps, intensity
+        // V0.35 (2026-08-12): snake_case to match the documented JSONB
+        // shape (migration comment) and the parser's start_type key.
+        case startType = "start_type"
+        case paceTargetSec = "pace_target_sec", confidence
     }
 }
