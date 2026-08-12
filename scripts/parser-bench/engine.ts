@@ -84,6 +84,7 @@ type Rep =
 // own distance + intensity so the prediction engine can target it
 // precisely. restAfter (seconds) attaches to the PRECEDING swim segment.
 interface Fragment {
+  id: string; // V0.35 (2026-08-12): stamped deterministically in parseWithFallback
   distance: number;
   stroke: Stroke | null;
   intensity: ParsedIntensity | null;
@@ -119,6 +120,9 @@ interface RepGroup {
   ambiguousTerm: string | null;
   defaultRpe: { low: number; high: number } | null;
   fragments: Fragment[] | null;
+  // V0.35 (2026-08-12): the source line this rep group was parsed from.
+  // Feeds the deterministic fragment-id stamp (sha1(sourceLine:orderIndex)).
+  sourceLine: string;
 }
 
 interface NamedSet {
@@ -1306,6 +1310,7 @@ function parseCompositeFragments(
     }
 
     fragments.push({
+      id: "", // placeholder — stamped in parseWithFallback
       distance: rd.distance,
       stroke,
       intensity,
@@ -1781,6 +1786,7 @@ function parseRepGroup(lineText: string): RepGroup | null {
     patternType: subReps.length > 0 ? (patternType ?? "simple") : null,
     connectors: [],
     fragments,
+    sourceLine: lineText,
   };
 }
 
@@ -2096,6 +2102,7 @@ function parseWorkoutV2(input: string): Workout {
           ambiguousTerm: null,
           defaultRpe: null,
           fragments: null,
+          sourceLine: line.text,
         });
         namedSets.push(namedSet);
         pendingLabel = null;

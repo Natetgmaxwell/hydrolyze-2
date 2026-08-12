@@ -72,6 +72,7 @@ type Rep =
 // inside a parenthesized composite rep like:
 //   4 x (75 at race rhythm / :15 Rest / 25 maximal finish)
 interface Fragment {
+  id: string; // V0.35 (2026-08-12): stamped deterministically in parseWithFallback
   distance: number;
   stroke: Stroke | null;
   intensity: ParsedIntensity | null;
@@ -107,6 +108,9 @@ interface RepGroup {
   ambiguousTerm: string | null;
   defaultRpe: { low: number; high: number } | null;
   fragments: Fragment[] | null;
+  // V0.35 (2026-08-12): the source line this rep group was parsed from.
+  // Feeds the deterministic fragment-id stamp (sha1(sourceLine:orderIndex)).
+  sourceLine: string;
 }
 
 interface NamedSet {
@@ -1246,6 +1250,7 @@ function parseCompositeFragments(
     }
 
     fragments.push({
+      id: "", // placeholder — stamped in parseWithFallback
       distance: rd.distance,
       stroke,
       intensity,
@@ -1699,6 +1704,7 @@ function parseRepGroup(lineText: string): RepGroup | null {
     patternType: subReps.length > 0 ? (patternType ?? "simple") : null,
     connectors: [],
     fragments,
+    sourceLine: lineText,
   };
 }
 
@@ -1994,6 +2000,7 @@ function parseWorkoutV2(input: string): Workout {
           ambiguousTerm: null,
           defaultRpe: null,
           fragments: null,
+          sourceLine: line.text,
         });
         namedSets.push(namedSet);
         pendingLabel = null;
@@ -2422,6 +2429,68 @@ function parseWorkoutV2(input: string): Workout {
 
 // ─── Handler ───────────────────────────────────────────────────────────────────
 
+// V0.35 (2026-08-12): deterministic fragment ids. Runs on the final
+// tree so BOTH paths (regex parseCompositeFragments and LLM-validated
+// output) get stamped. id = "frag-" + sha1(sourceLine + ":" + orderIndex)
+// truncated to 12 hex chars. Re-parsing unchanged text yields identical
+// ids — replaceSetsForWorkout deletes + re-inserts sets, so previously
+// recorded times keyed by fragment_id survive a re-save.
+function stampFragmentIds(workout: Workout): Workout {
+  for (const section of workout.sections) {
+    for (const ns of section.namedSets) {
+      for (const rg of ns.repGroups) {
+        if (!rg.fragments || rg.fragments.length === 0) continue;
+        const sourceLine = rg.sourceLine ?? "";
+        // Array index = fragment order within the group (regex fragments
+        // carry `order` == index; LLM fragments have no order field, so
+        // the index is the only stable ordering both paths share).
+        for (let i = 0; i < rg.fragments.length; i++) {
+          rg.fragments[i].id = "frag-" + sha1Hex(sourceLine + ":" + i).slice(0, 12);
+        }
+      }
+    }
+  }
+  return workout;
+}
+
+// Synchronous SHA-1 (pure TS) — deterministic across Deno (edge function)
+// and Node (bench harness). crypto.subtle.digest is async-only in both,
+// so a sync implementation keeps the stamp pass trivial.
+function sha1Hex(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  const ml = bytes.length * 8;
+  const padded = new Uint8Array((((bytes.length + 8) >> 6) + 1) * 64);
+  padded.set(bytes);
+  padded[bytes.length] = 0x80;
+  const dv = new DataView(padded.buffer);
+  dv.setUint32(padded.length - 4, ml >>> 0);
+  dv.setUint32(padded.length - 8, Math.floor(ml / 0x100000000));
+
+  let h0 = 0x67452301, h1 = 0xefcdab89, h2 = 0x98badcfe, h3 = 0x10325476, h4 = 0xc3d2e1f0;
+  const w = new Uint32Array(80);
+  for (let i = 0; i < padded.length; i += 64) {
+    for (let j = 0; j < 16; j++) w[j] = dv.getUint32(i + j * 4);
+    for (let j = 16; j < 80; j++) {
+      const n = w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16];
+      w[j] = (n << 1) | (n >>> 31);
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4;
+    for (let j = 0; j < 80; j++) {
+      let f: number, k: number;
+      if (j < 20) { f = (b & c) | (~b & d); k = 0x5a827999; }
+      else if (j < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
+      else if (j < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
+      else { f = b ^ c ^ d; k = 0xca62c1d6; }
+      const temp = (((a << 5) | (a >>> 27)) + f + e + k + w[j]) >>> 0;
+      e = d; d = c; c = (b << 30) | (b >>> 2); b = a; a = temp;
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0;
+    h3 = (h3 + d) >>> 0; h4 = (h4 + e) >>> 0;
+  }
+  const hex = (n: number) => n.toString(16).padStart(8, "0");
+  return hex(h0) + hex(h1) + hex(h2) + hex(h3) + hex(h4);
+}
+
 // ponytail: LLM-first, regex-fallback. Cost on the LLM path is ~1.5-3s
 // for gpt-oss-20b warm. Cost on the fallback path is the existing ~50ms
 // parseWorkoutV2. We always check the LLM result for a non-empty tree
@@ -2436,12 +2505,12 @@ async function parseWithFallback(workoutText: string): Promise<Workout> {
       (acc, s) => acc + s.namedSets.reduce((a, ns) => a + ns.repGroups.length, 0),
       0
     );
-    if (totalRgs > 0) return llmResult;
+    if (totalRgs > 0) return stampFragmentIds(llmResult);
     console.error(`[parse] LLM returned 0 repGroups, falling back to regex`);
   } catch (err) {
     console.error(`[parse] LLM failed, falling back to regex:`, err instanceof Error ? err.message : err);
   }
-  return parseWorkoutV2(workoutText);
+  return stampFragmentIds(parseWorkoutV2(workoutText));
 }
 
 serve(async (req) => {

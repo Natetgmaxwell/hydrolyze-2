@@ -19,6 +19,7 @@ const GROQ_MODEL = Deno.env.get("GROQ_MODEL") || "openai/gpt-oss-20b";
 // ─── Types (output shape matches parseWorkoutV2's Workout) ─────────────────
 
 interface LLMFragment {
+  id: string | null; // V0.35 (2026-08-12): stamped deterministically post-validation
   distance: number | null;
   stroke: string | null;
   instruction: string | null;
@@ -447,6 +448,7 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
         // (stroke/instruction) as a fallback — pairing keys on this.
         fragments: (rg.fragments || []).map((f) => ({
           ...f,
+          id: f.id ?? null,
           intensity: f.intensity ?? parseIntensity([f.stroke, f.instruction].filter(Boolean).join(" "))
         })),
         sourceLine: rg.sourceLine
