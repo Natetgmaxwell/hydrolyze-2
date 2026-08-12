@@ -232,33 +232,43 @@ struct WorkoutDetailView: View {
         .onAppear { animateIn = true }
     }
 
-    // Per-set start buttons — inline in the sets list
+    // Per-set start buttons — inline in the sets list.
+    // V0.35 (2026-08-12): sets with parsed fragments render as tappable
+    // fragment rows in WorkoutPreview above — the per-set row below is
+    // redundant for them (and whole-set timing is wrong for composites).
+    // Show rows only for sets WITHOUT fragments: simple sets (e.g.
+    // "8 x 50 free on 1:00") have no fragment CTAs, so this row is their
+    // only timing entry point.
+    @ViewBuilder
     private var setsList: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("SETS")
-                .font(.eyebrow)
-                .foregroundColor(Color.textFaint)
-                .tracking(1.5)
-                .padding(.horizontal, 16)
+        let fragmentlessSets = viewModel.sets.filter { ($0.fragments ?? []).isEmpty }
+        if !fragmentlessSets.isEmpty || viewModel.sets.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SETS")
+                    .font(.eyebrow)
+                    .foregroundColor(Color.textFaint)
+                    .tracking(1.5)
+                    .padding(.horizontal, 16)
 
-            if viewModel.sets.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "list.bullet.rectangle.portrait")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("No sets in this workout")
-                        .font(.headline)
-                    Text("Open in the workout builder to add sets.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                if viewModel.sets.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "list.bullet.rectangle.portrait")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text("No sets in this workout")
+                            .font(.headline)
+                        Text("Open in the workout builder to add sets.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 32)
-            }
 
-            ForEach(viewModel.sets) { set in
-                setRow(set)
+                ForEach(fragmentlessSets) { set in
+                    setRow(set)
+                }
             }
         }
     }
