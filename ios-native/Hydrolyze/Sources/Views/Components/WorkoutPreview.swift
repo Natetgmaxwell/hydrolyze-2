@@ -121,51 +121,58 @@ private struct RepGroupRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 2) {
-                Text(spineText)
-                    .font(.numeric)
-                    .foregroundColor(Color.textPrimary)
+            // V0.35 (2026-08-12): when the parser emitted fragments, the
+            // flat "4×100m Free" spine is redundant (and misleading — the
+            // set is really 4 reps of 75 fast / 25 easy). The fragment
+            // rows below carry the full picture; the spine only renders
+            // for fragment-less sets.
+            if !hasFragments {
+                HStack(spacing: 2) {
+                    Text(spineText)
+                        .font(.numeric)
+                        .foregroundColor(Color.textPrimary)
 
-                if let stroke = rg.stroke {
-                    Text(stroke)
-                        .font(.body)
-                        .foregroundColor(Color.accentCyan)
-                }
+                    if let stroke = rg.stroke {
+                        Text(stroke)
+                            .font(.body)
+                            .foregroundColor(Color.accentCyan)
+                    }
 
-                if let intensity = rg.intensity {
-                    Text(" @ \(fmtIntensity(intensity))")
-                        .font(.caption)
-                        .foregroundColor(Color.accentAmber)
-                }
+                    if let intensity = rg.intensity {
+                        Text(" @ \(fmtIntensity(intensity))")
+                            .font(.caption)
+                            .foregroundColor(Color.accentAmber)
+                    }
 
-                if let interval = rg.interval {
-                    Text(" on \(interval)")
-                        .font(.captionStrong)
-                        .foregroundColor(Color.textMuted)
-                }
+                    if let interval = rg.interval {
+                        Text(" on \(interval)")
+                            .font(.captionStrong)
+                            .foregroundColor(Color.textMuted)
+                    }
 
-                if let note = rg.note {
-                    Text("(\(note))")
-                        .font(.caption)
-                        .italic()
-                        .foregroundColor(Color.textFaint)
-                }
+                    if let note = rg.note {
+                        Text("(\(note))")
+                            .font(.caption)
+                            .italic()
+                            .foregroundColor(Color.textFaint)
+                    }
 
-                ForEach(rg.gear ?? [], id: \.self) { gear in
-                    GearBadge(gear: gear, optional: rg.gearOptional ?? false)
-                }
+                    ForEach(rg.gear ?? [], id: \.self) { gear in
+                        GearBadge(gear: gear, optional: rg.gearOptional ?? false)
+                    }
 
-                if rg.dive == true {
-                    MetadataBadge(text: "DIVE", color: Color.accentAmber)
-                }
-                if rg.suit == true {
-                    MetadataBadge(text: "SUIT", color: Color.accentCyan)
-                }
+                    if rg.dive == true {
+                        MetadataBadge(text: "DIVE", color: Color.accentAmber)
+                    }
+                    if rg.suit == true {
+                        MetadataBadge(text: "SUIT", color: Color.accentCyan)
+                    }
 
-                // RPE flywheel: if the parser detected an ambiguous intensity term,
-                // show a tappable RPE prompt badge so the coach can assign a mapping.
-                if let term = rg.ambiguousTerm {
-                    RPEPromptBadge(term: term)
+                    // RPE flywheel: if the parser detected an ambiguous intensity term,
+                    // show a tappable RPE prompt badge so the coach can assign a mapping.
+                    if let term = rg.ambiguousTerm {
+                        RPEPromptBadge(term: term)
+                    }
                 }
             }
 
@@ -189,45 +196,35 @@ private struct RepGroupRowView: View {
             // live stopwatch pre-filled with the fragment's metadata. When
             // onFragmentTap is nil (read-only contexts), the static label
             // remains so the existing UI is unchanged.
+            //
+            // V0.35 (2026-08-12): the builder preview now renders the same
+            // fragment rows as the detail view (static, no play icon) so the
+            // coach sees the fragments while editing — not a flat spine.
             if let fragments = rg.fragments, !fragments.isEmpty {
-                if let onFragmentTap {
-                    // t_d6ca4fa1 (2026-08-05): group the fragments under a
-                    // single "×N" rep-card so the coach reads "4 reps of
-                    // (75 fast · 25 easy)" rather than 8 separate rows each
-                    // labelled "4×". The PairRepGroupRow renders the reps
-                    // prefix once on the header; FragmentCTARow's own prefix
-                    // is suppressed when nested so the coach doesn't see
-                    // "4× 4× 75m fast" — the reps count appears once.
-                    // Single-fragment rep groups (no pair structure) fall
-                    // through to the flat row so the per-fragment CTA stays
-                    // a one-tap surface.
-                    if fragments.count > 1 {
-                        PairRepGroupRow(
-                            fragments: fragments,
+                if fragments.count > 1 {
+                    PairRepGroupRow(
+                        fragments: fragments,
+                        reps: rg.reps,
+                        paceTargetText: rg.interval,
+                        recordedTimesByFragmentId: recordedTimesByFragmentId,
+                        onFragmentTap: onFragmentTap.map { handler in
+                            { fIdx, f in
+                                handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
+                            }
+                        }
+                    )
+                } else {
+                    ForEach(Array(fragments.enumerated()), id: \.offset) { fIdx, f in
+                        FragmentCTARow(
+                            fragment: f,
                             reps: rg.reps,
                             paceTargetText: rg.interval,
-                            recordedTimesByFragmentId: recordedTimesByFragmentId,
-                            onFragmentTap: { fIdx, f in
-                                onFragmentTap(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
+                            recordedMs: recordedMsForFragment(f, in: recordedTimesByFragmentId),
+                            onTap: onFragmentTap.map { handler in
+                                { handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f) }
                             }
                         )
-                    } else {
-                        ForEach(Array(fragments.enumerated()), id: \.offset) { fIdx, f in
-                            FragmentCTARow(
-                                fragment: f,
-                                reps: rg.reps,
-                                paceTargetText: rg.interval,
-                                recordedMs: recordedMsForFragment(f, in: recordedTimesByFragmentId),
-                                onTap: { onFragmentTap(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f) }
-                            )
-                        }
                     }
-                } else if let fragmentsLine = fragmentsLine {
-                    Text(fragmentsLine)
-                        .font(.caption)
-                        .foregroundColor(Color.textMuted)
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -275,6 +272,14 @@ private struct RepGroupRowView: View {
         }
     }
 
+    // V0.35 (2026-08-12): true when the parser emitted fragments for this
+    // rep group. When true, the flat spine is hidden and the fragment rows
+    // carry the display (they're the addressable timed units).
+    private var hasFragments: Bool {
+        guard let fragments = rg.fragments else { return false }
+        return !fragments.isEmpty
+    }
+
     private var spineText: String {
         let raw: String
         if let reps = rg.reps, let distance = rg.distance {
@@ -309,22 +314,6 @@ private struct RepGroupRowView: View {
             }
             return d
         }
-    }
-
-    // ponytail (2026-08-01, LLM swap): render the LLM's composite-set
-    // fragments as a single inline string. Format each fragment as
-    // "<distance> <stroke-or-instruction>", join with " · ". Skips
-    // fragments with no distance and no stroke (effectively empty).
-    private var fragmentsLine: String? {
-        guard let fragments = rg.fragments, !fragments.isEmpty else { return nil }
-        let parts: [String] = fragments.compactMap { f in
-            let pieces = [f.distance.map { "\($0)m" }, f.stroke, f.instruction]
-                .compactMap { $0 }
-                .filter { !$0.isEmpty }
-            return pieces.isEmpty ? nil : pieces.joined(separator: " ")
-        }
-        guard !parts.isEmpty else { return nil }
-        return "— " + parts.joined(separator: " · ")
     }
 
     // Expand a 2-4 letter pattern rotation into readable stroke names.
@@ -944,96 +933,105 @@ private struct FragmentCTARow: View {
     let reps: Int?
     let paceTargetText: String?
     let recordedMs: Int?
-    let onTap: () -> Void
+    // V0.35 (2026-08-12): nil = static row (builder preview). Renders
+    // the same fragment metadata but is not tappable and shows no play
+    // icon — the detail view owns timing.
+    let onTap: (() -> Void)?
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 8) {
-                Rectangle()
-                    .fill(Color.accentCyan)
-                    .frame(width: 2)
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        if let reps = reps, reps > 1 {
-                            Text("\(reps)×")
-                                .font(.numeric)
-                                .foregroundColor(Color.textMuted)
-                        }
-                        if let d = fragment.distance {
-                            Text("\(d)m")
-                                .font(.numeric)
-                                .foregroundColor(Color.textPrimary)
-                        }
-                        if let stroke = fragment.stroke, !stroke.isEmpty {
-                            Text(stroke)
-                                .font(.body)
-                                .foregroundColor(Color.accentCyan)
-                        }
-                        if let label = fragment.intensity?.label, !label.isEmpty {
-                            Text("@ \(label)")
-                                .font(.caption)
-                                .foregroundColor(Color.accentAmber)
-                        } else if let desc = fragment.descriptor, !desc.isEmpty {
-                            Text(desc)
-                                .font(.caption)
-                                .foregroundColor(Color.textFaint)
-                        } else if let instr = fragment.instruction, !instr.isEmpty {
-                            Text(instr)
-                                .font(.caption)
-                                .foregroundColor(Color.textFaint)
-                        }
+        let content = HStack(spacing: 8) {
+            Rectangle()
+                .fill(Color.accentCyan)
+                .frame(width: 2)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    if let reps = reps, reps > 1 {
+                        Text("\(reps)×")
+                            .font(.numeric)
+                            .foregroundColor(Color.textMuted)
                     }
-                    HStack(spacing: 6) {
-                        if let start = fragment.startType, !start.isEmpty {
-                            MetadataBadge(text: start.uppercased(), color: Color.textMuted)
-                        }
-                        if let pace = paceTargetText, !pace.isEmpty {
-                            // Pace target = the rep group's interval
-                            // (send-off or "1:30"). Surfaced as a
-                            // cyan badge so it reads as a target, not
-                            // a constraint.
-                            MetadataBadge(text: "@ \(pace)", color: Color.accentCyan)
-                        }
-                        if fragment.suit == true {
-                            MetadataBadge(text: "SUIT", color: Color.accentCyan)
-                        }
-                        ForEach(fragment.gear ?? [], id: \.self) { gear in
-                            GearBadge(gear: gear, optional: false)
-                        }
-                        if let conf = fragment.confidence, conf < 1.0 {
-                            // Confidence < 1.0 = LLM fallback path.
-                            // The badge reads "AI 0.83" — short enough
-                            // to fit on a row, distinct from the cyan
-                            // pace badge, and the % gives the coach a
-                            // gut check on how much to trust the parse.
-                            ConfidenceBadge(confidence: conf)
-                        }
+                    if let d = fragment.distance {
+                        Text("\(d)m")
+                            .font(.numeric)
+                            .foregroundColor(Color.textPrimary)
                     }
-                    if let ms = recordedMs {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption)
-                                .foregroundColor(Color.statusSuccess)
-                            Text("Saved \(formatStopwatchTime(ms))")
-                                .font(.captionStrong)
-                                .foregroundColor(Color.statusSuccess)
-                        }
+                    if let stroke = fragment.stroke, !stroke.isEmpty {
+                        Text(stroke)
+                            .font(.body)
+                            .foregroundColor(Color.accentCyan)
+                    }
+                    if let label = fragment.intensity?.label, !label.isEmpty {
+                        Text("@ \(label)")
+                            .font(.caption)
+                            .foregroundColor(Color.accentAmber)
+                    } else if let desc = fragment.descriptor, !desc.isEmpty {
+                        Text(desc)
+                            .font(.caption)
+                            .foregroundColor(Color.textFaint)
+                    } else if let instr = fragment.instruction, !instr.isEmpty {
+                        Text(instr)
+                            .font(.caption)
+                            .foregroundColor(Color.textFaint)
                     }
                 }
-                Spacer()
-                // t_d59998d9 (2026-08-05): if a recording exists, swap
-                // the play icon for a dim re-tap icon so the row still
-                // reads as actionable ("tap to retime"). The Saved
-                // check above carries the affirmative state.
+                HStack(spacing: 6) {
+                    if let start = fragment.startType, !start.isEmpty {
+                        MetadataBadge(text: start.uppercased(), color: Color.textMuted)
+                    }
+                    if let pace = paceTargetText, !pace.isEmpty {
+                        // Pace target = the rep group's interval
+                        // (send-off or "1:30"). Surfaced as a
+                        // cyan badge so it reads as a target, not
+                        // a constraint.
+                        MetadataBadge(text: "@ \(pace)", color: Color.accentCyan)
+                    }
+                    if fragment.suit == true {
+                        MetadataBadge(text: "SUIT", color: Color.accentCyan)
+                    }
+                    ForEach(fragment.gear ?? [], id: \.self) { gear in
+                        GearBadge(gear: gear, optional: false)
+                    }
+                    if let conf = fragment.confidence, conf < 1.0 {
+                        // Confidence < 1.0 = LLM fallback path.
+                        // The badge reads "AI 0.83" — short enough
+                        // to fit on a row, distinct from the cyan
+                        // pace badge, and the % gives the coach a
+                        // gut check on how much to trust the parse.
+                        ConfidenceBadge(confidence: conf)
+                    }
+                }
+                if let ms = recordedMs {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundColor(Color.statusSuccess)
+                        Text("Saved \(formatStopwatchTime(ms))")
+                            .font(.captionStrong)
+                            .foregroundColor(Color.statusSuccess)
+                    }
+                }
+            }
+            Spacer()
+            // t_d59998d9 (2026-08-05): if a recording exists, swap
+            // the play icon for a dim re-tap icon so the row still
+            // reads as actionable ("tap to retime"). The Saved
+            // check above carries the affirmative state.
+            if onTap != nil {
                 Image(systemName: recordedMs != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
                     .foregroundColor(recordedMs != nil ? Color.textMuted : Color.accentCyan)
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
-            .background(Color.bgBase.opacity(0.4))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(Color.bgBase.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+
+        if let onTap {
+            Button(action: onTap) { content }
+                .buttonStyle(.plain)
+        } else {
+            content
+        }
     }
 }
 
@@ -1065,7 +1063,8 @@ private struct PairRepGroupRow: View {
     let reps: Int?
     let paceTargetText: String?
     let recordedTimesByFragmentId: [String: Int]?
-    let onFragmentTap: (Int, ParsedFragment) -> Void
+    // V0.35 (2026-08-12): nil = static rows (builder preview).
+    let onFragmentTap: ((Int, ParsedFragment) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1106,7 +1105,9 @@ private struct PairRepGroupRow: View {
                     reps: nil,
                     paceTargetText: paceTargetText,
                     recordedMs: recordedMsForFragment(f, in: recordedTimesByFragmentId),
-                    onTap: { onFragmentTap(fIdx, f) }
+                    onTap: onFragmentTap.map { handler in
+                        { handler(fIdx, f) }
+                    }
                 )
             }
         }
