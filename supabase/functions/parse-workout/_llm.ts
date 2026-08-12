@@ -90,11 +90,26 @@ const WORKOUT_SCHEMA = {
             items: {
               type: "object",
               properties: {
-                reps: { type: ["integer", "null"], description: "Number of repetitions. 8 for '8 x 100'. 1 for single swims." },
-                distance: { type: ["integer", "null"], description: "Distance in meters per rep. 100 for '8 x 100'." },
-                stroke: { type: ["string", "null"], description: "Primary stroke as written: 'free', 'back', 'breast', 'fly', 'IM', 'kick', 'drill', 'choice', 'pull'. First mentioned if multiple. Null if unspecified." },
-                interval: { type: ["string", "null"], description: "Interval exactly as written: '1.50', '1:30', ':40', '@ 30'. Include the @ if present." },
-                note: { type: ["string", "null"], description: "Instructions, descriptions, or notes attached to this set. Include technique focus, breathing patterns, rep-range instructions." },
+                reps: {
+                  type: ["integer", "null"],
+                  description: "Number of repetitions. E.g. 8 for '8 x 100'. 1 for single swims."
+                },
+                distance: {
+                  type: ["integer", "null"],
+                  description: "Distance in meters per rep. E.g. 100 for '8 x 100'."
+                },
+                stroke: {
+                  type: ["string", "null"],
+                  description: "Primary stroke as the coach wrote it: 'free', 'back', 'breast', 'fly', 'IM', 'kick', 'drill', 'choice', 'pull'. If multiple strokes (e.g. 'fly back or free'), use the first mentioned. Null if no stroke specified."
+                },
+                interval: {
+                  type: ["string", "null"],
+                  description: "Interval exactly as written: '1.50', '1:30', ':40', '@ 30'. Include the @ if present in source."
+                },
+                note: {
+                  type: ["string", "null"],
+                  description: "Instructions, descriptions, or notes attached to this set. Include technique focus, breathing patterns, rep-range instructions (e.g. '1-2 = 2 uw kicks + 2 fast arms')."
+                },
                 fragments: {
                   type: "array",
                   description: "Sub-segments for composite sets. '4 x (75 fast / 25 easy)' → fragments [{distance:75, stroke:null, intensity:{type:'sprint',label:'fast'}}, {distance:25, stroke:null, intensity:{type:'easy',label:'easy'}}]. 'Each 100: 25 Drill/25 Build/25 Race Skill/25 Easy' → 4 fragments. Empty array for simple sets.",
@@ -119,7 +134,10 @@ const WORKOUT_SCHEMA = {
                     additionalProperties: false
                   }
                 },
-                sourceLine: { type: "string", description: "The source text line(s) this repGroup was extracted from." }
+                sourceLine: {
+                  type: "string",
+                  description: "The source text line(s) this repGroup was extracted from, for traceability."
+                }
               },
               required: ["reps", "distance", "stroke", "interval", "note", "fragments", "sourceLine"],
               additionalProperties: false
@@ -135,93 +153,35 @@ const WORKOUT_SCHEMA = {
   additionalProperties: false
 } as const;
 
-// ─── Few-shot examples (5, ordered hardest-first) ─────────────────────────
+// ─── Few-shot examples (2, highest-value; trimmed 2026-08-12 to fit
+// Groq free-tier 8K TPM — input+output must stay under the cap) ──
 
 const FEW_SHOT_EXAMPLES = [
   {
-    input: `400 kick for body/head position 100 free 100 back - floppy feet
+    input: `Speed preparation — 400m
 
-3 x 300 FBBF (free,back,breast, free) @ 4:30
-3 x 300 free @ 4.30 as 1.fists/swim, 2. catch up/swim 3. swim
-3 x 200 FBF @ 2:50 by
-3 x 200 free @ 2:50 same as above`,
+2 rounds:
+
+• 1 × 25m acceleration to 15m, easy to wall @ :50
+
+• 1 × 25m build into a fast finish @ :50
+
+• 1 × 50m as 25m smooth + 25m fast @ 1:10
+
+• 100m easy @ 2:00
+
+Take one additional minute between rounds.`,
     output: {
       sections: [{
-        title: null,
+        title: "Speed preparation — 400m (2 rounds)",
         repGroups: [
-          { reps: 1, distance: 400, stroke: "kick", interval: null, note: "for body/head position - floppy feet", fragments: [], sourceLine: "400 kick for body/head position" },
-          { reps: 1, distance: 100, stroke: "free", interval: null, note: null, fragments: [], sourceLine: "100 free" },
-          { reps: 1, distance: 100, stroke: "back", interval: null, note: null, fragments: [], sourceLine: "100 back" },
-          { reps: 3, distance: 300, stroke: "free", interval: "4:30", note: "FBBF pattern (free, back, breast, free)", fragments: [], sourceLine: "3 x 300 FBBF (free,back,breast, free) @ 4:30" },
-          { reps: 3, distance: 300, stroke: "free", interval: "4:30", note: "as 1.fists/swim, 2. catch up/swim, 3. swim", fragments: [], sourceLine: "3 x 300 free @ 4.30 as 1.fists/swim, 2. catch up/swim 3. swim" },
-          { reps: 3, distance: 200, stroke: "free", interval: "2:50", note: "FBF pattern (free, back, free)", fragments: [], sourceLine: "3 x 200 FBF @ 2:50 by" },
-          { reps: 3, distance: 200, stroke: "free", interval: "2:50", note: "same as above (FBF pattern inherited)", fragments: [], sourceLine: "3 x 200 free @ 2:50 same as above" }
-        ]
-      }]
-    }
-  },
-  {
-    input: `3 x 100 free @ 1:30 descend 1-4
-4 x 50 kick with fins @ 1:10`,
-    output: {
-      sections: [{
-        title: null,
-        repGroups: [
-          { reps: 3, distance: 100, stroke: "free", interval: "1:30", note: "descend 1-4", fragments: [], sourceLine: "3 x 100 free @ 1:30 descend 1-4" },
-          { reps: 4, distance: 50, stroke: "kick", interval: "1:10", note: null, fragments: [], sourceLine: "4 x 50 kick with fins @ 1:10" }
-        ]
-      }]
-    }
-  },
-  {
-    input: `8 x 100 @ 2:00
-Each 100:
-25 Drill/25 Build/25 Race Skill/25 Easy - race skill = breakout timing, breathing pattern`,
-    output: {
-      sections: [{
-        title: null,
-        repGroups: [{
-          reps: 8, distance: 100, stroke: null, interval: "2:00",
-          note: "race skill = breakout timing, breathing pattern",
-          fragments: [
-            { distance: 25, stroke: "drill", instruction: null, intensity: null },
-            { distance: 25, stroke: "build", instruction: null, intensity: { type: "build", label: "build" } },
-            { distance: 25, stroke: "race skill", instruction: null, intensity: null },
-            { distance: 25, stroke: "easy", instruction: null, intensity: { type: "easy", label: "easy" } }
-          ],
-          sourceLine: "8 x 100 @ 2:00 / Each 100: 25 Drill/25 Build/25 Race Skill/25 Easy"
-        }]
-      }]
-    }
-  },
-  {
-    input: `Warm up
-8 x 100 :20
-1. 50 free breathe 3 / 50 free catch up drill
-2. 50 free breathe 5 / 50 Breast 3 kick + 1 pull`,
-    output: {
-      sections: [{
-        title: "Warm up",
-        repGroups: [{
-          reps: 8, distance: 100, stroke: null, interval: "0:20",
-          note: "Each 100 is two 50s: (1) 50 free breathe 3 / 50 free catch up drill; (2) 50 free breathe 5 / 50 Breast 3 kick + 1 pull",
-          fragments: [],
-          sourceLine: "8 x 100 :20 / numbered sub-items 1-4 describe the content of each 100"
-        }]
-      }]
-    }
-  },
-  {
-    input: `4 x 25 uw kick to 10m @30
-3 x 25 " kick to 12.5m
-2 x uw " kick to 15m`,
-    output: {
-      sections: [{
-        title: null,
-        repGroups: [
-          { reps: 4, distance: 25, stroke: "kick", interval: "0:30", note: "uw kick to 10m", fragments: [], sourceLine: "4 x 25 uw kick to 10m @30" },
-          { reps: 3, distance: 25, stroke: "kick", interval: null, note: 'uw kick to 12.5m (ditto " = same as above)', fragments: [], sourceLine: '3 x 25 " kick to 12.5m' },
-          { reps: 2, distance: 25, stroke: "kick", interval: null, note: "uw kick to 15m (inherits 25m, ditto stroke)", fragments: [], sourceLine: '2 x uw " kick to 15m' }
+          { reps: 1, distance: 25, stroke: null, interval: "0:50", note: "acceleration to 15m, easy to wall", fragments: [], sourceLine: "1 × 25m acceleration to 15m, easy to wall @ :50" },
+          { reps: 1, distance: 25, stroke: null, interval: "0:50", note: "build into a fast finish", fragments: [], sourceLine: "1 × 25m build into a fast finish @ :50" },
+          { reps: 1, distance: 50, stroke: null, interval: "1:10", note: "as 25m smooth + 25m fast", fragments: [
+            { distance: 25, stroke: null, instruction: "smooth", intensity: { type: "aerobic", label: "smooth" } },
+            { distance: 25, stroke: null, instruction: "fast", intensity: { type: "sprint", label: "fast" } }
+          ], sourceLine: "1 × 50m as 25m smooth + 25m fast @ 1:10" },
+          { reps: 1, distance: 100, stroke: null, interval: "2:00", note: "easy — Section notes: Take one additional minute between rounds", fragments: [], sourceLine: "100m easy @ 2:00" }
         ]
       }]
     }
@@ -244,43 +204,36 @@ Each 100:
   }
 ];
 
-// ─── System prompt (12 rules) ──────────────────────────────────────────────
+// ─── System prompt (coach's grammar) ───────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw coach-written workout text into structured JSON.
+const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw coach-written workout text into structured JSON. Coaches write in a compact grammar — understand the structure and intent, don't just match numbers.
 
 ## Critical rules
 
-1. **Hierarchy**: Numbered sub-items (1. 2. 3.) that follow a set like "8 x 100" DESCRIBE the content of each rep — they are NOT standalone sets. Attach as notes or fragments to the parent set.
-
-2. **Time-based sets**: "Free - 8:00 kick on side" means freestyle, kicking on side, for 8 minutes. Valid set with distance=null. The "8:00" is a DURATION not an interval.
-
-3. **Per-rep-range instructions**: "1-2 = 2 uw kicks + 2 fast arms" after a set like "10 x 25 @ 30" describes specific reps within that set. Attach to the parent set's note.
-
-4. **Implicit inheritance (ditto)**: A quote mark (") means "same as above." "3 x 25 \\" kick to 12.5m" inherits the stroke from above. "2 x uw \\" kick to 15m" inherits both distance (25) and stroke. Resolve these — do not pass the literal quote through.
-
-5. **Round multipliers**: "twice through" or "2 x through" means repeat the preceding block. Do NOT create a set from it.
-
+1. **Hierarchy**: Numbered sub-items (1. 2. 3.) that follow a set DESCRIBE the content of each rep — they are NOT standalone sets. Attach as notes or fragments to the parent set. Exception: numbered lists under a header like "Round emphasis" are section notes, not sets.
+2. **Time-based sets**: "Free - 8:00 kick on side" = freestyle kicking for 8 minutes. distance=null, the time is a DURATION.
+3. **Per-rep-range instructions**: "1-2 = 2 uw kicks + 2 fast arms" after "10 x 25 @ 30" describes specific reps. Attach to the parent set's note.
+4. **Implicit inheritance (ditto)**: A quote mark (") means "same as above." Resolve it — do not pass the literal quote through.
+5. **Round multipliers**: "twice through" / "2 x through" AFTER a block means repeat the block. "N rounds:" BEFORE a block means the block runs N times. Neither creates a set, neither multiplies reps.
 6. **Composite sets / fragments**:
-   - Inline parens: "4 x (75 fast / 25 easy)" → 1 repGroup with reps=4, distance=100, fragments=[{distance:75, stroke:null, intensity:{type:"sprint",label:"fast"}}, {distance:25, stroke:null, intensity:{type:"easy",label:"easy"}}]
+   - Inline parens: "4 x (75 fast / 25 easy)" → 1 repGroup, reps=4, distance=100, fragments=[{distance:75, stroke:null, intensity:{type:"sprint",label:"fast"}}, {distance:25, stroke:null, intensity:{type:"easy",label:"easy"}}]
    - "Each N: 25 Drill/25 Build/..." → fragments on the parent repGroup
+   - "as X + Y" / "X into Y" / "X to Y" within a set → fragments for each segment
+   - "stroke1/stroke2 by 25m" → fragments alternating strokes
    - Sub-segments sum to the parent's distance.
-   - **Fragment intensity is CRITICAL**: each fragment carries its own intensity {type,label}. Map the coach's word to a type: fast/sprint/all-out/max → sprint; easy/recovery/warm-up → easy; moderate/steady/cruise/aerobic → aerobic; tempo/threshold → threshold; race pace/race rhythm/r.p. → race_pace; descend → descend; build → build. label is the coach's exact word lowercased ("fast", "maximal finish", "race rhythm"). Pure intensity words ("fast", "easy") go in intensity — NOT in stroke. Stroke stays null unless a real stroke is stated.
-
-7. **Strokes**: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater kick. "scull" = drill. If multiple (e.g. "fly back or free"), use the first mentioned.
-
+   - **Fragment intensity is CRITICAL**: each fragment carries its own intensity {type,label}. Map the coach's word: fast/sprint/all-out/max → sprint; easy/recovery/warm-up → easy; moderate/steady/cruise/smooth/aerobic → aerobic; tempo/threshold → threshold; race pace/race rhythm/r.p. → race_pace; descend → descend; build/acceleration → build. label is the coach's exact word lowercased ("fast", "maximal finish", "race rhythm"). Pure intensity words ("fast", "easy") go in intensity — NOT in stroke. Stroke stays null unless a real stroke is stated.
+7. **Strokes**: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater kick. "scull" = drill. "drill/swim", "kick/swim", "scull/swim" = combo sets — stroke is the first (drill/kick/scull), the combo goes in the note. If multiple strokes, use the first mentioned.
 8. **Intervals**: Pass through exactly as written ("1.50", "1:30", ":40", "@ 30"). The validator normalizes.
-
 9. **Single swims**: "400 free" with no "x" is reps=1.
-
-10. **Section headers**: "Warm up", "Main Set", "Cool down" start new sections. Everything before the first header goes in a section with title=null.
-
-11. **Pattern shorthand (FBBF, FBF)**: F=Free, B=Back, K=Breast, R=Fly, I=IM, M=Medley. Set stroke to the FIRST letter (F=Free), put the pattern in the note. "same as above" / "same" inherits the pattern.
-
+10. **Section headers**: "Warm up", "Main Set", "Cool down" start new sections. Keep the full header as the title, including any em-dash distance ("Main set — 1,400m"). Append "(N rounds)" when the section has a round block.
+11. **Pattern shorthand (FBBF, FBF)**: F=Free, B=Back, K=Breast, R=Fly, I=IM, M=Medley. Set stroke to the FIRST letter, put the pattern in the note. "same as above" / "same" inherits the pattern.
 12. **Multi-swim lines**: A single line may contain multiple separate swims, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split on distance boundaries.
+13. **Start types**: "start or push", "push start", "from a dive", "off the blocks" describe the start. Keep in the note — the validator detects dive/push.
 
 ## What NOT to create sets from
 - Lines that are purely instructions/notes for a set above (rep-range breakdowns, "Each N:" descriptions)
-- "twice through" / round multiplier lines
+- "twice through" / "N rounds:" / round multiplier lines
+- "Round emphasis" lists and other section-level notes
 - Lines that are choices/options ("Choose from:", "Drill choices")`;
 
 // ─── Build prompt messages ────────────────────────────────────────────────
@@ -397,7 +350,7 @@ function extractGear(text: string): string[] | null {
   return detected.size > 0 ? [...detected] : null;
 }
 
-const DIVE_RE = /\b(?:from\s+a\s+dive|dive\s+start|off\s+the\s+blocks?|block\s+start|racing\s+dive|dive\s+entry|dive|from\s+a\s+push|push\s+start)\b/i;
+const DIVE_RE = /\b(?:from\s+a\s+dive|dive\s+start|off\s+the\s+blocks?|block\s+start|racing\s+dive|dive\s+entry|dive|from\s+a\s+push|push\s+start|start\s+or\s+push|push\s+acceleration)\b/i;
 const SUIT_RE = /\b(?:in\s+a\s+suit|tech\s*suit|raced?\s+in\s+(?:a\s+)?suit|suit\s+on|full[\s-]?body|jaked|arena|speedo\s+lzr)\b/i;
 
 function detectDive(text: string): boolean { return DIVE_RE.test(text); }
@@ -416,12 +369,12 @@ function parseIntensity(text: string): { type: string; label: string } | null {
   if (/\bdesc(?:end)?\b/i.test(text)) return { type: "descend", label: "descend" };
   if (/\bbuild\b/i.test(text)) return { type: "build", label: "build" };
   if (/\bneg(?:ative)?\s*split\b/i.test(text)) return { type: "negative_split", label: "negative split" };
-  if (/\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|atp|fast|maximal)\b/i.test(text)) return { type: "sprint", label: "ATP" };
-  if (/\b(?:race\s+pace|r\.?p\.?)\b/i.test(text)) return { type: "race_pace", label: "race pace" };
+  if (/\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|atp|fast|maximal|breakout)\b/i.test(text)) return { type: "sprint", label: "ATP" };
+  if (/\b(?:race\s+pace|race\s+rhythm|r\.?p\.?)\b/i.test(text)) return { type: "race_pace", label: "race pace" };
   if (/\b(?:threshold|css|t[\s-]?pace)\b/i.test(text)) return { type: "threshold", label: "threshold" };
-  if (/\b(?:easy|recovery|warm[\s-]?up|ez)\b/i.test(text)) return { type: "easy", label: "easy" };
-  if (/\b(?:aerobic|steady|cruise|moderate)\b/i.test(text)) {
-    const m = t.match(/\b(aerobic|steady|cruise|moderate)\b/);
+  if (/\b(?:easy|recovery|warm[\s-]?up|ez|relaxed)\b/i.test(text)) return { type: "easy", label: "easy" };
+  if (/\b(?:aerobic|steady|cruise|moderate|smooth)\b/i.test(text)) {
+    const m = t.match(/\b(aerobic|steady|cruise|moderate|smooth)\b/);
     return { type: "aerobic", label: m ? m[1] : "aerobic" };
   }
   return null;
