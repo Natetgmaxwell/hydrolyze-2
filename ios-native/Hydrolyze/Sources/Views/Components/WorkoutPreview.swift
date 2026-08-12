@@ -906,6 +906,13 @@ struct ParsedSection: Codable {
 struct ParsedWorkout: Codable {
     var title: String?
     var sections: [ParsedSection]
+    // V0.36 (2026-08-13): degraded flag from the server. When the LLM
+    // parser fails, the fallback response carries degraded=true + a
+    // reason so the app can surface "preview may be incomplete".
+    // decodeIfPresent — old server responses without the flag decode
+    // clean (nil = not degraded).
+    var degraded: Bool?
+    var degradedReason: String?
 }
 
 // t_c74dffbc (2026-08-04): per-fragment CTA row. Renders a single ParsedFragment

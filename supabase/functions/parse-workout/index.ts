@@ -15,7 +15,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { WORD_NUMBERS, SWIM_DISTANCES } from "../../hydrolyze-mobile/lib/constants/swim-constants.ts";
-import { parseWithLLM } from "./_llm.ts";
+import { LLMError, parseWithLLM } from "./_llm.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -2491,11 +2491,25 @@ function sha1Hex(input: string): string {
   return hex(h0) + hex(h1) + hex(h2) + hex(h3) + hex(h4);
 }
 
+// V0.36 (2026-08-13): degraded flag. When the LLM path fails, the
+// fallback response carries { degraded: true, degradedReason } so the
+// app can surface "preview may be incomplete" instead of silently
+// showing the regex parse. Success omits the flag (app treats missing
+// as false). Reasons: llm_rate_limited (429), llm_error (5xx/network/
+// validation), llm_empty (LLM returned 0 repGroups).
+type DegradedReason = "llm_rate_limited" | "llm_error" | "llm_empty";
+
+interface ParseResult extends Workout {
+  degraded?: boolean;
+  degradedReason?: DegradedReason;
+}
+
 // ponytail: LLM-first, regex-fallback. Cost on the LLM path is ~1.5-3s
-// for gpt-oss-20b warm. Cost on the fallback path is the existing ~50ms
+// for MiniMax-M3 warm. Cost on the fallback path is the existing ~50ms
 // parseWorkoutV2. We always check the LLM result for a non-empty tree
-// before returning it — Groq returning 200 with 0 repGroups counts as junk.
-async function parseWithFallback(workoutText: string): Promise<Workout> {
+// before returning it — MiniMax returning 200 with 0 repGroups counts
+// as junk.
+async function parseWithFallback(workoutText: string): Promise<ParseResult> {
   try {
     // ponytail: structural cast. The shapes are identical at runtime;
     // the LSP can't unify them across the module boundary without
@@ -2507,10 +2521,21 @@ async function parseWithFallback(workoutText: string): Promise<Workout> {
     );
     if (totalRgs > 0) return stampFragmentIds(llmResult);
     console.error(`[parse] LLM returned 0 repGroups, falling back to regex`);
+    return {
+      ...stampFragmentIds(parseWorkoutV2(workoutText)),
+      degraded: true,
+      degradedReason: "llm_empty",
+    };
   } catch (err) {
+    const status = err instanceof LLMError ? err.status : 0;
+    const reason: DegradedReason = status === 429 ? "llm_rate_limited" : "llm_error";
     console.error(`[parse] LLM failed, falling back to regex:`, err instanceof Error ? err.message : err);
+    return {
+      ...stampFragmentIds(parseWorkoutV2(workoutText)),
+      degraded: true,
+      degradedReason: reason,
+    };
   }
-  return stampFragmentIds(parseWorkoutV2(workoutText));
 }
 
 serve(async (req) => {
@@ -2537,7 +2562,8 @@ serve(async (req) => {
     // ponytail: LLM-first with regex fallback. LLM handles the failure
     // modes the regex structurally can't (composite parens, numbered
     // sub-items, ditto marks, round multipliers, input shape variance).
-    // If Groq is down/rate-limited/junk, parseWorkoutV2 catches it.
+    // If MiniMax is down/rate-limited/junk, parseWorkoutV2 catches it
+    // and the degraded flag tells the app the preview may be incomplete.
     const parsed = await parseWithFallback(workoutText);
 
     return new Response(JSON.stringify(parsed), {

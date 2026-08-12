@@ -2,19 +2,25 @@
  * _llm.ts — LLM-primary parser, Deno-compatible module for the
  * Supabase Edge Function runtime.
  *
- * Architecture: coach text → Groq LLM (structured extraction) →
+ * Architecture: coach text → MiniMax LLM (structured extraction) →
  * regex validator (intensity/gear/dive/suit/stroke canonicalization)
  * → workout tree in the same shape parseWorkoutV2() returns.
  *
  * Used by index.ts as the primary parser with parseWorkoutV2() as
- * the fallback when Groq is down, rate-limited, or returns junk.
+ * the fallback when MiniMax is down, rate-limited, or returns junk.
  *
- * Env required: GROQ_API_KEY (set via `supabase secrets set`).
- * Env optional: GROQ_MODEL (default: openai/gpt-oss-20b).
+ * V0.36 (2026-08-13): provider switched Groq → MiniMax-M3. Groq's
+ * free-tier 8K TPM cap silently degraded full-workout parses. MiniMax
+ * has no such cap. json_object mode (NOT strict json_schema — MiniMax
+ * ignores json_schema and invents its own structure), so the system
+ * prompt carries the exact output shape.
+ *
+ * Env required: MINIMAX_API_KEY (set via `supabase secrets set`).
+ * Env optional: MINIMAX_MODEL (default: MiniMax-M3).
  */
 
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = Deno.env.get("GROQ_MODEL") || "openai/gpt-oss-20b";
+const MINIMAX_URL = "https://api.minimax.io/v1/text/chatcompletion_v2";
+const MINIMAX_MODEL = Deno.env.get("MINIMAX_MODEL") || "MiniMax-M3";
 
 // ─── Types (output shape matches parseWorkoutV2's Workout) ─────────────────
 
@@ -74,87 +80,8 @@ export interface Workout {
   sections: { title: string | null; namedSets: { label: string | null; note: string | null; repGroups: ValidatedRepGroup[] }[] }[];
 }
 
-// ─── JSON Schema for Groq structured output (strict mode) ─────────────────
-
-const WORKOUT_SCHEMA = {
-  type: "object",
-  properties: {
-    sections: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title: { type: ["string", "null"], description: "Section header like 'Warm up', 'Main Set', or null if untitled" },
-          repGroups: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                reps: {
-                  type: ["integer", "null"],
-                  description: "Number of repetitions. E.g. 8 for '8 x 100'. 1 for single swims."
-                },
-                distance: {
-                  type: ["integer", "null"],
-                  description: "Distance in meters per rep. E.g. 100 for '8 x 100'."
-                },
-                stroke: {
-                  type: ["string", "null"],
-                  description: "Primary stroke as the coach wrote it: 'free', 'back', 'breast', 'fly', 'IM', 'kick', 'drill', 'choice', 'pull'. If multiple strokes (e.g. 'fly back or free'), use the first mentioned. Null if no stroke specified."
-                },
-                interval: {
-                  type: ["string", "null"],
-                  description: "Interval exactly as written: '1.50', '1:30', ':40', '@ 30'. Include the @ if present in source."
-                },
-                note: {
-                  type: ["string", "null"],
-                  description: "Instructions, descriptions, or notes attached to this set. Include technique focus, breathing patterns, rep-range instructions (e.g. '1-2 = 2 uw kicks + 2 fast arms')."
-                },
-                fragments: {
-                  type: "array",
-                  description: "Sub-segments for composite sets. '4 x (75 fast / 25 easy)' → fragments [{distance:75, stroke:null, intensity:{type:'sprint',label:'fast'}}, {distance:25, stroke:null, intensity:{type:'easy',label:'easy'}}]. 'Each 100: 25 Drill/25 Build/25 Race Skill/25 Easy' → 4 fragments. Empty array for simple sets.",
-                  items: {
-                    type: "object",
-                    properties: {
-                      distance: { type: ["integer", "null"], description: "Sub-segment distance in meters" },
-                      stroke: { type: ["string", "null"], description: "Sub-segment stroke if stated ('free', 'back', 'drill', 'kick'). NULL for pure intensity segments like 'fast' or 'easy' — those go in intensity, not stroke." },
-                      instruction: { type: ["string", "null"], description: "Specific instruction for this sub-segment" },
-                      intensity: {
-                        type: ["object", "null"],
-                        description: "Intensity of this sub-segment: {type, label}. type ∈ easy|aerobic|threshold|race_pace|pace_target|sprint|descend|build|negative_split|percent_range. label is the coach's exact word ('fast', 'easy', 'maximal finish', 'race rhythm', '75%'). NULL when the segment has no intensity word.",
-                        properties: {
-                          type: { type: "string", description: "One of: easy, aerobic, threshold, race_pace, pace_target, sprint, descend, build, negative_split, percent_range" },
-                          label: { type: "string", description: "The coach's exact intensity word or phrase, lowercased" }
-                        },
-                        required: ["type", "label"],
-                        additionalProperties: false
-                      }
-                    },
-                    required: ["distance", "stroke", "instruction", "intensity"],
-                    additionalProperties: false
-                  }
-                },
-                sourceLine: {
-                  type: "string",
-                  description: "The source text line(s) this repGroup was extracted from, for traceability."
-                }
-              },
-              required: ["reps", "distance", "stroke", "interval", "note", "fragments", "sourceLine"],
-              additionalProperties: false
-            }
-          }
-        },
-        required: ["title", "repGroups"],
-        additionalProperties: false
-      }
-    }
-  },
-  required: ["sections"],
-  additionalProperties: false
-} as const;
-
 // ─── Few-shot examples (2, highest-value; trimmed 2026-08-12 to fit
-// Groq free-tier 8K TPM — input+output must stay under the cap) ──
+// the token budget) ──
 
 const FEW_SHOT_EXAMPLES = [
   {
@@ -230,6 +157,37 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
 12. **Multi-swim lines**: A single line may contain multiple separate swims, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split on distance boundaries.
 13. **Start types**: "start or push", "push start", "from a dive", "off the blocks" describe the start. Keep in the note — the validator detects dive/push.
 
+## Output shape (MUST follow exactly)
+
+Return a single JSON object:
+
+{
+  "sections": [
+    {
+      "title": "Section header or null",
+      "repGroups": [
+        {
+          "reps": 8,
+          "distance": 100,
+          "stroke": "free",
+          "interval": "1:30",
+          "note": "instructions or null",
+          "fragments": [
+            { "distance": 75, "stroke": null, "instruction": null, "intensity": { "type": "sprint", "label": "fast" } }
+          ],
+          "sourceLine": "the exact source line(s)"
+        }
+      ]
+    }
+  ]
+}
+
+- fragments: empty array [] for simple sets; one entry per sub-segment for composite sets.
+- intensity: {type, label} or null. type ∈ easy|aerobic|threshold|race_pace|pace_target|sprint|descend|build|negative_split|percent_range. label = the coach's exact word lowercased.
+- stroke: null when no stroke is stated. Pure intensity words ("fast", "easy") go in intensity, NOT stroke.
+- reps: 1 for single swims. distance: null for time-based sets ("Free - 8:00 kick").
+- Every repGroup MUST include all keys: reps, distance, stroke, interval, note, fragments, sourceLine.
+
 ## What NOT to create sets from
 - Lines that are purely instructions/notes for a set above (rep-range breakdowns, "Each N:" descriptions)
 - "twice through" / "N rounds:" / round multiplier lines
@@ -243,32 +201,42 @@ function buildMessages(workoutText: string) {
     { role: "system", content: SYSTEM_PROMPT }
   ];
   for (const ex of FEW_SHOT_EXAMPLES) {
-    messages.push({ role: "user", content: `Parse this swimming workout into the JSON schema:\n\n${ex.input}` });
+    messages.push({ role: "user", content: `Parse this swimming workout into the JSON object described above:\n\n${ex.input}` });
     messages.push({ role: "assistant", content: JSON.stringify(ex.output) });
   }
-  messages.push({ role: "user", content: `Parse this swimming workout into the JSON schema:\n\n${workoutText}` });
+  messages.push({ role: "user", content: `Parse this swimming workout into the JSON object described above:\n\n${workoutText}` });
   return messages;
 }
 
-// ─── Call Groq ─────────────────────────────────────────────────────────────
+// ─── Call MiniMax ─────────────────────────────────────────────────────────
 
-async function callGroq(workoutText: string): Promise<LLMOutput> {
-  const apiKey = Deno.env.get("GROQ_API_KEY");
-  if (!apiKey) throw new Error("GROQ_API_KEY not set");
+// V0.36 (2026-08-13): typed LLM error — carries the HTTP status so the
+// caller can classify rate limits vs other failures for the degraded flag.
+export class LLMError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function callMiniMax(workoutText: string): Promise<LLMOutput> {
+  const apiKey = Deno.env.get("MINIMAX_API_KEY");
+  if (!apiKey) throw new Error("MINIMAX_API_KEY not set");
 
   const messages = buildMessages(workoutText);
   const body = {
-    model: GROQ_MODEL,
+    model: MINIMAX_MODEL,
     messages,
     temperature: 0.1,
     max_tokens: 4096,
-    response_format: {
-      type: "json_schema",
-      json_schema: { name: "workout", strict: true, schema: WORKOUT_SCHEMA }
-    }
+    // V0.36 (2026-08-13): json_object mode. MiniMax IGNORES strict
+    // json_schema and invents its own structure — the system prompt
+    // carries the exact output shape instead.
+    response_format: { type: "json_object" }
   };
 
-  const resp = await fetch(GROQ_URL, {
+  const resp = await fetch(MINIMAX_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -279,7 +247,7 @@ async function callGroq(workoutText: string): Promise<LLMOutput> {
 
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`Groq API error ${resp.status}: ${errText}`);
+    throw new LLMError(resp.status, `MiniMax API error ${resp.status}: ${errText}`);
   }
 
   const data = await resp.json() as {
@@ -431,7 +399,7 @@ function addIntensity(sections: ValidatedSection[]): ValidatedSection[] {
 // ─── Public API ────────────────────────────────────────────────────────────
 
 export async function parseWithLLM(workoutText: string): Promise<Workout> {
-  const llmOutput = await callGroq(workoutText);
+  const llmOutput = await callMiniMax(workoutText);
   const validated = addIntensity(validateLLMOutput(llmOutput));
   return {
     title: null,

@@ -175,6 +175,14 @@ struct WorkoutBuilderView: View {
     /// iPhone (inlined in the outer ScrollView's VStack).
     private var previewColumnContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // V0.36 (2026-08-13): degraded-parse banner. When the server
+            // LLM parser failed and fell back to regex, the preview may
+            // be incomplete (reps multiplied by rounds, no fragments,
+            // flattened sections). Non-blocking — the coach can still
+            // read the preview, but gets a one-tap retry.
+            if viewModel.parsedWorkout?.degraded == true {
+                degradedBanner
+            }
             if viewModel.isLoading {
                 HStack {
                     Spacer()
@@ -196,6 +204,33 @@ struct WorkoutBuilderView: View {
                 )
             }
         }
+    }
+
+    /// V0.36 (2026-08-13): non-blocking degraded banner. Tapping retry
+    /// re-runs the server parse on the current text.
+    private var degradedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(Color.accentAmber)
+            Text("Preview may be incomplete — parser rate limit.")
+                .font(.caption)
+                .foregroundColor(Color.textPrimary)
+                .lineLimit(2)
+            Spacer()
+            Button("Retry") {
+                Task { await viewModel.parse(viewModel.workoutText) }
+            }
+            .font(.captionStrong)
+            .foregroundColor(Color.accentCyan)
+        }
+        .padding(12)
+        .background(Color.accentAmber.opacity(0.12))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.accentAmber.opacity(0.4), lineWidth: 1)
+        )
     }
 
     /// Persistent "Workout Syntax" expandable card. Lives between the title
