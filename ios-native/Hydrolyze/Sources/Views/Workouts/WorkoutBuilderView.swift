@@ -186,17 +186,17 @@ struct WorkoutBuilderView: View {
             } else {
                 WorkoutPreview(
                     workout: viewModel.parsedWorkout ?? ParsedWorkout(title: nil, sections: []),
-                    degraded: viewModel.parsedWorkout?.degraded == true,
-                    degradedReason: viewModel.parsedWorkout?.degradedReason,
-                    onRetry: {
-                        Task { await viewModel.parse(viewModel.workoutText) }
-                    },
                     onRemoveRepGroup: { sectionIdx, namedSetIdx, rgIdx in
                         viewModel.removeRepGroup(
                             sectionIndex: sectionIdx,
                             namedSetIndex: namedSetIdx,
                             repGroupIndex: rgIdx
                         )
+                    },
+                    degraded: viewModel.parsedWorkout?.degraded == true,
+                    degradedReason: viewModel.parsedWorkout?.degradedReason,
+                    onRetry: {
+                        Task { await viewModel.parse(viewModel.workoutText) }
                     }
                 )
             }
