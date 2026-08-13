@@ -78,6 +78,12 @@ interface Fragment {
   intensity: ParsedIntensity | null;
   note: string | null;
   restAfter: number | null; // seconds of rest AFTER this fragment
+  // V0.37 (2026-08-13): per-fragment gear + start_type, matching the LLM
+  // fragment shape so the 4-place sync (prototype / _llm.ts / edge / iOS)
+  // stays in lockstep. The pairing cost tiers key on the fragment's OWN
+  // context, not the parent repGroup's.
+  gear: string[] | null;
+  start_type: "dive" | "push" | "wall" | null;
   order: number;
 }
 
@@ -1008,6 +1014,22 @@ function parseGear(text: string): string[] | null {
   return detected.length > 0 ? detected : null;
 }
 
+// V0.37 (2026-08-13): per-fragment start_type, matching the LLM fragment
+// shape (prototype / _llm.ts / edge / iOS 4-place sync). Values 'dive' |
+// 'push' | 'wall' | null. Check wall (can contain "push") before push.
+const START_TYPE_RULES: Array<[RegExp, "dive" | "push" | "wall"]> = [
+  [/\b(?:off\s+the\s+wall|from\s+the\s+wall|wall\s+start|push\s+off\s+the\s+wall|turn\s+start)\b/i, "wall"],
+  [/\b(?:from\s+a\s+dive|dive\s+start|off\s+the\s+blocks?|block\s+start|racing\s+dive|dive\s+entry|dive)\b/i, "dive"],
+  [/\b(?:from\s+a\s+push|push\s+start|start\s+or\s+push|push\s+acceleration|push)\b/i, "push"],
+];
+
+function deriveStartType(text: string): "dive" | "push" | "wall" | null {
+  for (const [re, type] of START_TYPE_RULES) {
+    if (re.test(text)) return type;
+  }
+  return null;
+}
+
 // ─── Inline note extraction ──────────────────────────────────────────────────
 
 function extractInlineNote(text: string): {
@@ -1257,6 +1279,11 @@ function parseCompositeFragments(
       note: segNote,
       restAfter: null,
       order: order++,
+      // V0.37 (2026-08-13): per-fragment gear + start_type derived from the
+      // fragment's own segment text — the pairing cost tiers key on the
+      // fragment's context, not the parent repGroup's.
+      gear: parseGear(trimmed),
+      start_type: deriveStartType(trimmed),
     });
   }
 

@@ -126,6 +126,7 @@ final class WorkoutService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsaWRqdGxkZnZycm50end0bnNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MjcyODMsImV4cCI6MjA3NzEwMzI4M30.kRhOyhPLVmVww6W03wMrlZnX0yeD6F73_cUpaOaRldE", forHTTPHeaderField: "Authorization")
         request.httpBody = body
+        request.timeoutInterval = 30
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw NSError(domain: "ParseWorkout", code: (response as? HTTPURLResponse)?.statusCode ?? 500)

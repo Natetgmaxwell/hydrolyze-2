@@ -32,6 +32,10 @@ interface LLMFragment {
   // ponytail (2026-08-11): fragment intensity — pairing keys on
   // (distance, intensity, start). {type, label} or null.
   intensity: { type: string; label: string } | null;
+  // V0.37 (2026-08-13): per-fragment gear + start_type — the pairing cost
+  // tiers key on the fragment's OWN context (not the parent repGroup's).
+  gear: string[] | null;
+  start_type: "dive" | "push" | "wall" | null;
 }
 
 interface LLMRepGroup {
@@ -131,6 +135,18 @@ const WORKOUT_SCHEMA = {
                         },
                         required: ["type", "label"],
                         additionalProperties: false
+                      },
+                      // V0.37 (2026-08-13): per-fragment gear + start_type,
+                      // so the pairing engine keys on the fragment's OWN
+                      // context, not the parent repGroup's.
+                      gear: {
+                        type: ["array", "null"],
+                        description: "Gear worn for THIS sub-segment. values ∈ fins, pull_paddle, finger_paddle, paddles, pull_buoy, kickboard, snorkel, parachute, resistance_band, ankle_band, power_tower, weight_belt, tennis_balls, drag_suit, stretchcordz. NULL when the segment states no gear.",
+                        items: { type: "string" }
+                      },
+                      start_type: {
+                        type: ["string", "null"],
+                        description: "How THIS sub-segment starts. 'dive' (from a dive / off the blocks), 'push' (push start / start or push), 'wall' (off the wall / push off the wall). NULL when the segment states no start."
                       }
                     },
                     required: ["distance", "stroke", "instruction", "intensity"],
@@ -211,10 +227,10 @@ Each 100:
           interval: "2:00",
           note: "race skill = breakout timing, breathing pattern",
           fragments: [
-            { distance: 25, stroke: "drill", instruction: null, intensity: null },
-            { distance: 25, stroke: "build", instruction: null, intensity: { type: "build", label: "build" } },
-            { distance: 25, stroke: "race skill", instruction: null, intensity: null },
-            { distance: 25, stroke: "easy", instruction: null, intensity: { type: "easy", label: "easy" } }
+            { distance: 25, stroke: "drill", instruction: null, intensity: null, gear: null, start_type: null },
+            { distance: 25, stroke: "build", instruction: null, intensity: { type: "build", label: "build" }, gear: null, start_type: null },
+            { distance: 25, stroke: "race skill", instruction: null, intensity: null, gear: null, start_type: null },
+            { distance: 25, stroke: "easy", instruction: null, intensity: { type: "easy", label: "easy" }, gear: null, start_type: null }
           ],
           sourceLine: "8 x 100 @ 2:00 / Each 100: 25 Drill/25 Build/25 Race Skill/25 Easy"
         }]
@@ -279,6 +295,7 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Your job is to
 6. **Composite sets / fragments**: Lines like "Each 100: 25 Drill/25 Build/25 Race Skill/25 Easy" describe how to break each rep into sub-segments. These are fragments, not separate sets.
    - Inline parens: "4 x (75 fast / 25 easy)" → 1 repGroup with reps=4, distance=100, fragments=[{distance:75, stroke:null, intensity:{type:"sprint",label:"fast"}}, {distance:25, stroke:null, intensity:{type:"easy",label:"easy"}}]
    - **Fragment intensity is CRITICAL**: each fragment carries its own intensity {type,label}. Map the coach's word to a type: fast/sprint/all-out/max → sprint; easy/recovery/warm-up → easy; moderate/steady/cruise/aerobic → aerobic; tempo/threshold → threshold; race pace/race rhythm/r.p. → race_pace; descend → descend; build → build. label is the coach's exact word lowercased ("fast", "maximal finish", "race rhythm"). Pure intensity words ("fast", "easy") go in intensity — NOT in stroke. Stroke stays null unless a real stroke is stated.
+   - **Per-fragment gear + start_type**: each fragment carries its OWN gear: string[] | null and start_type: string | null derived from THAT fragment's segment text, NOT the parent set. gear values: fins, pull_paddle, finger_paddle, paddles, pull_buoy, kickboard, snorkel, parachute, resistance_band, ankle_band, power_tower, weight_belt, tennis_balls, drag_suit, stretchcordz. start_type: 'dive' | 'push' | 'wall' (from "from a dive"/"off the blocks" → dive; "push start"/"start or push" → push; "off the wall"/"push off the wall" → wall). Leave gear:null / start_type:null when the segment states neither.
 
 7. **Strokes**: Map to: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater (usually kick). "scull" = a drill. If the line says "Fly back or free", stroke is the first mentioned ("fly").
 
@@ -459,6 +476,21 @@ function extractGear(text: string): string[] | null {
 const DIVE_RE = /\b(?:from\s+a\s+dive|dive\s+start|off\s+the\s+blocks?|block\s+start|racing\s+dive|dive\s+entry|dive|from\s+a\s+push|push\s+start)\b/i;
 const SUIT_RE = /\b(?:in\s+a\s+suit|tech\s*suit|raced?\s+in\s+(?:a\s+)?suit|suit\s+on|full[\s-]?body|jaked|arena|speedo\s+lzr)\b/i;
 
+// V0.37 (2026-08-13): per-fragment start_type. Values 'dive' | 'push' |
+// 'wall' | null. Check wall (can contain "push") before push.
+const START_TYPE_RULES: Array<[RegExp, "dive" | "push" | "wall"]> = [
+  [/\b(?:off\s+the\s+wall|from\s+the\s+wall|wall\s+start|push\s+off\s+the\s+wall|turn\s+start)\b/i, "wall"],
+  [/\b(?:from\s+a\s+dive|dive\s+start|off\s+the\s+blocks?|block\s+start|racing\s+dive|dive\s+entry|dive)\b/i, "dive"],
+  [/\b(?:from\s+a\s+push|push\s+start|start\s+or\s+push|push\s+acceleration|push)\b/i, "push"],
+];
+
+function deriveStartType(text: string): "dive" | "push" | "wall" | null {
+  for (const [re, type] of START_TYPE_RULES) {
+    if (re.test(text)) return type;
+  }
+  return null;
+}
+
 function detectDive(text: string): boolean { return DIVE_RE.test(text); }
 function detectSuit(text: string): boolean { return SUIT_RE.test(text); }
 
@@ -509,10 +541,16 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
         // ponytail (2026-08-11): fragments carry per-segment intensity.
         // If the LLM left any null, derive it from the segment's own text
         // (stroke/instruction) as a fallback — pairing keys on this.
-        fragments: (rg.fragments || []).map((f) => ({
-          ...f,
-          intensity: f.intensity ?? parseIntensity([f.stroke, f.instruction].filter(Boolean).join(" "))
-        })),
+        // V0.37 (2026-08-13): same fallback for per-fragment gear + start_type.
+        fragments: (rg.fragments || []).map((f) => {
+          const segText = [f.stroke, f.instruction].filter(Boolean).join(" ");
+          return {
+            ...f,
+            intensity: f.intensity ?? parseIntensity(segText),
+            gear: f.gear ?? extractGear(segText),
+            start_type: f.start_type ?? deriveStartType(segText)
+          };
+        }),
         sourceLine: rg.sourceLine
       };
     })

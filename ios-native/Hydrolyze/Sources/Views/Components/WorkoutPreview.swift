@@ -35,9 +35,18 @@ struct WorkoutPreview: View {
     /// after the stopwatch stops. nil = no recorded times yet; the row
     /// just shows the play icon.
     var recordedTimesByFragmentId: [String: Int]? = nil
+    /// V0.37 (2026-08-13): degraded-parse banner. When the server returns
+    /// degraded:true, render an amber banner above the preview with the
+    /// reason and a retry button. Defaults keep read-only contexts clean.
+    var degraded: Bool = false
+    var degradedReason: String? = nil
+    var onRetry: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if degraded {
+                degradedBanner
+            }
             if workout.sections.isEmpty {
                 Text("No sets defined")
                     .font(.caption)
@@ -54,6 +63,47 @@ struct WorkoutPreview: View {
                     )
                 }
             }
+        }
+    }
+
+    /// V0.37 (2026-08-13): amber banner shown when the server returned a
+    /// degraded parse (LLM failed → regex fallback). Surfaces the reason
+    /// and offers a one-tap retry. Replaces the silent fallback.
+    private var degradedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(Color.accentAmber)
+            Text(degradedReasonText)
+                .font(.caption)
+                .foregroundColor(Color.textPrimary)
+                .lineLimit(2)
+            Spacer()
+            if let onRetry {
+                Button("Retry") { onRetry() }
+                    .font(.captionStrong)
+                    .foregroundColor(Color.accentCyan)
+            }
+        }
+        .padding(12)
+        .background(Color.accentAmber.opacity(0.12))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.accentAmber.opacity(0.4), lineWidth: 1)
+        )
+    }
+
+    private var degradedReasonText: String {
+        switch degradedReason {
+        case "llm_rate_limited":
+            return "The parser hit a rate limit — using a fallback."
+        case "llm_error":
+            return "The parser hit an error — using a fallback."
+        case "llm_empty":
+            return "The parser returned no sets — using a fallback."
+        default:
+            return "Preview may be incomplete — using a fallback."
         }
     }
 }

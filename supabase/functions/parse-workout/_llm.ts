@@ -34,6 +34,13 @@ interface LLMFragment {
   // "fast"/"easy" into stroke and never carried intensity at all —
   // pairing saw "75m @ unknown". Now explicit: {type, label}.
   intensity: { type: string; label: string } | null;
+  // V0.37 (2026-08-13): per-fragment gear + start_type, so the pairing
+  // engine's cost tiers key on the fragment's OWN context (not just the
+  // parent repGroup's). The LLM may emit them; the validator derives them
+  // from the fragment's own segment text when absent (same fallback as
+  // intensity). start_type ∈ 'dive' | 'push' | 'wall' | null.
+  gear: string[] | null;
+  start_type: string | null;
 }
 
 interface LLMRepGroup {
@@ -105,8 +112,8 @@ Take one additional minute between rounds.`,
           { reps: 1, distance: 25, stroke: null, interval: "0:50", note: "acceleration to 15m, easy to wall", fragments: [], sourceLine: "1 × 25m acceleration to 15m, easy to wall @ :50" },
           { reps: 1, distance: 25, stroke: null, interval: "0:50", note: "build into a fast finish", fragments: [], sourceLine: "1 × 25m build into a fast finish @ :50" },
           { reps: 1, distance: 50, stroke: null, interval: "1:10", note: "as 25m smooth + 25m fast", fragments: [
-            { distance: 25, stroke: null, instruction: "smooth", intensity: { type: "aerobic", label: "smooth" } },
-            { distance: 25, stroke: null, instruction: "fast", intensity: { type: "sprint", label: "fast" } }
+            { distance: 25, stroke: null, instruction: "smooth", intensity: { type: "aerobic", label: "smooth" }, gear: null, start_type: null },
+            { distance: 25, stroke: null, instruction: "fast", intensity: { type: "sprint", label: "fast" }, gear: null, start_type: null }
           ], sourceLine: "1 × 50m as 25m smooth + 25m fast @ 1:10" },
           { reps: 1, distance: 100, stroke: null, interval: "2:00", note: "easy — Section notes: Take one additional minute between rounds", fragments: [], sourceLine: "100m easy @ 2:00" }
         ]
@@ -121,8 +128,8 @@ Take one additional minute between rounds.`,
         repGroups: [{
           reps: 4, distance: 100, stroke: null, interval: null, note: null,
           fragments: [
-            { distance: 75, stroke: null, instruction: null, intensity: { type: "sprint", label: "fast" } },
-            { distance: 25, stroke: null, instruction: null, intensity: { type: "easy", label: "easy" } }
+            { distance: 75, stroke: null, instruction: null, intensity: { type: "sprint", label: "fast" }, gear: null, start_type: null },
+            { distance: 25, stroke: null, instruction: null, intensity: { type: "easy", label: "easy" }, gear: null, start_type: null }
           ],
           sourceLine: "4 x (75 fast / 25 easy)"
         }]
@@ -149,6 +156,7 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
    - "stroke1/stroke2 by 25m" → fragments alternating strokes
    - Sub-segments sum to the parent's distance.
    - **Fragment intensity is CRITICAL**: each fragment carries its own intensity {type,label}. Map the coach's word: fast/sprint/all-out/max → sprint; easy/recovery/warm-up → easy; moderate/steady/cruise/smooth/aerobic → aerobic; tempo/threshold → threshold; race pace/race rhythm/r.p. → race_pace; descend → descend; build/acceleration → build. label is the coach's exact word lowercased ("fast", "maximal finish", "race rhythm"). Pure intensity words ("fast", "easy") go in intensity — NOT in stroke. Stroke stays null unless a real stroke is stated.
+   - **Per-fragment gear + start_type**: each fragment carries its OWN gear: string[] | null and start_type: string | null derived from that fragment's segment text, NOT the parent set. gear values: fins, pull_paddle, finger_paddle, paddles, pull_buoy, kickboard, snorkel, parachute, resistance_band, ankle_band, power_tower, weight_belt, tennis_balls, drag_suit, stretchcordz. start_type: 'dive' | 'push' | 'wall' (from "from a dive"/"off the blocks" → dive; "push start"/"start or push" → push; "off the wall"/"push off the wall" → wall). Leave gear:null / start_type:null when the segment states neither.
 7. **Strokes**: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater kick. "scull" = drill. "drill/swim", "kick/swim", "scull/swim" = combo sets — stroke is the first (drill/kick/scull), the combo goes in the note. If multiple strokes, use the first mentioned.
 8. **Intervals**: Pass through exactly as written ("1.50", "1:30", ":40", "@ 30"). The validator normalizes.
 9. **Single swims**: "400 free" with no "x" is reps=1.
@@ -229,13 +237,53 @@ async function callMiniMax(workoutText: string): Promise<LLMOutput> {
     model: MINIMAX_MODEL,
     messages,
     temperature: 0.1,
-    max_tokens: 4096,
+    // V0.37 (2026-08-13): MiniMax-M3 is a reasoning model — it emits a
+    // large `reasoning_content` BEFORE the JSON `content`. Two problems:
+    // (1) with max_tokens 4096 the reasoning consumed the whole budget and
+    // content came back empty (finish_reason: "length") on full-workout
+    // parses — the root cause of the 5/10 failure rate; (2) even with a
+    // bigger budget, reasoning pushed latency to 40-90s, blowing the 30s
+    // iOS timeout. This is structured extraction, not a reasoning task —
+    // disable thinking so the model emits JSON directly and fast.
+    max_tokens: 16384,
+    thinking: { type: "disabled" },
     // V0.36 (2026-08-13): json_object mode. MiniMax IGNORES strict
     // json_schema and invents its own structure — the system prompt
     // carries the exact output shape instead.
     response_format: { type: "json_object" }
   };
 
+  // V0.37 (2026-08-13): single retry on transient MiniMax failures.
+  // The live 5/10 failure rate was transient 5xx-or-empty responses from
+  // api.minimax.io, NOT rate limits (no 429 reason fired). One retry after
+  // a 1s constant delay. Retry fires on: 5xx, empty content, empty choices,
+  // malformed JSON in content. Do NOT retry 4xx (auth/bad-request are
+  // deterministic) or a missing key. If the retry also fails, throw so
+  // parseWithFallback falls back to regex.
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      // Constant 1s delay before the single retry.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    try {
+      return await miniMaxOnce(body);
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 0 && isTransientMiniMaxFailure(err)) continue;
+      throw err;
+    }
+  }
+  // Unreachable in practice (the throw above exits on attempt 1); guard the
+  // return type.
+  throw lastErr instanceof Error ? lastErr : new LLMError(0, "MiniMax call failed");
+}
+
+// One MiniMax fetch + parse. Transient failures surface as LLMError with
+// status >= 500 (5xx from MiniMax) or status 0 (empty/ malformed content);
+// deterministic failures surface as LLMError with a 4xx status.
+async function miniMaxOnce(body: Record<string, unknown>): Promise<LLMOutput> {
+  const apiKey = Deno.env.get("MINIMAX_API_KEY")!;
   const resp = await fetch(MINIMAX_URL, {
     method: "POST",
     headers: {
@@ -255,7 +303,24 @@ async function callMiniMax(workoutText: string): Promise<LLMOutput> {
     usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
   };
 
-  return JSON.parse(data.choices[0].message.content) as LLMOutput;
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new LLMError(0, "MiniMax returned empty content / empty choices");
+  }
+
+  try {
+    return JSON.parse(content) as LLMOutput;
+  } catch (err) {
+    throw new LLMError(0, `MiniMax returned malformed JSON: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+// Transient MiniMax failures worth one retry: 5xx responses and empty or
+// malformed content. 4xx (auth, bad request) are deterministic and NOT
+// retried. Missing key throws before this is reached.
+function isTransientMiniMaxFailure(err: unknown): boolean {
+  if (!(err instanceof LLMError)) return false;
+  return err.status >= 500 || err.status === 0;
 }
 
 // ─── Validator (reused patterns; Deno-port from the Node prototype) ───────
@@ -321,6 +386,24 @@ function extractGear(text: string): string[] | null {
 const DIVE_RE = /\b(?:from\s+a\s+dive|dive\s+start|off\s+the\s+blocks?|block\s+start|racing\s+dive|dive\s+entry|dive|from\s+a\s+push|push\s+start|start\s+or\s+push|push\s+acceleration)\b/i;
 const SUIT_RE = /\b(?:in\s+a\s+suit|tech\s*suit|raced?\s+in\s+(?:a\s+)?suit|suit\s+on|full[\s-]?body|jaked|arena|speedo\s+lzr)\b/i;
 
+// V0.37 (2026-08-13): per-fragment start_type. The pairing engine's cost
+// tiers key on (distance, stroke, gear, intensity) per swimmer_pbs row, but
+// a dive/push/wall start shifts the expected time. Values: 'dive' | 'push' |
+// 'wall' | null. Order matters — check wall (which can contain "push") before
+// push, and pure dive words before "dive" alone.
+const START_TYPE_RULES: Array<[RegExp, "dive" | "push" | "wall"]> = [
+  [/\b(?:off\s+the\s+wall|from\s+the\s+wall|wall\s+start|push\s+off\s+the\s+wall|turn\s+start)\b/i, "wall"],
+  [/\b(?:from\s+a\s+dive|dive\s+start|off\s+the\s+blocks?|block\s+start|racing\s+dive|dive\s+entry|dive)\b/i, "dive"],
+  [/\b(?:from\s+a\s+push|push\s+start|start\s+or\s+push|push\s+acceleration|push)\b/i, "push"],
+];
+
+function deriveStartType(text: string): "dive" | "push" | "wall" | null {
+  for (const [re, type] of START_TYPE_RULES) {
+    if (re.test(text)) return type;
+  }
+  return null;
+}
+
 function detectDive(text: string): boolean { return DIVE_RE.test(text); }
 function detectSuit(text: string): boolean { return SUIT_RE.test(text); }
 
@@ -367,11 +450,19 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
         // ponytail (2026-08-11): fragments carry per-segment intensity.
         // If the LLM left any null, derive it from the segment's own text
         // (stroke/instruction) as a fallback — pairing keys on this.
-        fragments: (rg.fragments || []).map((f) => ({
-          ...f,
-          id: f.id ?? null,
-          intensity: f.intensity ?? parseIntensity([f.stroke, f.instruction].filter(Boolean).join(" "))
-        })),
+        // V0.37 (2026-08-13): same fallback for per-fragment gear + start_type —
+        // the pairing cost tiers key on (distance, stroke, gear, intensity),
+        // so each fragment carries its OWN context, not the parent's.
+        fragments: (rg.fragments || []).map((f) => {
+          const segText = [f.stroke, f.instruction].filter(Boolean).join(" ");
+          return {
+            ...f,
+            id: f.id ?? null,
+            intensity: f.intensity ?? parseIntensity(segText),
+            gear: f.gear ?? extractGear(segText),
+            start_type: f.start_type ?? deriveStartType(segText)
+          };
+        }),
         sourceLine: rg.sourceLine
       };
     })
