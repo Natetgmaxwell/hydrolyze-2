@@ -58,6 +58,8 @@ CREATE TABLE workouts (
                   CHECK (status IN ('draft', 'scheduled', 'in_progress', 'complete')),
   scheduled_at  date,
   am_pm         text CHECK (am_pm IN ('AM', 'PM')),
+  session_type  text NOT NULL DEFAULT 'training'
+                  CHECK (session_type IN ('training', '3mt')),
   created_at    timestamptz DEFAULT now(),
   updated_at    timestamptz DEFAULT now()
 );
@@ -152,6 +154,27 @@ CREATE TABLE swimmer_pbs (
 );
 
 -- ──────────────────────────────────────────
+-- swimmer_test_profiles
+-- Per-swimmer 3-minute all-out test (3MT) result rows
+-- V0.38 Slice 1
+-- ──────────────────────────────────────────
+CREATE TABLE swimmer_test_profiles (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  swimmer_id          uuid NOT NULL REFERENCES swimmers(id) ON DELETE CASCADE,
+  session_id          uuid REFERENCES sessions(id) ON DELETE SET NULL,
+  workout_set_id      uuid REFERENCES workout_sets(id) ON DELETE SET NULL,
+  stroke              text NOT NULL DEFAULT 'Free',
+  pool_length         integer NOT NULL DEFAULT 25,
+  test_date           timestamptz NOT NULL DEFAULT now(),
+  trial_number        integer NOT NULL DEFAULT 1,
+  peak_speed_mps      double precision NOT NULL,
+  critical_speed_mps  double precision NOT NULL,
+  battery_m           double precision NOT NULL,
+  quality_flags       jsonb NOT NULL DEFAULT '[]',
+  created_at          timestamptz DEFAULT now()
+);
+
+-- ──────────────────────────────────────────
 -- swimmer_gears
 -- Historical average times for gear-specific stats
 -- ──────────────────────────────────────────
@@ -185,6 +208,7 @@ CREATE INDEX idx_recorded_times_swimmer_id ON recorded_times(swimmer_id);
 CREATE INDEX idx_swimmer_stats_swimmer_id ON swimmer_stats(swimmer_id);
 CREATE INDEX idx_swimmer_pbs_swimmer_id ON swimmer_pbs(swimmer_id);
 CREATE INDEX idx_swimmer_gears_swimmer_id ON swimmer_gears(swimmer_id);
+CREATE INDEX idx_test_profiles_swimmer ON swimmer_test_profiles(swimmer_id, stroke, test_date);
 
 -- ──────────────────────────────────────────
 -- RLS (Row Level Security)
@@ -201,6 +225,7 @@ ALTER TABLE recorded_times ENABLE ROW LEVEL SECURITY;
 ALTER TABLE swimmer_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE swimmer_pbs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE swimmer_gears ENABLE ROW LEVEL SECURITY;
+ALTER TABLE swimmer_test_profiles ENABLE ROW LEVEL SECURITY;
 
 -- coaches: coach sees their own record
 CREATE POLICY "coaches_select" ON coaches
@@ -344,6 +369,26 @@ CREATE POLICY "swimmer_gears_insert" ON swimmer_gears
 CREATE POLICY "swimmer_gears_update" ON swimmer_gears
   FOR UPDATE USING (
     swimmer_id IN (SELECT id FROM swimmers WHERE coach_id IN (SELECT id FROM coaches WHERE auth_id = auth.uid()))
+  );
+
+-- swimmer_test_profiles: coach sees 3MT profiles for their swimmers
+CREATE POLICY "swimmer_test_profiles_select" ON swimmer_test_profiles
+  FOR SELECT USING (
+    swimmer_id IN (SELECT id FROM swimmers WHERE coach_id IN (SELECT id FROM coaches WHERE auth_id = auth.uid()))
+  );
+CREATE POLICY "swimmer_test_profiles_insert" ON swimmer_test_profiles
+  FOR INSERT WITH CHECK (
+    swimmer_id IN (SELECT id FROM swimmers WHERE coach_id IN (SELECT id FROM coaches WHERE auth_id = auth.uid()))
+  );
+CREATE POLICY "swimmer_test_profiles_update" ON swimmer_test_profiles
+  FOR UPDATE USING (
+    swimmer_id IN (SELECT id FROM swimmers WHERE coach_id IN (SELECT id FROM coaches WHERE auth_id = auth.uid()))
+  );
+
+-- swimmer_test_profiles: swimmer sees their own profile
+CREATE POLICY "swimmer_own_test_profiles" ON swimmer_test_profiles
+  FOR SELECT USING (
+    swimmer_id IN (SELECT id FROM swimmers WHERE auth_id = auth.uid())
   );
 
 -- ──────────────────────────────────────────
