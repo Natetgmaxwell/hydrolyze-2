@@ -176,10 +176,26 @@ final class TimingViewModel: ObservableObject {
     }
     @Published var expectedLapCount: Int? // Auto-stop threshold
 
+    /// V0.38 Slice 4 (2026-08-16): true when the active set is a
+    /// 3-minute all-out test (Piatrikova). Gates the timing-screen
+    /// countdown, the 3:00 auto-stop, and the per-swimmer profile
+    /// insert in the save flow. Set in `applySetPrefill(...)` from
+    /// the prefill's `intensityType` / `intensityLabel` — the parser
+    /// emits the rawValue "3mt" on `workout_sets.intensity_type` and
+    /// the human label "3-minute all-out" on `intensity_label`; both
+    /// are honored so the detection survives either path.
+    @Published var is3MTSession: Bool = false
+
     // Set from prefill — carried through to save
     var reps: Int?
     var interval: String?
     var intensityLabel: String?
+    /// V0.38 Slice 4 (2026-08-16): structured intensity_type rawValue
+    /// (e.g. "3mt") mirrored from `WorkoutSet.intensityType`. Mirrors
+    /// `SetPrefill.intensityType` so 3MT detection doesn't have to
+    /// string-match the human label. Source of truth over `intensityLabel`
+    /// because a workout can mix 3MT sets with training sets.
+    var intensityType: String?
     var workoutSetId: String?
     /// t_c74dffbc (2026-08-04): per-fragment metadata the save flow
     /// reads to key the prediction per (swimmer, fragment). Set by the
@@ -223,6 +239,61 @@ final class TimingViewModel: ObservableObject {
         laps.map { lap in
             (number: lap.lapNumber, elapsed: TimingSession.formatMs(lap.elapsedMs), split: TimingSession.formatMs(lap.splitMs))
         }
+    }
+
+    // MARK: - 3MT detection (V0.38 Slice 4, 2026-08-16)
+
+    /// V0.38 Slice 4 (2026-08-16): the marker text the parser writes
+    /// to `intensity_label` when the set is a 3-minute all-out test.
+    /// The DB `intensity_type` rawValue is "3mt"; the parser-written
+    /// human label is "3-minute all-out". Both must classify the set
+    /// correctly so the countdown + auto-stop fire.
+    private static let threeMinuteTestRawValue = "3mt"
+    private static let threeMinuteTestParserLabel = "3-minute all-out"
+
+    /// V0.38 Slice 4 (2026-08-16): total test duration for the 3MT.
+    /// The coach-facing countdown derives from `elapsedMs` (180s minus
+    /// elapsed); at 0 the stopwatch auto-stops. The stopwatch total
+    /// keeps running as the audit trail — the countdown is the
+    /// coach-facing display.
+    private static let threeMinuteTestDurationMs = 180_000
+
+    /// V0.38 Slice 4 (2026-08-16): the remaining ms until the 3MT
+    /// auto-stop. Always non-negative; clamps at 0 when elapsed exceeds
+    /// the test window so the countdown reads "0:00.00" rather than
+    /// going negative. Used by the running view's countdown text.
+    var threeMinuteTestRemainingMs: Int {
+        max(0, Self.threeMinuteTestDurationMs - elapsedMs)
+    }
+
+    /// V0.38 Slice 4 (2026-08-16): countdown text formatted as the
+    /// spec's "m:ss.SS" monospaced display. Reuses the existing
+    /// `TimingSession.formatMs` helper for visual consistency with the
+    /// main stopwatch. The view styles this smaller + amber when
+    /// <30s remain.
+    var threeMinuteTestCountdownText: String {
+        TimingSession.formatMs(threeMinuteTestRemainingMs)
+    }
+
+    /// V0.38 Slice 4 (2026-08-16): derive the 3MT gate from the
+    /// prefill-sourced fields. Source-of-truth order:
+    ///   1. `intensityType` rawValue == "3mt" (DB column; survives
+    ///      mixed workouts because it's per-set, not per-workout)
+    ///   2. `intensityLabel` == "3mt" or "3-minute all-out" (defensive
+    ///      fallback when only the human label is present)
+    ///
+    /// The edge response's workout-level `session_type` would be a
+    /// third signal, but per spec "prefer per-set intensity_type as
+    /// the source of truth, since a workout can mix" — so we don't
+    /// decode session_type here.
+    func deriveIs3MTSession() -> Bool {
+        if intensityType == Self.threeMinuteTestRawValue { return true }
+        if let label = intensityLabel,
+           label == Self.threeMinuteTestRawValue
+            || label == Self.threeMinuteTestParserLabel {
+            return true
+        }
+        return false
     }
 
     // MARK: - Capture payload assembly (t_bec2b88b, 2026-08-06)
@@ -486,8 +557,14 @@ final class TimingViewModel: ObservableObject {
         // Re-arm haptic for next press
         haptic.prepare()
 
-        // Auto-stop if we've reached the expected number of swimmers
-        if let limit = expectedLapCount, laps.count >= limit {
+        // V0.38 Slice 4 (2026-08-16): 3MT sessions have no lap cap —
+        // swimmers hit the wall when they hit it. The expectedLapCount
+        // gate is a multi-swimmer "every swimmer has touched" heuristic
+        // from training sets, and incorrectly fires mid-test for the
+        // 3MT (where 30+ splits is normal). The 3:00 auto-stop in
+        // `tick()` is the only auto-stop for 3MT.
+        if !is3MTSession,
+           let limit = expectedLapCount, laps.count >= limit {
             stop()
         }
     }
@@ -1041,6 +1118,19 @@ final class TimingViewModel: ObservableObject {
                 // closure requires explicit use of self'. The same
                 // pattern applies to `self.stroke`, `self.distance`,
                 // `self.intensityLabel` which are already prefixed.
+                //
+                // V0.38 Slice 4 (2026-08-16): the 3MT path overrides
+                // intensity to 'race' + distance to 25 — the spec
+                // says the recorded_times row carries pace_distance=25
+                // and intensity='race' regardless of the parser's
+                // human label ("3-minute all-out"). `self.distance` is
+                // already 25 for 3MT sets (the parser sets it), but
+                // we set it explicitly here so the contract survives
+                // any future change to the prefill shape.
+                let recordedTimesIntensity = self.is3MTSession
+                    ? "race"
+                    : (self.intensityLabel ?? "race")
+                let recordedTimesDistance = self.is3MTSession ? 25 : self.distance
                 try await withTimeout(
                     Self.perCallTimeoutSeconds,
                     label: "savePairedLaps"
@@ -1048,10 +1138,104 @@ final class TimingViewModel: ObservableObject {
                     try await self.timingService.savePairedLaps(
                         sessionId: sid,
                         stroke: self.stroke,
-                        distance: self.distance,
-                        intensity: self.intensityLabel ?? "race",
+                        distance: recordedTimesDistance,
+                        intensity: recordedTimesIntensity,
                         assignments: result.assignments
                     )
+                }
+
+                // V0.38 Slice 4 (2026-08-16): on a 3MT save, the
+                // timing session data (recorded_times, written above)
+                // is the source of truth. The `swimmer_test_profiles`
+                // row is a derived trend line the review surface
+                // (slice 5) reads to show the three numbers. A
+                // profiles-insert failure MUST NOT fail the save —
+                // the coach still sees their times in the review
+                // surface; the trend line can be backfilled later.
+                //
+                // Three round trips, all wrapped in a single
+                // non-fatal try/catch so the existing success path
+                // is unaffected:
+                //   1. SELECT max(trial_number) per swimmer for this
+                //      workout set (so the analyzer's trialNumber
+                //      controls the .learningTrial quality flag)
+                //   2. (pure, no I/O) group splits + assemble rows
+                //   3. INSERT swimmer_test_profiles
+                if self.is3MTSession {
+                    do {
+                        currentSaveStep = .predicting  // reuse existing step; not the predictor, just the indicator
+                        let maxTrialResp = try await withTimeout(
+                            Self.perCallTimeoutSeconds,
+                            label: "fetch max trial_number (3MT)"
+                        ) {
+                            try await supabase.from("swimmer_test_profiles")
+                                .select("swimmer_id, trial_number")
+                                .eq("workout_set_id", value: currentSetId)
+                                .in("swimmer_id", values: uniqueSwimmerIds)
+                                .execute()
+                        }
+                        // V0.38 Slice 4 (2026-08-16): single SELECT
+                        // returning all existing trial rows for this
+                        // workout set; the Swift reduce builds the
+                        // max-per-swimmer map. The dataset is small
+                        // (per-swimmer × few trials), so the reduce
+                        // is negligible. Decoding failure here is
+                        // treated as "no prior trials" — the
+                        // analyzer's trialNumber starts at 1, which
+                        // matches the migration's DEFAULT 1.
+                        struct TrialRow: Decodable {
+                            let swimmerId: String
+                            let trialNumber: Int
+                            enum CodingKeys: String, CodingKey {
+                                case swimmerId = "swimmer_id"
+                                case trialNumber = "trial_number"
+                            }
+                        }
+                        let trialRows = (try? JSONDecoder().decode([TrialRow].self, from: maxTrialResp.data)) ?? []
+                        var maxBySwimmer: [String: Int] = [:]
+                        for r in trialRows {
+                            maxBySwimmer[r.swimmerId] = max(
+                                maxBySwimmer[r.swimmerId] ?? 0,
+                                r.trialNumber
+                            )
+                        }
+                        log("3MT profiles: existing max trial_number for \(maxBySwimmer.count) swimmers")
+
+                        // Pure assembly (no I/O). Same code path the
+                        // CLI test exercises.
+                        let swimmerSplits = groupSplitsPerSwimmer(
+                            assignments: result.assignments
+                        )
+                        let profileRows = assembleTestProfiles(
+                            swimmerAssignments: swimmerSplits,
+                            workoutSetId: currentSetId,
+                            sessionId: sid,
+                            stroke: self.stroke,
+                            poolLengthMeters: 25,
+                            existingMaxTrialBySwimmer: maxBySwimmer
+                        )
+                        log("3MT profiles: built \(profileRows.count) profile rows from \(swimmerSplits.count) swimmers")
+
+                        if !profileRows.isEmpty {
+                            _ = try await withTimeout(
+                                Self.perCallTimeoutSeconds,
+                                label: "insert swimmer_test_profiles"
+                            ) {
+                                try await supabase.from("swimmer_test_profiles")
+                                    .insert(profileRows)
+                                    .execute()
+                            }
+                            log("3MT profiles: insert complete (\(profileRows.count) rows)")
+                        }
+                    } catch {
+                        // Spec: profiles-insert failure must NOT fail
+                        // the save. Log + continue. The recorded_times
+                        // write above already succeeded, so the user
+                        // lands on SessionReviewView with their times;
+                        // the profile trend line will be missing until
+                        // backfill (a future slice).
+                        log("3MT profiles: insert FAILED (non-fatal): \(error.localizedDescription)")
+                    }
                 }
 
                 currentSaveStep = .complete
@@ -1129,8 +1313,22 @@ final class TimingViewModel: ObservableObject {
     private func tick() {
         let now = Date().millisecondsSince1970
         elapsedMs = Int(now - repStartMs)
+        // V0.38 Slice 4 (2026-08-16): 3MT sessions auto-stop at 3:00.
+        // The countdown text the view renders is `elapsedMs`-derived;
+        // the same tick that updates elapsedMs is the natural place to
+        // fire the auto-stop. `stop()` guards on `.running` so an
+        // over-shoot after stop() initiated is a no-op.
+        if is3MTSession, elapsedMs >= Self.threeMinuteTestDurationMs {
+            stop()
+        }
     }
 }
+
+// V0.38 Slice 4 (2026-08-16): the pure helpers
+// (`groupSplitsPerSwimmer`, `assembleTestProfiles`, `TestProfileRow`)
+// live in `Services/ThreeMinuteTestSaveSupport.swift` so the CLI
+// runner can compile them without UIKit. The save flow below calls
+// them — same production code the CLI test exercises.
 
 // MARK: - Helpers
 

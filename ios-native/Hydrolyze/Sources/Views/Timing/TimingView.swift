@@ -362,6 +362,13 @@ struct TimingView: View {
                 viewModel.reps = prefill.reps
                 viewModel.interval = prefill.interval
                 viewModel.intensityLabel = prefill.intensityLabel
+                // V0.38 Slice 4 (2026-08-16): copy the structured
+                // intensity_type rawValue alongside the human label so
+                // 3MT detection can match "3mt" without relying on the
+                // label text. The label may be "3-minute all-out"
+                // (parser) or "3mt" (raw); both should classify the
+                // session correctly via `viewModel.is3MTSession`.
+                viewModel.intensityType = prefill.intensityType
                 viewModel.workoutSetId = prefill.workoutSetId
                 // t_c74dffbc (2026-08-04): per-fragment contexts for
                 // composite sets. nil/empty means the existing
@@ -370,6 +377,11 @@ struct TimingView: View {
                 if let fragments = prefill.fragmentContexts {
                     viewModel.fragmentContexts = fragments
                 }
+                // V0.38 Slice 4 (2026-08-16): derive the 3MT gate from
+                // the prefill right after copying the fields. Gates
+                // the countdown in the running view and the
+                // analyzer-on-stop path in save().
+                viewModel.is3MTSession = viewModel.deriveIs3MTSession()
             }
         }
     }
@@ -496,6 +508,36 @@ struct TimingView: View {
                     .foregroundColor(.white)
                     .padding(.top, 60)
                     .padding(.bottom, 4)
+
+                // V0.38 Slice 4 (2026-08-16): 3MT countdown display.
+                // Shown only when `viewModel.is3MTSession` — the
+                // timing screen for a 3-minute all-out test carries a
+                // coach-facing "3:00 → 0:00" countdown alongside the
+                // audit-trail stopwatch (the stopwatch total keeps
+                // running for the recorded_times row). The stopwatch
+                // auto-stops at 0 via `tick()` in the VM.
+                //
+                // Placement: directly under the main stopwatch,
+                // visually secondary (smaller monospaced type, white
+                // 0.85 normally). <30s remaining → amber so the
+                // coach sees the test is in the final third. NO new
+                // colors / fonts — `Color.accentAmber` and
+                // `.jetBrainsMono` are both already in the type
+                // scale (used by SwimmerAnalyticsView / the main
+                // stopwatch respectively).
+                if viewModel.is3MTSession {
+                    Text(viewModel.threeMinuteTestCountdownText)
+                        .font(.jetBrainsMono(size: 32, weight: .semibold))
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                        .padding(.horizontal, 16)
+                        .foregroundColor(
+                            viewModel.threeMinuteTestRemainingMs < 30_000
+                                ? Color.accentAmber
+                                : .white.opacity(0.85)
+                        )
+                        .padding(.bottom, 8)
+                }
 
                 // "LAP N" counter — subtle, white 0.7
                 Text("LAP \(viewModel.laps.count + 1)")

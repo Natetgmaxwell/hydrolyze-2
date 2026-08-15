@@ -57,6 +57,15 @@ struct SetPrefill: Sendable, Hashable {
     let interval: String?
     let intensityLabel: String?
     let workoutSetId: String?
+    /// V0.38 Slice 4 (2026-08-16): the per-set intensity type rawValue
+    /// (e.g. "3mt") mirrored from `WorkoutSet.intensityType`. The
+    /// `intensityLabel` above is the human-readable text ("3-minute
+    /// all-out"); the rawValue is the structured marker the parser
+    /// emits. Slice 4's 3MT detection reads this in preference to the
+    /// label so a mixed workout (some 3MT sets, some training sets)
+    /// correctly classifies the active set without false-positives
+    /// from a workout-level session_type.
+    let intensityType: String?
     /// t_c74dffbc (2026-08-04): optional per-fragment contexts. nil for
     /// non-composite sets (the existing prefill path).
     let fragmentContexts: [FragmentContext]?
