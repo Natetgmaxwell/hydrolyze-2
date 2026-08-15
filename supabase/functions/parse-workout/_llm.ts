@@ -164,6 +164,7 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
 11. **Pattern shorthand (FBBF, FBF)**: F=Free, B=Back, K=Breast, R=Fly, I=IM, M=Medley. Set stroke to the FIRST letter, put the pattern in the note. "same as above" / "same" inherits the pattern.
 12. **Multi-swim lines**: A single line may contain multiple separate swims, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split on distance boundaries.
 13. **Start types**: "start or push", "push start", "from a dive", "off the blocks" describe the start. Keep in the note — the validator detects dive/push.
+14. **3-minute all-out test (3MT)**: when a set line contains "3MT", "3-MT", "3 MT", "3-min all-out", "3 min all out", "3-minute all-out", "3min all out", "3 min test", "3-minute test", or "3min test", emit a single repGroup with intensity { type: "3mt", label: "3-minute all-out" }, reps=1, distance=25 (the split distance the coach taps LAP at), and no interval — the 3:00 swim is continuous, not interval-based. Stroke parses from any remaining text (e.g. "3MT free" → Free); default is Free. The "3MT" marker wins over the generic "all-out" → sprint mapping. "all-out" alone is NOT a 3MT marker.
 
 ## Output shape (MUST follow exactly)
 
@@ -191,7 +192,7 @@ Return a single JSON object:
 }
 
 - fragments: empty array [] for simple sets; one entry per sub-segment for composite sets.
-- intensity: {type, label} or null. type ∈ easy|aerobic|threshold|race_pace|pace_target|sprint|descend|build|negative_split|percent_range. label = the coach's exact word lowercased.
+- intensity: {type, label} or null. type ∈ easy|aerobic|threshold|race_pace|pace_target|sprint|descend|build|negative_split|percent_range|3mt. label = the coach's exact word lowercased ("3-minute all-out" for 3MT).
 - stroke: null when no stroke is stated. Pure intensity words ("fast", "easy") go in intensity, NOT stroke.
 - reps: 1 for single swims. distance: null for time-based sets ("Free - 8:00 kick").
 - Every repGroup MUST include all keys: reps, distance, stroke, interval, note, fragments, sourceLine.
@@ -407,8 +408,16 @@ function deriveStartType(text: string): "dive" | "push" | "wall" | null {
 function detectDive(text: string): boolean { return DIVE_RE.test(text); }
 function detectSuit(text: string): boolean { return SUIT_RE.test(text); }
 
+const THREE_MT_RE =
+  /\b3\s*[-]?\s*m(?:in(?:ute)?s?)?\s+(?:all[\s-]?out|test)\b|\b3\s*[-]?\s*mt\b/i;
+
 function parseIntensity(text: string): { type: string; label: string } | null {
   const t = text.toLowerCase();
+  // V0.38 (2026-08-15): 3-minute all-out test marker wins over the
+  // generic mappings below. Mirrors index.ts THREE_MT_RE.
+  if (THREE_MT_RE.test(text)) {
+    return { type: "3mt", label: "3-minute all-out" };
+  }
   if (/\brpe\s*:?\s*\d+\s*[-–]\s*\d+\s*\/\s*10/i.test(text)) {
     const m = t.match(/rpe\s*:?\s*(\d+)\s*[-–]\s*(\d+)/);
     if (m) return { type: "percent_range", label: `RPE ${m[1]}-${m[2]}/10` };

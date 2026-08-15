@@ -48,7 +48,11 @@ type IntensityType =
   | "descend"
   | "build"
   | "negative_split"
-  | "percent_range";
+  | "percent_range"
+  // V0.38 (2026-08-15): 3-minute all-out test marker. rawValue is
+  // spelled "3mt" so the free-form intensity_type column accepts it
+  // without a CHECK constraint change.
+  | "3mt";
 
 interface ParsedIntensity {
   type: IntensityType;
@@ -463,9 +467,22 @@ const SECTION_HEADERS = new Set([
   "important quality controls",
 ]);
 
+// V0.38 (2026-08-15): 3-minute all-out test marker. "3MT" / "3-MT" /
+// "3 MT" literal OR "3 [-] min(ute)?(s)? all-out|test" with min/minute/
+// mins/minutes and hyphen/space variants of "all-out" / "all out".
+// "all-out" alone is NOT a 3MT marker. Module scope — used by
+// isSectionHeader and parseIntensity.
+const THREE_MT_RE =
+  /\b3\s*[-]?\s*m(?:in(?:ute)?s?)?\s+(?:all[\s-]?out|test)\b|\b3\s*[-]?\s*mt\b/i;
+
 function isSectionHeader(line: RawLine): boolean {
   if (line.isBlank) return false;
   const t = normalize(line.text);
+  // V0.38 (2026-08-15): a 3MT marker line is a SET, never a section
+  // header. Bare "3MT" is title-cased and digit-free after normalize,
+  // so it fell through to the title-case branch below and was swallowed
+  // as a header — dropping the set entirely.
+  if (THREE_MT_RE.test(t)) return false;
   // ponytail (autoresearch iter 10, 2026-07-22): rewrite to match
   // real coach section headers. The previous version rejected any
   // line containing a digit or em-dash, which kills every race-prep
@@ -753,6 +770,13 @@ function defaultRPEForTerm(term: string): { low: number; high: number } | null {
 
 function parseIntensity(raw: string): ParsedIntensity | null {
   const n = normalize(raw);
+
+  // V0.38 (2026-08-15): 3-minute all-out test. Must run BEFORE generic
+  // intensity matches so the marker wins over "all-out" (sprint) and
+  // "test" (no match elsewhere). Shared module-scope THREE_MT_RE.
+  if (THREE_MT_RE.test(raw)) {
+    return { type: "3mt", label: "3-minute all-out" };
+  }
 
   // ponytail (iter 13, 2026-07-28): "Zone N" or "Zone N-low Zone M"
   // as aerobic intensity. Coaches use heart-rate zones 1-5.
@@ -2032,6 +2056,7 @@ function parseWorkoutV2(input: string): Workout {
       // creating a false set). Uses line.text directly.
       const lineText = line.text.trim();
       const isInstructionLine =
+        !THREE_MT_RE.test(lineText) && // V0.38: a 3MT line is a SET, never an instruction
         !/\d+\s*[x×]\s*\d+/.test(lineText) && // no NxM pattern
         // ponytail (2026-08-11): composite-set openers (N x (...) ) are
         // SET LINES, never instructions. Without this, "4 x (75 fast /
@@ -2228,12 +2253,23 @@ function parseWorkoutV2(input: string): Workout {
 
       // (iter 14 instruction-line guard moved BEFORE extractLabel above)
 
+      // V0.38 (2026-08-15): 3-minute all-out test short-circuit.
+      // Mirrors the Swift parser. A bare "3MT" line carries no
+      // reps×distance structure, so parseRepDist returns nil and
+      // the line would be dropped (the bug class this fixes).
+      // When the 3MT marker is present and parseRepDist yields
+      // nothing, inject a synthetic "1 x 25" rep group with the
+      // 3MT intensity override so the line emits as a 3MT set.
+      // The stroke word (e.g. "free" in "3MT free") parses from
+      // the original rest text and is preserved on the rg.
+      const is3MTLine = THREE_MT_RE.test(rest);
+
       const rd = parseRepDist(rest);
       // Composite-set bypass: "N x (...)" has no "N x M" for parseRepDist,
       // but parseRepGroup handles it via the fragment path. Don't bail —
       // fall through to parseRepGroup.
       const isCompositeSet = /\d+\s*[x×]\s*\(/.test(rest);
-      if (rd.reps === null && rd.distance === null && !isCompositeSet) {
+      if (rd.reps === null && rd.distance === null && !isCompositeSet && !is3MTLine) {
         // ponytail (autoresearch iter 4, 2026-07-19): a bare
         // "fast for time" / "for time" / "no breath" line (no reps,
         // no distance) should be attached to the PREVIOUS rep
@@ -2292,7 +2328,20 @@ function parseWorkoutV2(input: string): Workout {
         repGroups: [],
       };
 
-      const rg = parseRepGroup(rest);
+      // V0.38 (2026-08-15): 3MT short-circuit. When the line carries
+      // a 3MT marker but no reps/distance structure, prepend a
+      // synthetic "1 x 25" so parseRepGroup emits reps=1, distance=25.
+      // parseIntensity sees the 3MT marker in the rewritten rest and
+      // returns { type: "3mt", label: "3-minute all-out" } — the rest
+      // of the pipeline is then a normal set parse. Stroke parses
+      // from the original text (e.g. "free" survives in
+      // "1 x 25 3MT free").
+      let parsedRest = rest;
+      if (is3MTLine && (rd.reps === null || rd.distance === null)) {
+        parsedRest = `1 x 25 ${rest}`.trim();
+      }
+
+      const rg = parseRepGroup(parsedRest);
       if (rg) {
         // ponytail (autoresearch iter 6, 2026-07-17): when a
         // "same as above" suffix was stripped, fill in any missing

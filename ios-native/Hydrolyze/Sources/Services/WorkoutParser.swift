@@ -56,6 +56,20 @@ enum WorkoutParser {
     private static func parseRepGroup(from line: String) -> ParsedRepGroup? {
         let inlineNote = extractInlineNote(line)
         let text = inlineNote.cleaned
+
+        // V0.38 (2026-08-15): 3-minute all-out test short-circuit.
+        // "3MT" / "3-min all-out" / "3 min test" carry no reps×distance
+        // structure, so parseRepDist would return nil and the line
+        // would be dropped. Match the marker first, emit a single
+        // rep with reps=1, distance=25 (split distance), no interval,
+        // and intensity=3mt. Stroke parses normally.
+        if let _ = firstMatch(#"\b3\s*[-]?\s*m(?:in(?:ute)?s?)?\s+(?:all[\s-]?out|test)\b"#, in: text) {
+            return threeMinuteTestRepGroup(text: text)
+        }
+        if let _ = firstMatch(#"\b3\s*[-]?\s*mt\b"#, in: text) {
+            return threeMinuteTestRepGroup(text: text)
+        }
+
         let rd = parseRepDist(text)
         if rd.reps == nil && rd.distance == nil { return nil }
 
@@ -123,6 +137,48 @@ enum WorkoutParser {
             descend: nil,
             details: nil
         )
+    }
+
+    /// V0.38 (2026-08-15): emit a 3-minute all-out test rep group.
+    /// reps=1 (one continuous 3:00 swim), distance=25 (split distance
+    /// the coach taps LAP at), no interval (continuous — the timing
+    /// flow in Slice 4 runs the stopwatch for 3:00 independently of
+    /// this field), intensity=3mt. Stroke parses normally from any
+    /// remaining text (e.g. "3MT free" → Free).
+    private static func threeMinuteTestRepGroup(text: String) -> ParsedRepGroup {
+        return ParsedRepGroup(
+            reps: 1,
+            distance: 25,
+            stroke: parseStroke(text),
+            interval: nil,
+            intensity: ParsedIntensity(
+                type: .threeMinuteTest,
+                label: "3-minute all-out"
+            ),
+            pacing: nil,
+            pattern: nil,
+            patternType: nil,
+            connectors: nil,
+            note: nil,
+            gear: nil,
+            gearOptional: false,
+            descend: nil,
+            details: nil
+        )
+    }
+
+    /// V0.38 (2026-08-15): true when any rep group in the parsed
+    /// workout has the 3MT intensity marker. The caller (WorkoutService
+    /// save path) uses this to set the workout-level session_type.
+    static func is3MT(_ workout: ParsedWorkout) -> Bool {
+        for section in workout.sections {
+            for namedSet in section.namedSets {
+                for rg in namedSet.repGroups {
+                    if rg.intensity?.type == .threeMinuteTest { return true }
+                }
+            }
+        }
+        return false
     }
 
     private static func extractInlineNote(_ text: String) -> (cleaned: String, note: String?) {

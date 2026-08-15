@@ -539,7 +539,10 @@ private struct RPEPromptBadge: View {
 // MARK: - Parsed Workout Tree Types (Swift port of workout-types.ts)
 
 enum ParsedIntensityType: String, Codable {
-    case easy, aerobic, threshold, race_pace, pace_target, sprint, descend, build, negative_split, percent_range
+    // V0.38 (2026-08-15): threeMinuteTest — Eva Piatrikova's 3-min all-out test.
+    // rawValue MUST stay "3mt" — free-form text column in Postgres and the
+    // edge function's IntensityType union both spell it that way.
+    case easy, aerobic, threshold, race_pace, pace_target, sprint, descend, build, negative_split, percent_range, threeMinuteTest = "3mt"
 }
 
 struct ParsedIntensity: Codable {

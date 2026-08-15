@@ -611,6 +611,23 @@ export const EXPECTED: Record<string, ExpectedLine> = {
     ],
   },
 
+  // V0.38 (2026-08-16): 3MT recognition. Bare "3MT", "3MT free",
+  // "3-min all-out", "3 min test", "3-minute all-out kick" all emit
+  // reps=1, distance=25, interval=null, intensity_type "3mt".
+  // Neighbors (200 easy free, 4 x 50 kick) unaffected.
+  'real-input-20.txt': {
+    notes: [],
+    repGroups: [
+      { reps: 1, distance: 200, interval: null, stroke: "Free", pattern: null, note: null, subReps: 0, source: "rg1" },
+      { reps: 1, distance: 25, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "rg2" },
+      { reps: 4, distance: 50, interval: "1:00", stroke: "Kick", pattern: null, note: null, subReps: 0, source: "rg3" },
+      { reps: 1, distance: 25, interval: null, stroke: "Free", pattern: null, note: null, subReps: 0, source: "rg4" },
+      { reps: 1, distance: 25, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "rg5" },
+      { reps: 1, distance: 25, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "rg6" },
+      { reps: 1, distance: 25, interval: null, stroke: "Kick", pattern: null, note: null, subReps: 0, source: "rg7" },
+    ],
+  },
+
 };
 
 // Normalize interval: "1.20" <-> "1:20", trim leading zero
