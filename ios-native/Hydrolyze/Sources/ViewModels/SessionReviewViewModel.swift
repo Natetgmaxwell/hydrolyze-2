@@ -168,6 +168,25 @@ final class SessionReviewViewModel: ObservableObject {
     @Published var showReassignSheet: Bool = false
     @Published var selectedRow: ReviewRow?
     @Published var showConfirmWarning: Bool = false
+    /// V0.38 Slice 5 (2026-08-16): per-swimmer 3MT result profiles
+    /// fetched from `swimmer_test_profiles` for the active session.
+    /// Empty for non-3MT sessions (the panel renders nothing in that
+    /// case — see `ThreeMTPanelView`). Keyed by swimmerId.uuidString
+    /// to match the `recorded_times.paired_swimmer_id` join.
+    @Published var testProfiles: [String: SwimmerTestProfile] = [:]
+    /// V0.38 Slice 5 (2026-08-16): per-swimmer per-split speed
+    /// arrays (m/s, ordered by `recorded_times.rep_index`).
+    /// Derived from the recorded_times fetch — the
+    /// `swimmer_test_profiles` table doesn't persist `curveShape`
+    /// (work order's column list doesn't include a curve column,
+    /// and slice 4's save flow doesn't write one), so we recompute
+    /// the chart from the recorded_times rows the VM already
+    /// fetches. The chart in `ThreeMTPanelView` reads from this
+    /// dict, falling back to a two-point sketch from
+    /// (peakSpeed, criticalSpeed) when only the profile is
+    /// available (defensive — the analyzer ran but the lap rows
+    /// were filtered).
+    @Published var testProfileCurves: [String: [Double]] = [:]
 
     private let supabase = SupabaseService.shared.client
     private var sessionId: String?
@@ -201,6 +220,32 @@ final class SessionReviewViewModel: ObservableObject {
         case .likelyWrong:
             return rows.filter { $0.band == .likelyWrong }
         }
+    }
+
+    /// V0.38 Slice 5 (2026-08-16): for the currently-filtered row
+    /// set, the minimum `rep_index` per swimmer. The view reads
+    /// this to attach the 3MT panel to the FIRST row per swimmer
+    /// (lowest rep_index = the first split tapped) — subsequent
+    /// split rows for the same swimmer get nil and render no
+    /// panel. The map is keyed by the same swimmer key the rows
+    /// use (`paired_swimmer_id` falling back to `swimmer_id`,
+    /// finally empty string). Recomputed on every read so the
+    /// filter changes (`viewModel.filter`) are honoured — the
+    /// panel only attaches to rows the user is currently looking
+    /// at, not to hidden ones.
+    var firstRowRepIndexBySwimmer: [String: Int] {
+        var result: [String: Int] = [:]
+        for row in filteredRows {
+            let key = row.recordedTime.pairedSwimmerId ?? row.recordedTime.swimmerId ?? ""
+            guard !key.isEmpty else { continue }
+            let rep = row.recordedTime.repIndex
+            if let existing = result[key] {
+                if rep < existing { result[key] = rep }
+            } else {
+                result[key] = rep
+            }
+        }
+        return result
     }
 
     /// PHASE 2.6 v1.14: row count for each filter tab. The view uses
@@ -354,6 +399,19 @@ final class SessionReviewViewModel: ObservableObject {
                 .select()
                 .eq("session_id", value: sessionId)
                 .execute()
+            // V0.38 Slice 5 (2026-08-16): per-swimmer 3MT result
+            // profiles. Fetched in parallel with the existing
+            // recorded_times + wave_assignments — non-3MT sessions
+            // simply return no rows (the panel renders nothing in
+            // that case). The review surface uses the dict's per-
+            // swimmer presence to drive the panel; we don't branch
+            // on session_type anywhere. If the table is missing
+            // (pre-migration remote) or RLS denies, the catch below
+            // leaves the dict empty — the review still renders.
+            async let testProfilesResponseTask = supabase.from("swimmer_test_profiles")
+                .select()
+                .eq("session_id", value: sessionId)
+                .execute()
 
             // PHASE 1 (T8.5, 2026-06-20): fetch the workout_sets
             // (for suit + startType) and the calibration factors
@@ -368,6 +426,64 @@ final class SessionReviewViewModel: ObservableObject {
             let timesResponse = try await timesResponseTask
             let waveResponse = try await waveResponseTask
             let rawTimes = try JSONDecoder().decode([RecordedTime].self, from: timesResponse.data)
+
+            // V0.38 Slice 5 (2026-08-16): derive per-swimmer
+            // speed-vs-time curve from the recorded_times rows for
+            // the 3MT panel. Each 3MT lap is a 25m split (the
+            // work order's paceDistance is 25 for the 3MT save
+            // path, slice 4). speed (m/s) = 25 / (timeMs / 1000).
+            // Group by swimmerId (paired or fallback), sort by
+            // repIndex, store as `[swimmerId: [Double]]`. Rows
+            // missing paceDistance are skipped (defensive — the
+            // pre-2.6 migration rows have no paceDistance and
+            // therefore no 25m anchor).
+            var curveBySwimmer: [String: [Double]] = [:]
+            var grouped: [String: [(repIndex: Int, splitMs: Int, paceDistance: Int)]] = [:]
+            for rt in rawTimes {
+                guard let sid = rt.pairedSwimmerId ?? rt.swimmerId,
+                      let dist = rt.paceDistance,
+                      dist > 0
+                else { continue }
+                grouped[sid, default: []].append((rt.repIndex, rt.timeMs, dist))
+            }
+            for (sid, entries) in grouped {
+                let sorted = entries.sorted { $0.repIndex < $1.repIndex }
+                let speeds: [Double] = sorted.compactMap { e in
+                    guard e.splitMs > 0 else { return nil }
+                    return Double(e.paceDistance) / (Double(e.splitMs) / 1000.0)
+                }
+                if !speeds.isEmpty {
+                    curveBySwimmer[sid] = speeds
+                }
+            }
+            self.testProfileCurves = curveBySwimmer
+
+            // V0.38 Slice 5 (2026-08-16): the test-profiles fetch
+            // is best-effort — a 3MT session will return rows, a
+            // training session returns nothing, and a pre-migration
+            // remote may surface an error which we treat as empty.
+            // We assign into `testProfiles` (always) and never let
+            // the fetch break the main load. The dict is empty for
+            // non-3MT sessions so the review renders normally.
+            do {
+                let profilesResponse = try await testProfilesResponseTask
+                let profiles = try JSONDecoder().decode(
+                    [SwimmerTestProfile].self,
+                    from: profilesResponse.data
+                )
+                var bySwimmer: [String: SwimmerTestProfile] = [:]
+                for p in profiles {
+                    bySwimmer[p.swimmerId] = p
+                }
+                self.testProfiles = bySwimmer
+            } catch {
+                // Non-fatal — log and proceed with an empty dict so
+                // the review surface still renders the recorded_times
+                // rows. The 3MT panel simply won't show for this
+                // session.
+                print("[Review] swimmer_test_profiles fetch failed (non-fatal): \(error.localizedDescription)")
+                self.testProfiles = [:]
+            }
 
             // Dedupe by id — same defensive pattern as the wave-preview fix (commit a322a73).
             // If a session was timed twice through the stopwatch, or test data was seeded

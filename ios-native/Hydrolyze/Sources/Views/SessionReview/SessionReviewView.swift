@@ -238,6 +238,25 @@ struct SessionReviewView: View {
                             )
                             Haptics.success()
                         }
+                        // V0.38 Slice 5 (2026-08-16): the 3MT
+                        // panel is per-swimmer, not per-row. A 3MT
+                        // session emits 9+ recorded_times rows per
+                        // swimmer (one per split), so rendering the
+                        // panel on every row would repeat the same
+                        // panel 9 times. The parent identifies the
+                        // FIRST row per swimmer (the row whose
+                        // `rep_index` is the lowest in the filtered
+                        // set) and passes the profile + curve ONLY
+                        // to that row; subsequent split rows get
+                        // nil and render no panel.
+                        let swimmerKey = row.recordedTime.pairedSwimmerId ?? row.recordedTime.swimmerId ?? ""
+                        let isFirstRowForSwimmer = viewModel.firstRowRepIndexBySwimmer[swimmerKey] == row.recordedTime.repIndex
+                        let panelProfile: SwimmerTestProfile? = isFirstRowForSwimmer
+                            ? viewModel.testProfiles[swimmerKey]
+                            : nil
+                        let panelCurve: [Double]? = isFirstRowForSwimmer
+                            ? viewModel.testProfileCurves[swimmerKey]
+                            : nil
                         ReviewRowView(
                             row: row,
                             isAcceptedByCoach: viewModel.coachConfirmedRowIds.contains(row.id),
@@ -250,7 +269,11 @@ struct SessionReviewView: View {
                             // 'onAccept'" — reorder the named args.
                             onTap: onTapCallback,
                             onAccept: onAcceptCallback,
-                            onMarkIntensity: onMarkIntensityCallback
+                            onMarkIntensity: onMarkIntensityCallback,
+                            // V0.38 Slice 5 (2026-08-16): per-swimmer
+                            // 3MT panel data (see comment above).
+                            threeMTProfile: panelProfile,
+                            threeMTCurveSpeeds: panelCurve
                         )
                         // PHASE 2.6 v1.14: row enter/exit transition.
                         // When the user bulk-accepts rows or switches
@@ -416,10 +439,23 @@ struct ReviewRowView: View {
     /// context menu. The view passes the chosen intensity to the
     /// view model, which writes a coach-confirmed PB.
     var onMarkIntensity: (String) async -> Void = { _ in }
+    /// V0.38 Slice 5 (2026-08-16): the per-swimmer 3MT result
+    /// profile, when present. The parent (`SessionReviewView`'s
+    /// `rowsList`) passes the profile for the FIRST row per
+    /// swimmer (lowest `rep_index`); subsequent split rows for
+    /// the same swimmer get `nil` so the panel only renders once
+    /// per swimmer — the work order calls for a per-swimmer panel,
+    /// not per-lap.
+    var threeMTProfile: SwimmerTestProfile? = nil
+    /// V0.38 Slice 5 (2026-08-16): the per-swimmer per-split
+    /// speed array (m/s). Mirrors `threeMTProfile` in scope —
+    /// passed only for the first row per swimmer.
+    var threeMTCurveSpeeds: [Double]? = nil
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onTap) {
+                HStack(spacing: 12) {
                 Circle()
                     .fill(row.confidenceLevel.color)
                     .frame(width: 10, height: 10)
@@ -541,13 +577,13 @@ struct ReviewRowView: View {
                         .font(.system(size: 12))
                         .foregroundColor(Color.textFaint)
                 }
+                }
+                .padding(12)
+                .background(row.confidenceLevel.backgroundColor)
+                .cornerRadius(10)
             }
-            .padding(12)
-            .background(row.confidenceLevel.backgroundColor)
-            .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
+            .buttonStyle(.plain)
+            .contextMenu {
             // Long-press to accept a low-confidence pairing without
             // opening the reassign sheet. Useful when the coach knows
             // the pairing is correct but the engine has high variance.
@@ -580,6 +616,21 @@ struct ReviewRowView: View {
                 } label: {
                     Label("Mark actual intensity", systemImage: "scope")
                 }
+            }
+            }
+            // V0.38 Slice 5 (2026-08-16): the per-swimmer 3MT
+            // panel. Renders under the row when the parent passes
+            // a profile (the parent passes it for the FIRST row
+            // per swimmer — see `rowsList` in SessionReviewView).
+            // For non-3MT sessions the profile is always nil and
+            // the panel never appears; the review surface is
+            // visually identical to pre-Slice-5.
+            if let profile = threeMTProfile {
+                ThreeMTPanelView(
+                    profile: profile,
+                    swimmerName: row.swimmerName,
+                    curveSpeeds: threeMTCurveSpeeds
+                )
             }
         }
     }
