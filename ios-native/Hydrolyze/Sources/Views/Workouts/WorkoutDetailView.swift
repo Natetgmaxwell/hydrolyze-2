@@ -280,13 +280,13 @@ struct WorkoutDetailView: View {
             reps: set.reps,
             interval: set.intervalText,
             intensityLabel: set.intensityLabel,
+            workoutSetId: set.id,
             // V0.38 Slice 4 (2026-08-16): forward the structured
             // intensity_type rawValue alongside the human label so the
             // timing flow can detect "3mt" without string-matching the
             // label. The DB persists rawValue ("3mt"); the parser emits
             // label ("3-minute all-out"). Both flow through.
             intensityType: set.intensityType,
-            workoutSetId: set.id,
             fragmentContexts: nil
         )
         let isTimeable = set.distance != nil && set.distance! > 0
@@ -488,12 +488,12 @@ struct WorkoutDetailView: View {
             reps: 1, // each fragment is one timed unit
             interval: parentSet?.intervalText,
             intensityLabel: fragment.intensity?.label ?? fragment.descriptor ?? parentSet?.intensityLabel,
+            workoutSetId: parentSet?.id,
             // V0.38 Slice 4 (2026-08-16): forward the parent's
             // intensity_type so a fragment of a 3MT parent set still
             // triggers the 3MT timing flow. Fragments themselves don't
             // carry intensity_type — they inherit from the parent.
             intensityType: parentSet?.intensityType,
-            workoutSetId: parentSet?.id,
             fragmentContexts: [fragmentContext]
         )
         timingPrefill = prefill
