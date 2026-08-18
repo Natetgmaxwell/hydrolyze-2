@@ -690,6 +690,13 @@ struct ParsedRepGroup: Codable {
     var fragments: [ParsedFragment]?
     // LLM swap (2026-08-01): source text the LLM extracted this repGroup from
     var sourceLine: String?
+    // V0.41 (2026-08-18): the set-level zone term
+    // ("easy" | "steady" | "hard" | "sprint"). Mirrors the edge
+    // function's `zone_term` — a set whose text states exactly one
+    // zone word carries it here; the timing flow (Slice 2) reads this
+    // to resolve each swimmer's zone pace. Additive: does not replace
+    // `intensity` (the zone word also maps to its intensity type).
+    var zoneTerm: String?
 
     // ponytail: custom decoder that handles BOTH the regex parser's
     // response (which has every field) and the LLM's response (which
@@ -702,6 +709,11 @@ struct ParsedRepGroup: Codable {
         case reps, distance, stroke, interval, intensity, pacing, pattern, patternType
         case connectors, note, gear, gearOptional, descend, details, dive, suit
         case ambiguousTerm, fragments, sourceLine
+        // V0.41 (2026-08-18): zone term. The LLM path emits snake_case
+        // `zone_term`; the regex path emits camelCase `zoneTerm`
+        // (mirroring how it emits `intensity` nested). Decode both.
+        case zoneTerm = "zone_term"
+        case zoneTermCamel = "zoneTerm"
         // LLM uses flat fields instead of the nested intensity object
         case intensityType = "intensity_type"
         case intensityLabel = "intensity_label"
@@ -727,6 +739,10 @@ struct ParsedRepGroup: Codable {
         ambiguousTerm = try c.decodeIfPresent(String.self, forKey: .ambiguousTerm)
         fragments = try c.decodeIfPresent([ParsedFragment].self, forKey: .fragments)
         sourceLine = try c.decodeIfPresent(String.self, forKey: .sourceLine)
+        // V0.41 (2026-08-18): zone term. Prefer the LLM path's snake_case
+        // `zone_term`; fall back to the regex path's camelCase `zoneTerm`.
+        zoneTerm = try c.decodeIfPresent(String.self, forKey: .zoneTerm)
+            ?? c.decodeIfPresent(String.self, forKey: .zoneTermCamel)
 
         // Resolve intensity from whichever shape the server emitted.
         if let nested = try c.decodeIfPresent(ParsedIntensity.self, forKey: .intensity) {
@@ -767,7 +783,8 @@ struct ParsedRepGroup: Codable {
         suit: Bool? = nil,
         ambiguousTerm: String? = nil,
         fragments: [ParsedFragment]? = nil,
-        sourceLine: String? = nil
+        sourceLine: String? = nil,
+        zoneTerm: String? = nil
     ) {
         self.reps = reps
         self.distance = distance
@@ -788,6 +805,7 @@ struct ParsedRepGroup: Codable {
         self.ambiguousTerm = ambiguousTerm
         self.fragments = fragments
         self.sourceLine = sourceLine
+        self.zoneTerm = zoneTerm
     }
 
     // ponytail: explicit Encodable so the synthesized conformance survives
@@ -814,6 +832,7 @@ struct ParsedRepGroup: Codable {
         try c.encodeIfPresent(dive, forKey: .dive)
         try c.encodeIfPresent(suit, forKey: .suit)
         try c.encodeIfPresent(ambiguousTerm, forKey: .ambiguousTerm)
+        try c.encodeIfPresent(zoneTerm, forKey: .zoneTerm)
         // fragments and sourceLine are LLM-only additions; we don't emit
         // them on encode because no caller round-trips this struct.
     }

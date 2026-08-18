@@ -619,6 +619,11 @@ struct WorkoutDetailView: View {
                                             label: $0
                                         )
                                     },
+                                    // V0.41 (2026-08-18): round-trip the
+                                    // persisted set-level zone term so the
+                                    // builder preview (Slice 3) and timing
+                                    // flow (Slice 2) read it back.
+                                    zoneTerm: set.zoneTerm,
                                     pacing: nil,
                                     pattern: [],
                                     patternType: nil,

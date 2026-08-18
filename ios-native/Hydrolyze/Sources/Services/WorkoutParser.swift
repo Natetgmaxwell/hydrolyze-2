@@ -53,6 +53,33 @@ enum WorkoutParser {
 
     // MARK: - Per-line RepGroup extraction
 
+    // MARK: - parseZoneTerm (V0.41, 2026-08-18)
+
+    /// The set-level zone term. Mirrors engine.ts / index.ts
+    /// `parseZoneTerm` so the 4-place sync holds: a set with exactly
+    /// one of the four zone words (easy/steady/hard/sprint, standalone,
+    /// word-boundary) carries that zone term; a set with none OR with
+    /// multiple distinct zone words (e.g. a composite "fast/easy"
+    /// fragment set) gets nil — the fragments carry per-segment
+    /// intensity. The 3MT marker never yields a zone term.
+    private static func parseZoneTerm(_ text: String) -> String? {
+        if firstMatch(#"\b3\s*[-]?\s*m(?:in(?:ute)?s?)?\s+(?:all[\s-]?out|test)\b"#, in: text) != nil { return nil }
+        if firstMatch(#"\b3\s*[-]?\s*mt\b"#, in: text) != nil { return nil }
+        guard let re = try? NSRegularExpression(pattern: #"\b(easy|steady|hard|sprint)\b"#, options: [.caseInsensitive]) else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        let nsMatches = re.matches(in: text, options: [], range: range)
+        // Collect the distinct captured zone words across ALL matches
+        // (a set with multiple distinct zone words yields nil — the
+        // fragments carry per-segment intensity).
+        var terms: Set<String> = []
+        for m in nsMatches {
+            if m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: text) {
+                terms.insert(String(text[r]).lowercased())
+            }
+        }
+        return terms.count == 1 ? terms.first : nil
+    }
+
     private static func parseRepGroup(from line: String) -> ParsedRepGroup? {
         let inlineNote = extractInlineNote(line)
         let text = inlineNote.cleaned
@@ -82,6 +109,7 @@ enum WorkoutParser {
         let stroke = parseStroke(preAsText)
         let interval = parseInterval(text)
         let intensity = parseIntensity(text)
+        let zoneTerm = parseZoneTerm(text)
         let pacing = parsePacing(text)
         let gear = parseGear(text)
         let gearOptional = gear != nil && isOptional(text)
@@ -135,7 +163,11 @@ enum WorkoutParser {
             gear: gear,
             gearOptional: gearOptional,
             descend: nil,
-            details: nil
+            details: nil,
+            // V0.41 (2026-08-18): the set-level zone term rides on the
+            // ParsedRepGroup so the timing flow can resolve each
+            // swimmer's zone pace.
+            zoneTerm: zoneTerm
         )
     }
 

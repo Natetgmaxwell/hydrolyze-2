@@ -43,11 +43,14 @@ interface LLMFragment {
   start_type: string | null;
 }
 
+type ZoneTerm = "easy" | "steady" | "hard" | "sprint";
+
 interface LLMRepGroup {
   reps: number | null;
   distance: number | null;
   stroke: string | null;
   interval: string | null;
+  zone_term?: ZoneTerm | null;
   note: string | null;
   fragments: LLMFragment[];
   sourceLine: string;
@@ -69,6 +72,7 @@ export interface ValidatedRepGroup {
   interval: string | null;
   intensity_type: string | null;
   intensity_label: string | null;
+  zone_term: ZoneTerm | null;
   gear: string[] | null;
   dive: boolean;
   suit: boolean;
@@ -181,6 +185,7 @@ Return a single JSON object:
           "stroke": "free",
           "interval": "1:30",
           "note": "instructions or null",
+          "zone_term": "steady",
           "fragments": [
             { "distance": 75, "stroke": null, "instruction": null, "intensity": { "type": "sprint", "label": "fast" } }
           ],
@@ -193,6 +198,7 @@ Return a single JSON object:
 
 - fragments: empty array [] for simple sets; one entry per sub-segment for composite sets.
 - intensity: {type, label} or null. type ∈ easy|aerobic|threshold|race_pace|pace_target|sprint|descend|build|negative_split|percent_range|3mt. label = the coach's exact word lowercased ("3-minute all-out" for 3MT).
+- zone_term: "easy" | "steady" | "hard" | "sprint" | null. The set's governing zone word when the set text states exactly one of the four zone words (standalone intensity word); null when there is no zone word OR more than one distinct zone word. The zone_term is SEPARATE from intensity — "Steady" yields zone_term "steady" AND intensity type "aerobic". The 3MT marker never yields a zone_term.
 - stroke: null when no stroke is stated. Pure intensity words ("fast", "easy") go in intensity, NOT stroke.
 - reps: 1 for single swims. distance: null for time-based sets ("Free - 8:00 kick").
 - Every repGroup MUST include all keys: reps, distance, stroke, interval, note, fragments, sourceLine.
@@ -440,6 +446,20 @@ function parseIntensity(text: string): { type: string; label: string } | null {
   return null;
 }
 
+// V0.41 (2026-08-18): the set-level zone term. Mirrors
+// index.ts `parseZoneTerm` so the 4-place sync holds — a set with
+// exactly one of the four zone words (easy/steady/hard/sprint,
+// standalone, word-boundary) carries that zone term; a set with none
+// OR with multiple distinct zone words (e.g. a composite "fast/easy"
+// fragment set) gets null (the fragments carry per-segment intensity).
+// The 3MT marker never yields a zone term.
+function parseZoneTerm(raw: string): ZoneTerm | null {
+  if (THREE_MT_RE.test(raw)) return null;
+  const matches = [...raw.matchAll(/\b(easy|steady|hard|sprint)\b/gi)];
+  const terms = new Set(matches.map((match) => match[1].toLowerCase() as ZoneTerm));
+  return terms.size === 1 ? [...terms][0] : null;
+}
+
 function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
   return llmOutput.sections.map((section) => ({
     title: section.title,
@@ -452,6 +472,12 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
         interval: normalizeInterval(rg.interval),
         intensity_type: null,
         intensity_label: null,
+        // V0.41 (2026-08-18): zone_term rides on the repGroup. Prefer
+        // the LLM's explicit field; fall back to the regex derivation
+        // over the note/source text so the 4-place sync holds even when
+        // the model omits the field. Null when the set has no single
+        // governing zone word.
+        zone_term: rg.zone_term ?? parseZoneTerm(derivationText),
         gear: extractGear(derivationText),
         dive: detectDive(derivationText),
         suit: detectSuit(derivationText),

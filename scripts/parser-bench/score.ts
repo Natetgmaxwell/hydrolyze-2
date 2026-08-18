@@ -18,6 +18,7 @@ interface FlatRepGroup {
   suit: boolean;
   gear: string[] | null;
   fragments: number;
+  zoneTerm: string | null;
   source: string;
 }
 
@@ -66,9 +67,10 @@ function flatten(parsed: ReturnType<typeof parseWorkoutV2>): FlatRepGroup[] {
           subReps: rg.pattern?.length ?? 0,
           dive: rg.dive ?? false,
           suit: rg.suit ?? false,
-          gear: rg.gear,
-          fragments: rg.fragments?.length ?? 0,
-          source: (rg.details || []).join(" ").slice(0, 60),
+           gear: rg.gear,
+           fragments: rg.fragments?.length ?? 0,
+           zoneTerm: (rg as { zoneTerm?: string | null }).zoneTerm ?? null,
+           source: (rg.details || []).join(" ").slice(0, 60),
         });
       }
     }
@@ -110,13 +112,14 @@ function sourceSimilarity(a: string, b: string): number {
 }
 
 function matchesTriple(
-  actual: { reps: number | null; distance: number | null; interval: string | null },
-  expected: { reps: number; distance: number; interval: string | null },
+  actual: { reps: number | null; distance: number | null; interval: string | null; zoneTerm?: string | null },
+  expected: { reps: number; distance: number; interval: string | null; zoneTerm?: string | null },
 ): boolean {
   if (actual.reps == null || actual.distance == null) return false;
   if (Math.abs(actual.reps - expected.reps) > 1) return false;
   if (actual.distance !== expected.distance) return false;
   if (normInterval(actual.interval) !== normInterval(expected.interval)) return false;
+  if (expected.zoneTerm !== undefined && (actual.zoneTerm ?? null) !== expected.zoneTerm) return false;
   return true;
 }
 

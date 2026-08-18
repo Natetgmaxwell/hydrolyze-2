@@ -281,6 +281,10 @@ final class WorkoutService {
             let interval_text: String?
             let intensity_type: String?
             let intensity_label: String?
+            // V0.41 (2026-08-18): set-level zone term, persisted so the
+            // timing flow (Slice 2) and builder preview (Slice 3) read
+            // it back from the DB row.
+            let zone_term: String?
             let gear: [String]?       // Phase 1 fix: send full gear array, not just .first
             let dive: Bool            // Phase 1 metadata
             let suit: Bool            // Phase 1 metadata
@@ -292,6 +296,7 @@ final class WorkoutService {
             enum CodingKeys: String, CodingKey {
                 case workout_id, reps, distance, stroke
                 case interval_text, intensity_type, intensity_label
+                case zone_term
                 case gear, dive, suit, start_type, order_index
                 case fragments
             }
@@ -335,6 +340,7 @@ final class WorkoutService {
                         interval_text: group.interval,
                         intensity_type: group.intensity?.type.rawValue,
                         intensity_label: group.intensity?.label,
+                        zone_term: group.zoneTerm,
                         gear: group.gear,
                         dive: dive,
                         suit: group.suit ?? false,

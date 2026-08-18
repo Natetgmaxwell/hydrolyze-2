@@ -47,6 +47,12 @@ struct WorkoutSet: Codable, Identifiable, Sendable {
     var intervalText: String?
     var intensityType: String?
     var intensityLabel: String?
+    /// V0.41 (2026-08-18): the set-level zone term
+    /// ("easy" | "steady" | "hard" | "sprint"). Mirrors the parser's
+    /// `zone_term` on workout_sets. The timing flow (Slice 2) reads
+    /// this to resolve each swimmer's zone pace; the builder preview
+    /// (Slice 3) shows it as a chip.
+    var zoneTerm: String?
     var paceTargetDistance: Int?
     var gear: [String]?  // Phase 1: upgraded from String? to [String]? for multi-gear sets
     /// Whether the swimmer wore a suit for this set (T1 schema, 2026-06-20).
@@ -81,6 +87,7 @@ struct WorkoutSet: Codable, Identifiable, Sendable {
         case intervalText = "interval_text"
         case intensityType = "intensity_type"
         case intensityLabel = "intensity_label"
+        case zoneTerm = "zone_term"
         case paceTargetDistance = "pace_target_distance"
         case gear
         case suit

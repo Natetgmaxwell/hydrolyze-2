@@ -91,6 +91,8 @@ interface Fragment {
   order: number;
 }
 
+type ZoneTerm = "easy" | "steady" | "hard" | "sprint";
+
 interface RepGroup {
   reps: number | null;
   distance: number | null;
@@ -98,6 +100,7 @@ interface RepGroup {
   interval: string | null;
   restInterval: boolean; // true = "rest :20" (between reps), false = "@ 1:30" (send-off cycle)
   intensity: ParsedIntensity | null;
+  zoneTerm: ZoneTerm | null;
   pacing: string | null;
   pattern: Rep[];
   patternType:
@@ -730,6 +733,13 @@ function detectAmbiguousTerm(raw: string): string | null {
 
 function defaultRPEForTerm(term: string): { low: number; high: number } | null {
   return DEFAULT_RPE_BY_TERM[term.toLowerCase()] ?? null;
+}
+
+function parseZoneTerm(raw: string): ZoneTerm | null {
+  if (THREE_MT_RE.test(raw)) return null;
+  const matches = [...raw.matchAll(/\b(easy|steady|hard|sprint)\b/gi)];
+  const terms = new Set(matches.map((match) => match[1].toLowerCase() as ZoneTerm));
+  return terms.size === 1 ? [...terms][0] : null;
 }
 
 function parseIntensity(raw: string): ParsedIntensity | null {
@@ -1714,8 +1724,9 @@ function parseRepGroup(lineText: string): RepGroup | null {
     stroke,
     interval,
     restInterval,
-    intensity: intensityOverride ?? intensity ?? null,
-    pacing,
+     intensity: intensityOverride ?? intensity ?? null,
+     zoneTerm: parseZoneTerm(text),
+     pacing,
     note: mergedNote,
     gear,
     gearOptional,
@@ -2037,8 +2048,9 @@ function parseWorkoutV2(input: string): Workout {
           stroke,
           interval: duration,
           restInterval: false,
-          intensity: null,
-          pacing: null,
+           intensity: null,
+           zoneTerm: null,
+           pacing: null,
           pattern: [],
           patternType: null,
           connectors: [],

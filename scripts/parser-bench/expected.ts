@@ -22,6 +22,7 @@ export interface ExpectedRepGroup {
   suit?: boolean;                   // true if the set is swum in a suit (default false)
   gear?: string[];                  // extracted gear (e.g. ['fins', 'paddles'])
   fragments?: number;               // count of fragments (composite sets only; 0/null for regular)
+  zoneTerm?: string | null;         // standalone zone term, when explicitly asserted
   source: string;                   // the human source line this came from, for diagnostics
 }
 
@@ -624,13 +625,20 @@ export const EXPECTED: Record<string, ExpectedLine> = {
       { reps: 1, distance: 25, interval: null, stroke: "Free", pattern: null, note: null, subReps: 0, source: "rg4" },
       { reps: 1, distance: 25, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "rg5" },
       { reps: 1, distance: 25, interval: null, stroke: null, pattern: null, note: null, subReps: 0, source: "rg6" },
-      { reps: 1, distance: 25, interval: null, stroke: "Kick", pattern: null, note: null, subReps: 0, source: "rg7" },
+       { reps: 1, distance: 25, interval: null, stroke: "Kick", pattern: null, note: null, subReps: 0, source: "rg7" },
+    ],
+  },
+  'real-input-21.txt': {
+    notes: [],
+    repGroups: [
+      { reps: 8, distance: 100, interval: "1:30", stroke: null, pattern: null, note: null, subReps: 0, zoneTerm: "steady", source: "8×100 Steady on 1:30" },
+      { reps: 4, distance: 50, interval: null, stroke: null, pattern: null, note: null, subReps: 0, zoneTerm: "sprint", source: "4×50 Sprint" },
+      { reps: 8, distance: 100, interval: "1:30", stroke: "Free", pattern: null, note: null, subReps: 0, zoneTerm: null, source: "8×100 free on 1:30" },
+      { reps: 4, distance: 100, interval: null, stroke: null, pattern: null, note: null, subReps: 0, zoneTerm: "hard", source: "4×100 Hard" },
     ],
   },
 
 };
-
-// Normalize interval: "1.20" <-> "1:20", trim leading zero
 function normInterval(s: string | null): string {
   if (s == null) return "";
   return s.replace(".", ":").replace(/^0+(\d)/, "$1");
@@ -662,9 +670,10 @@ export function matchesExpected(
     subReps?: number;
     dive?: boolean;
     suit?: boolean;
-    gear?: string[] | null;
-    fragments?: number | null;
-  },
+     gear?: string[] | null;
+     fragments?: number | null;
+     zoneTerm?: string | null;
+   },
   expected: ExpectedRepGroup,
 ): boolean {
   if (actual.reps == null || actual.distance == null) return false;
@@ -704,5 +713,6 @@ export function matchesExpected(
     const actualFragCount = actual.fragments ?? 0;
     if (actualFragCount !== expected.fragments) return false;
   }
+  if (expected.zoneTerm !== undefined && (actual.zoneTerm ?? null) !== expected.zoneTerm) return false;
   return true;
 }
