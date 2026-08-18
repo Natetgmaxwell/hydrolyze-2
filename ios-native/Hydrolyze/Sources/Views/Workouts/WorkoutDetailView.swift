@@ -627,11 +627,6 @@ struct WorkoutDetailView: View {
                                             label: $0
                                         )
                                     },
-                                    // V0.41 (2026-08-18): round-trip the
-                                    // persisted set-level zone term so the
-                                    // builder preview (Slice 3) and timing
-                                    // flow (Slice 2) read it back.
-                                    zoneTerm: set.zoneTerm,
                                     pacing: nil,
                                     pattern: [],
                                     patternType: nil,
@@ -644,7 +639,12 @@ struct WorkoutDetailView: View {
                                     dive: set.dive,
                                     suit: set.suit,
                                     ambiguousTerm: nil,
-                                    fragments: parsedFragments
+                                    fragments: parsedFragments,
+                                    // V0.41 (2026-08-18): round-trip the
+                                    // persisted set-level zone term so the
+                                    // builder preview (Slice 3) and timing
+                                    // flow (Slice 2) read it back.
+                                    zoneTerm: set.zoneTerm
                                 )
                             }
                         )
