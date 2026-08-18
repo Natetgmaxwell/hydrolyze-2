@@ -194,6 +194,15 @@ private struct RepGroupRowView: View {
                             .foregroundColor(Color.accentAmber)
                     }
 
+                    // V0.41 Slice 3 (2026-08-18): zone-term chip — the
+                    // set's governing zone word (Easy/Steady/Hard/Sprint)
+                    // shown as a distinct cyan marker so the coach sees
+                    // "this set prescribes a zone" at a glance. Renders
+                    // only when the parser emitted a zone term.
+                    if let zoneTerm = rg.zoneTerm {
+                        MetadataBadge(text: zoneTerm.capitalized, color: Color.accentCyan)
+                    }
+
                     if let interval = rg.interval {
                         Text(" on \(interval)")
                             .font(.captionStrong)
