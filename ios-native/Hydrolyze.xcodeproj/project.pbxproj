@@ -57,6 +57,7 @@
 		63BF728FDA5D95E0E6556692 /* RecordedTimeFragmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A402AB7C8D878D214E192EE /* RecordedTimeFragmentService.swift */; };
 		64833600ED0701686C6F395D /* SwimmerSheetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */; };
 		64D0C23101DC7F509AF5840D /* SwimmerDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */; };
+		673890D07BD3CE65E891D350 /* build_and_run_parserzone.sh in Resources */ = {isa = PBXBuildFile; fileRef = E695D2E4174F8C368AFB7740 /* build_and_run_parserzone.sh */; };
 		69F547FF1CC10BBC630D89BC /* build_and_run_attendance.sh in Resources */ = {isa = PBXBuildFile; fileRef = D4616F9A681BCD3987147C30 /* build_and_run_attendance.sh */; };
 		6DDF4280727494101EDC0A1B /* RestCountdownModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84255110465547DF03C24360 /* RestCountdownModel.swift */; };
 		6E63D74A84935A1342953360 /* build_and_run.sh in Resources */ = {isa = PBXBuildFile; fileRef = 3AA843D052311070F8AEE466 /* build_and_run.sh */; };
@@ -90,6 +91,7 @@
 		A1B6CD02B07475D8287E5ADE /* ThreeMTCopyCLITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB53A1E1AE2A98C74E9375B /* ThreeMTCopyCLITest.swift */; };
 		A34ED6D2102FE7EDD7E1C4E4 /* build_and_run_dropruledisplay.sh in Resources */ = {isa = PBXBuildFile; fileRef = F24A9DE7AED9F499FFF52E9C /* build_and_run_dropruledisplay.sh */; };
 		A4C025060CF3411EE05E87CF /* TimingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 065431091672032E31212808 /* TimingViewModel.swift */; };
+		A655A7B13E6C0360C4808B68 /* WorkoutParserZoneCLITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A7F53BCEF145388CFDAEFF /* WorkoutParserZoneCLITest.swift */; };
 		A668CB0BE3BD1F1B5236A9BB /* build_and_run_resolver.sh in Resources */ = {isa = PBXBuildFile; fileRef = 6FEE165FD6BF32A1E9DDC8F6 /* build_and_run_resolver.sh */; };
 		A71AE8C077E296C7E6FAF9DB /* PhasedProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E9DBEDA7BD10A912DF675D1 /* PhasedProgressView.swift */; };
 		A81250405E32626E83026239 /* AttendanceBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6419FC350D113A41F5979A /* AttendanceBadge.swift */; };
@@ -280,9 +282,11 @@
 		DC9FC4386910B6A7B249B8C3 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		E054B0B3F7353601DA86C879 /* Coach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Coach.swift; sourceTree = "<group>"; };
 		E3B318621C603AC7D8FAEBA1 /* HydrolyzeColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrolyzeColors.swift; sourceTree = "<group>"; };
+		E695D2E4174F8C368AFB7740 /* build_and_run_parserzone.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_parserzone.sh; sourceTree = "<group>"; };
 		E8D42BD09217EC1098E3901C /* ChartDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartDataService.swift; sourceTree = "<group>"; };
 		F0E11B7104A97D4F39692D1C /* SwimmerUpcomingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerUpcomingView.swift; sourceTree = "<group>"; };
 		F24A9DE7AED9F499FFF52E9C /* build_and_run_dropruledisplay.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_dropruledisplay.sh; sourceTree = "<group>"; };
+		F3A7F53BCEF145388CFDAEFF /* WorkoutParserZoneCLITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutParserZoneCLITest.swift; sourceTree = "<group>"; };
 		F4843BBD2FEF6AF58952FAB7 /* build_and_run_recoverysignature.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_recoverysignature.sh; sourceTree = "<group>"; };
 		F61147CDFCC03EC205F60066 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		F878ABFE69673781F1A025A3 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
@@ -629,6 +633,7 @@
 				D4616F9A681BCD3987147C30 /* build_and_run_attendance.sh */,
 				F24A9DE7AED9F499FFF52E9C /* build_and_run_dropruledisplay.sh */,
 				A882ABF77A943AB7D9D175C0 /* build_and_run_parser3mt.sh */,
+				E695D2E4174F8C368AFB7740 /* build_and_run_parserzone.sh */,
 				F4843BBD2FEF6AF58952FAB7 /* build_and_run_recoverysignature.sh */,
 				6FEE165FD6BF32A1E9DDC8F6 /* build_and_run_resolver.sh */,
 				2193CC42DE28B217E4861318 /* build_and_run_restcountdown.sh */,
@@ -644,6 +649,7 @@
 				26A097D19993DB6BE5C2B787 /* ThreeMTSaveCLITest.swift */,
 				6102688431124340F6D10A14 /* TrainingZonesCLITest.swift */,
 				B92690A38421DACA93F52FAC /* WorkoutParser3MTCLITest.swift */,
+				F3A7F53BCEF145388CFDAEFF /* WorkoutParserZoneCLITest.swift */,
 			);
 			path = CLI;
 			sourceTree = "<group>";
@@ -770,6 +776,7 @@
 				69F547FF1CC10BBC630D89BC /* build_and_run_attendance.sh in Resources */,
 				A34ED6D2102FE7EDD7E1C4E4 /* build_and_run_dropruledisplay.sh in Resources */,
 				7238C8DAD07E6FA0F555237D /* build_and_run_parser3mt.sh in Resources */,
+				673890D07BD3CE65E891D350 /* build_and_run_parserzone.sh in Resources */,
 				4FFDB32855E9F9462D291774 /* build_and_run_recoverysignature.sh in Resources */,
 				A668CB0BE3BD1F1B5236A9BB /* build_and_run_resolver.sh in Resources */,
 				98D4CC478A68DD9E0CAACDAE /* build_and_run_restcountdown.sh in Resources */,
@@ -919,6 +926,7 @@
 				1638200D70C95A99BA97DBA2 /* ThreeMinuteTestCLITest.swift in Sources */,
 				C37C108BEAFB3FFC32869EF3 /* TrainingZonesCLITest.swift in Sources */,
 				86D02092BD9FAA9D4FB2185F /* WorkoutParser3MTCLITest.swift in Sources */,
+				A655A7B13E6C0360C4808B68 /* WorkoutParserZoneCLITest.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
