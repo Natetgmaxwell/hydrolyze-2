@@ -857,12 +857,405 @@ func runRestEventRowEncodes() -> Bool {
     return allPass
 }
 
+// MARK: - V0.40 Slice 4 (2026-08-18) — per-swimmer zone gate tests
+//
+// The V0.39 gate is a single `setIsAnaerobic: Bool` derived from
+// the set's intensity label. V0.40 Slice 4 adds a per-swimmer zone
+// gate: when a swimmer has a usable 3MT profile, the drop rule
+// fires ONLY for Hard/Sprint sets (rep pace ≤ the swimmer's Hard
+// zone boundary in s/100m). No profile → fall back to V0.39. The
+// pure-logic boundary lives in the model; these tests pin the
+// boundary math so the wiring can be regression-gated without a
+// booted simulator.
+//
+// Reference numbers (used to construct ZoneGates in the tests):
+//   CS = 1.33 m/s
+//     easy   boundary (mps) = 0.89  × 1.33 = 1.1837 → pace ≈ 84.47 s/100m
+//     steady boundary (mps) = 1.0   × 1.33 = 1.3300 → pace ≈ 75.19 s/100m
+//     hard   boundary (mps) = 1.035 × 1.33 = 1.37655 → pace ≈ 72.64 s/100m  ← THE gate boundary
+//     sprint boundary (mps) = 1.6                → pace = 62.50 s/100m
+//
+// For a 50m rep, per-100m pace s/100m = (repTimeMs / 1000) * (100 / 50)
+// = repTimeMs / 500. So:
+//   repTimeMs = 38000 → pace = 76.00 s/100m (slower than 72.64 → CLOSED)
+//   repTimeMs = 36000 → pace = 72.00 s/100m (≤ 72.64 → OPEN)
+//   repTimeMs = 30000 → pace = 60.00 s/100m (≤ 72.64 → OPEN)
+// To keep the test math clean and self-documenting, the tests use
+// rounded boundary values (84.0 / 75.0 / 72.0 / 62.0 s/100m) — the
+// gate only depends on the hard boundary being between the test
+// rep's pace and the boundary itself, so rounded values keep the
+// gate decision unambiguous.
+
+// MARK: - Test 18: V0.40 Slice 4 — zone gate, Steady pace → CLOSED
+
+/// Swimmer has a usable profile (zone gate with hasProfile=true).
+/// Rep pace in Steady zone (slower than hard boundary) → evaluate
+/// returns nil (drop rule does NOT fire for Easy/Steady sets).
+/// The rep is otherwise within threshold (rep = rep1) so the
+/// only reason evaluate returns nil is the per-swimmer zone gate.
+func runZoneGateSteadyCloses() -> Bool {
+    print("\n=== TEST 18: zone gate, Steady pace → CLOSED ===")
+    let baseRest = 180
+    let m = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    let swimmerId = "sw-A"
+
+    // hard boundary = 72.0 s/100m → the gate. Reps at 76 s/100m
+    // are slower (higher s/100m) → Easy/Steady → CLOSED.
+    let gate = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: 72.0,
+        sprintBoundarySecPer100: 62.0
+    )
+    m.zoneGateBySwimmer[swimmerId] = gate
+
+    // Rep at 50m, repTimeMs = 38000 → pace = 38000 / 500 = 76.0 s/100m
+    // (slower than hard 72.0 → Easy/Steady → gate CLOSED). Rep is
+    // at rep1 (rep1TimeMs = 38000) so the rep is otherwise at the
+    // standard → the V0.39 path would have evaluated (struck=false).
+    // The zone gate is the ONLY reason evaluate returns nil.
+    let eval = m.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: 38000,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: 38000
+    )
+
+    var allPass = true
+    allPass = assertEq("Steady pace → evaluate returns nil (gate CLOSED)",
+                       eval, nil) && allPass
+    // Also assert: the gate did NOT mutate per-swimmer state. A
+    // closed gate is a true no-op — no strikes, no extension, no
+    // standard recorded (the VM never saw the rep).
+    allPass = assertEq("Steady pace: strikes[A] untouched",
+                       m.strikes[swimmerId] ?? -1, -1) && allPass
+    allPass = assertEq("Steady pace: extendedRestSec untouched (still base)",
+                       m.extendedRestSec, baseRest) && allPass
+
+    print("  -> TEST 18: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 19: V0.40 Slice 4 — zone gate, Hard pace → OPEN
+
+/// Same swimmer as Test 18 (same ZoneGate), rep pace exactly at
+/// the hard boundary → evaluate returns non-nil (gate OPEN at
+/// the boundary, ≤). The V0.39 evaluation runs as normal.
+func runZoneGateHardOpens() -> Bool {
+    print("\n=== TEST 19: zone gate, Hard pace (at boundary) → OPEN ===")
+    let baseRest = 180
+    let m = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    let swimmerId = "sw-A"
+
+    let gate = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: 72.0,
+        sprintBoundarySecPer100: 62.0
+    )
+    m.zoneGateBySwimmer[swimmerId] = gate
+
+    // Rep at 50m, repTimeMs = 36000 → pace = 36000 / 500 = 72.0 s/100m
+    // (exactly at the hard boundary, ≤ → gate OPEN). Rep at rep1
+    // so the V0.39 path returns struck=false.
+    let eval = m.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: 36000,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: 36000
+    )
+
+    var allPass = true
+    allPass = assertTrue("Hard pace (at boundary) → evaluate returns non-nil",
+                         eval != nil) && allPass
+    guard let e = eval else { return false }
+    allPass = assertEq("Hard pace: struck=false (rep at standard)", e.struck, false) && allPass
+    allPass = assertEq("Hard pace: deltaSec == 0 (no extension)", e.deltaSec, 0) && allPass
+    allPass = assertEq("Hard pace: standard == 36000 (rep1 fallback)",
+                       e.standardMs, 36000) && allPass
+
+    print("  -> TEST 19: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 20: V0.40 Slice 4 — zone gate, Sprint pace → OPEN
+
+/// Same swimmer, rep pace in Sprint zone (faster than both Hard
+/// and Sprint boundaries) → gate OPEN. The gate only checks the
+/// hard boundary, but Sprint is faster than Hard so a Sprint rep
+/// is also at-or-under the hard threshold → OPEN. This pins the
+/// "Sprint is also Hard-or-faster" invariant so a future slice
+/// that distinguishes Hard from Sprint doesn't break the gate.
+func runZoneGateSprintOpens() -> Bool {
+    print("\n=== TEST 20: zone gate, Sprint pace → OPEN ===")
+    let baseRest = 180
+    let m = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    let swimmerId = "sw-A"
+
+    let gate = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: 72.0,
+        sprintBoundarySecPer100: 62.0
+    )
+    m.zoneGateBySwimmer[swimmerId] = gate
+
+    // Rep at 50m, repTimeMs = 30000 → pace = 30000 / 500 = 60.0 s/100m
+    // (faster than hard 72.0 AND sprint 62.0 → in Sprint → gate OPEN).
+    let eval = m.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: 30000,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: 30000
+    )
+
+    var allPass = true
+    allPass = assertTrue("Sprint pace → evaluate returns non-nil",
+                         eval != nil) && allPass
+    guard let e = eval else { return false }
+    allPass = assertEq("Sprint pace: struck=false (rep at standard)",
+                       e.struck, false) && allPass
+
+    print("  -> TEST 20: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 21: V0.40 Slice 4 — no profile, anaerobic set → V0.39 behavior
+
+/// Swimmer WITHOUT usable profile, setIsAnaerobic=true → V0.39
+/// fallback: evaluate returns non-nil regardless of the rep's
+/// zone. Two sub-cases:
+///   (a) No zoneGate entry at all (the typical "fetch hasn't
+///       returned yet" path) → evaluate non-nil.
+///   (b) zoneGate entry with hasProfile=false (the explicit
+///       "resolver returned nil" marker) → evaluate non-nil.
+/// The model must NOT close the gate on the absence of a gate
+/// marker; only on a present marker that says "no profile".
+func runZoneGateNoProfileAnaerobic() -> Bool {
+    print("\n=== TEST 21: no profile, anaerobic set → V0.39 behavior ===")
+    let baseRest = 180
+    let swimmerId = "sw-A"
+    let standard = 60000   // 60s
+    let overThreshold = 60700  // 60.7s, > standard + 500ms → strike
+
+    // (a) No zoneGate entry for this swimmer.
+    let m1 = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    let eval1 = m1.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: overThreshold,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: standard
+    )
+
+    var allPass = true
+    allPass = assertTrue("(a) no zoneGate entry → evaluate non-nil (V0.39)",
+                         eval1 != nil) && allPass
+    guard let e1 = eval1 else { return false }
+    allPass = assertEq("(a) no entry → strike fires (over threshold)",
+                       e1.struck, true) && allPass
+    allPass = assertEq("(a) no entry → strikeCount == 1", e1.strikeCount, 1) && allPass
+
+    // (b) zoneGate entry with hasProfile=false.
+    let m2 = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    m2.zoneGateBySwimmer[swimmerId] = ZoneGate(
+        hasProfile: false,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: 72.0,
+        sprintBoundarySecPer100: 62.0
+    )
+    let eval2 = m2.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: overThreshold,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: standard
+    )
+
+    allPass = assertTrue("(b) hasProfile=false → evaluate non-nil (V0.39)",
+                         eval2 != nil) && allPass
+    guard let e2 = eval2 else { return false }
+    allPass = assertEq("(b) hasProfile=false → strike fires (over threshold)",
+                       e2.struck, true) && allPass
+    allPass = assertEq("(b) hasProfile=false → strikeCount == 1",
+                       e2.strikeCount, 1) && allPass
+
+    print("  -> TEST 21: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 22: V0.40 Slice 4 — no profile, aerobic set → V0.39 fallback
+
+/// Swimmer WITHOUT usable profile, setIsAnaerobic=false → V0.39
+/// aerobic gate is unchanged: evaluate returns nil. The zone gate
+/// is a REFINE on top of V0.39; it does NOT relax the aerobic gate.
+func runZoneGateNoProfileAerobic() -> Bool {
+    print("\n=== TEST 22: no profile, aerobic set → V0.39 fallback ===")
+    let baseRest = 180
+    let m = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: false)
+    let swimmerId = "sw-A"
+
+    let eval = m.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: 100000,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: 60000
+    )
+
+    var allPass = true
+    allPass = assertEq("aerobic set → evaluate returns nil (V0.39)",
+                       eval, nil) && allPass
+    allPass = assertEq("aerobic set: strikes untouched",
+                       m.strikes[swimmerId] ?? 0, 0) && allPass
+    allPass = assertEq("aerobic set: extendedRestSec == base (unchanged)",
+                       m.extendedRestSec, baseRest) && allPass
+
+    print("  -> TEST 22: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 23: V0.40 Slice 4 — invalid zone boundaries → fallback, no crash
+
+/// ZoneGate with non-finite or non-positive hard boundary →
+/// falls back to `setIsAnaerobic` (evaluate non-nil when
+/// anaerobic, nil when aerobic). The "never crashes" rule covers
+/// partial rows, mid-migration data, corrupted profiles. The model
+/// MUST NOT crash on NaN / infinity / negative inputs — it must
+/// gracefully fall through to V0.39 behavior.
+///
+/// Sub-cases:
+///   (a) NaN hard boundary, anaerobic set → evaluate non-nil.
+///   (b) Negative hard boundary, anaerobic set → evaluate non-nil.
+///   (c) Infinity hard boundary, aerobic set → evaluate nil
+///       (the V0.39 aerobic gate fires, not the zone gate — the
+///       zone gate never gets a chance to apply).
+///   (d) Zero hard boundary, anaerobic set → evaluate non-nil.
+///   (e) Infinity hard boundary, anaerobic set → evaluate non-nil
+///       (the boundary is non-finite → fall through; the gate
+///       can never be OPEN with an infinite boundary in any
+///       reasonable interpretation, but the spec's "never
+///       crashes" rule says fall through rather than guard into
+///       the wrong branch).
+func runZoneGateInvalidBoundaries() -> Bool {
+    print("\n=== TEST 23: invalid zone boundaries → fallback ===")
+    let baseRest = 180
+    let swimmerId = "sw-A"
+    let standard = 60000
+    let overThreshold = 60700
+
+    // (a) NaN hard boundary, anaerobic → evaluate non-nil.
+    let m1 = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    m1.zoneGateBySwimmer[swimmerId] = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: Double.nan,
+        sprintBoundarySecPer100: 62.0
+    )
+    let eval1 = m1.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: overThreshold,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: standard
+    )
+    var allPass = true
+    allPass = assertTrue("(a) NaN hard boundary, anaerobic → non-nil (fallback)",
+                         eval1 != nil) && allPass
+
+    // (b) Negative hard boundary, anaerobic → evaluate non-nil.
+    let m2 = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    m2.zoneGateBySwimmer[swimmerId] = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: -1.0,
+        sprintBoundarySecPer100: 62.0
+    )
+    let eval2 = m2.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: overThreshold,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: standard
+    )
+    allPass = assertTrue("(b) negative hard boundary, anaerobic → non-nil (fallback)",
+                         eval2 != nil) && allPass
+
+    // (c) Infinity hard boundary, aerobic → evaluate nil (V0.39
+    // aerobic gate wins; the zone gate never reaches the
+    // boundary check).
+    let m3 = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: false)
+    m3.zoneGateBySwimmer[swimmerId] = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: Double.infinity,
+        sprintBoundarySecPer100: 62.0
+    )
+    let eval3 = m3.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: overThreshold,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: standard
+    )
+    allPass = assertEq("(c) infinity hard boundary, aerobic → nil (aerobic gate)",
+                       eval3, nil) && allPass
+
+    // (d) Zero hard boundary, anaerobic → evaluate non-nil.
+    // The "hard > 0" guard rejects zero (any positive pace is
+    // > 0 → OPEN; but zero means "all reps are below
+    // boundary" which is meaningless, so fall through is the
+    // safe default per the spec's "never crashes" rule).
+    let m4 = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    m4.zoneGateBySwimmer[swimmerId] = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: 0.0,
+        sprintBoundarySecPer100: 62.0
+    )
+    let eval4 = m4.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: overThreshold,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: standard
+    )
+    allPass = assertTrue("(d) zero hard boundary, anaerobic → non-nil (fallback)",
+                         eval4 != nil) && allPass
+
+    // (e) Infinity hard boundary, anaerobic → evaluate non-nil.
+    // Non-finite → fall through (the boundary check is unsafe
+    // when the boundary is infinite — any finite pace is "≤ ∞",
+    // but the spec's defensive rule is to fall through on any
+    // non-finite value rather than risk an inverted gate).
+    let m5 = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    m5.zoneGateBySwimmer[swimmerId] = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: Double.infinity,
+        sprintBoundarySecPer100: 62.0
+    )
+    let eval5 = m5.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: overThreshold,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: standard
+    )
+    allPass = assertTrue("(e) infinity hard boundary, anaerobic → non-nil (fallback)",
+                         eval5 != nil) && allPass
+
+    print("  -> TEST 23: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
 // MARK: - Main
 
 @main
 struct RestCountdownCLITest {
     static func main() {
-        print("=== RestCountdownCLI Test — V0.39 Slice 2 + Slice 4 ===")
+        print("=== RestCountdownCLI Test — V0.39 Slice 2 + Slice 4 + V0.40 Slice 4 ===")
         print("=== Pure-logic gate for the drop-rule state machine ===")
         print("=== Exercises real RestCountdownModel, no Supabase, no XCTest. ===")
         print("")
@@ -884,6 +1277,12 @@ struct RestCountdownCLITest {
         let t15 = runTrailRevertCarriesStrikeFields()
         let t16 = runTrailResetClears()
         let t17 = runRestEventRowEncodes()
+        let t18 = runZoneGateSteadyCloses()
+        let t19 = runZoneGateHardOpens()
+        let t20 = runZoneGateSprintOpens()
+        let t21 = runZoneGateNoProfileAnaerobic()
+        let t22 = runZoneGateNoProfileAerobic()
+        let t23 = runZoneGateInvalidBoundaries()
 
         let results: [(String, Bool)] = [
             ("TEST 1 strike on 50m > 0.5s",     t1),
@@ -903,6 +1302,12 @@ struct RestCountdownCLITest {
             ("TEST 15 revert carries strike fields", t15),
             ("TEST 16 reset clears trail",         t16),
             ("TEST 17 RestEventRow snake_case JSON", t17),
+            ("TEST 18 zone gate Steady → CLOSED",   t18),
+            ("TEST 19 zone gate Hard → OPEN",       t19),
+            ("TEST 20 zone gate Sprint → OPEN",     t20),
+            ("TEST 21 zone gate no profile anaerobic → V0.39", t21),
+            ("TEST 22 zone gate no profile aerobic → V0.39", t22),
+            ("TEST 23 zone gate invalid boundaries → fallback", t23),
         ]
 
         print("\n=== Summary ===")

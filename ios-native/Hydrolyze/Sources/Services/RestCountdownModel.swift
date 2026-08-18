@@ -1,12 +1,13 @@
 import Foundation
 
-/// RestCountdownModel — V0.39 Slice 2 (2026-08-18) — the drop-rule
-/// state machine for anaerobic sets. Lives in its own file (no
-/// UIKit, no @MainActor, no Combine, no async, no Supabase) so the
-/// orchestrator-Mac CLI runner (`build_and_run_restcountdown.sh`)
-/// can compile it standalone and regression-gate the strike math,
-/// maturity gate, intensity gate, threshold scaling, escalation
-/// caps, strike reset, revert, tick, and multi-swimmer common-clock
+/// RestCountdownModel — V0.39 Slice 2 (2026-08-18) + V0.40 Slice 4
+/// (2026-08-18) — the drop-rule state machine for anaerobic sets.
+/// Lives in its own file (no UIKit, no @MainActor, no Combine, no
+/// async, no Supabase) so the orchestrator-Mac CLI runner
+/// (`build_and_run_restcountdown.sh`) can compile it standalone and
+/// regression-gate the strike math, maturity gate, intensity gate,
+/// zone gate (V0.40 Slice 4), threshold scaling, escalation caps,
+/// strike reset, revert, tick, and multi-swimmer common-clock
 /// behavior without a booted simulator.
 ///
 /// Spec: V0.39_SPEC.md §Slice 2 + §4.1 of
@@ -153,6 +154,54 @@ extension RestEventRow {
     }
 }
 
+/// V0.40 Slice 4 (2026-08-18): the per-swimmer zone gate for the
+/// drop-rule evaluator. Replaces the V0.39 global intensity gate
+/// when a swimmer has a usable 3MT profile (resolved by the VM via
+/// `TrainingZoneService.latestUsableProfile(...)` →
+/// `TrainingZoneService.derive(...)`). No usable profile →
+/// `hasProfile == false` → the evaluator falls back to
+/// `setIsAnaerobic` (V0.39 behavior, unchanged).
+///
+/// The model receives the zone boundary paces PRE-COMPUTED in
+/// seconds-per-100m (lower seconds = faster) so `evaluate(...)` only
+/// needs the rep's time + distance to derive the per-100m pace and
+/// compare against `hardBoundarySecPer100`. The model does NOT know
+/// about `TrainingZones`, `SwimmerTestProfile`, or the DB — that
+/// coupling lives in the VM.
+///
+/// All four boundaries are carried (rather than just the hard one)
+/// so the model can distinguish Hard from Sprint in a future slice
+/// without a shape change. The current gate only checks the hard
+/// boundary (Sprint is faster than Hard, so a Sprint rep is also
+/// at-or-under the hard threshold → OPEN).
+struct ZoneGate: Equatable, Sendable {
+    /// True when the swimmer has a usable 3MT profile. False →
+    /// the evaluator ignores the boundaries and falls back to
+    /// `setIsAnaerobic`.
+    let hasProfile: Bool
+    /// Slowest Easy pace in s/100m — the slowest speed that's
+    /// still "Steady or harder" (the Easy/Steady boundary cast to
+    /// pace). Speeds slower than this (larger s/100m) are Easy.
+    /// Carried for completeness; the current gate does not check
+    /// it.
+    let easyBoundarySecPer100: Double
+    /// Slowest Steady pace in s/100m (the Steady/Hard boundary in
+    /// pace terms). The current gate does not check it.
+    let steadyBoundarySecPer100: Double
+    /// Slowest Hard pace in s/100m (the Hard/Sprint boundary in
+    /// pace terms = 100 / (1.035 × CS)). **THE gate boundary**:
+    /// rep pace ≤ this → Hard/Sprint → gate OPEN; rep pace >
+    /// this → Easy/Steady → gate CLOSED.
+    let hardBoundarySecPer100: Double
+    /// Slowest Sprint pace in s/100m (100 / observed peak, or
+    /// clamped to the hard boundary when peak is invalid). Sprint
+    /// is faster than Hard, so the gate's hard-boundary check
+    /// subsumes the sprint check (carried for future slices that
+    /// want to distinguish Hard from Sprint — e.g., a stricter
+    /// gate that fires only on Sprint, or a per-zone rest delta).
+    let sprintBoundarySecPer100: Double
+}
+
 /// The drop-rule state machine. Pure: no DB, no async, no UIKit,
 /// no Combine — only its own internal state mutates. The VM owns
 /// the model and drives it from its existing 10ms timer.
@@ -221,6 +270,20 @@ final class RestCountdownModel {
     /// and the same strike isn't double-written.
     private(set) var restEvents: [RestEvent] = []
 
+    /// V0.40 Slice 4 (2026-08-18): per-swimmer zone gate. The VM
+    /// populates this by resolving each swimmer's usable 3MT
+    /// profile → `TrainingZones` → a `ZoneGate` carrying the four
+    /// zone-anchored pace boundaries (s/100m). Empty when no
+    /// swimmer has a usable profile, when the VM hasn't yet
+    /// completed the fetch, or when the fetch failed — in any of
+    /// those cases `evaluate(...)` falls back to the V0.39
+    /// `setIsAnaerobic` gate (the per-swimmer zone gate is a
+    /// REFINE on top of the V0.39 set gate, not a replacement).
+    /// Cleared by `reset()` so a retry / next set starts with an
+    /// empty gate dict and the VM repopulates from a fresh
+    /// profile fetch.
+    var zoneGateBySwimmer: [String: ZoneGate] = [:]
+
     init(baseRestSec: Int, setIsAnaerobic: Bool) {
         self.baseRestSec = baseRestSec
         self.setIsAnaerobic = setIsAnaerobic
@@ -256,6 +319,62 @@ final class RestCountdownModel {
         // single source of truth — the VM never sees an
         // evaluation, so no badge, no revert button.
         guard setIsAnaerobic else { return nil }
+
+        // V0.40 Slice 4 (2026-08-18): per-swimmer zone gate. The
+        // zone gate is a REFINE on top of the V0.39 aerobic gate
+        // — it does NOT relax it. A Hard/Sprint rep in an aerobic
+        // set still gets no evaluation. The zone gate ADDS a
+        // per-swimmer gate that closes the drop rule for
+        // Easy/Steady sets when the swimmer has a usable 3MT
+        // profile.
+        //
+        // Classification:
+        //   - No zoneGate entry for this swimmer (e.g., fetch
+        //     hasn't returned yet, fetch failed, no usable
+        //     profile) → fall through to the V0.39 evaluation
+        //     path (analyze the rep against threshold).
+        //   - hasProfile == false (explicit no-profile marker)
+        //     → fall through (V0.39 behavior).
+        //   - hasProfile == true AND boundaries valid → compare
+        //     the rep's per-100m pace against the hard boundary.
+        //     Pace ≤ hard boundary → Hard/Sprint → gate OPEN
+        //     (fall through). Pace > hard boundary → Easy/Steady
+        //     → gate CLOSED → return nil (drop rule does NOT fire
+        //     on Easy/Steady sets for a profiled swimmer).
+        //   - hasProfile == true BUT boundaries invalid
+        //     (non-finite, non-positive) → fall through. Defensive
+        //     — the spec says "zone resolution failure never
+        //     crashes" and a partial row, mid-migration data, or
+        //     a corrupted profile should fall back to V0.39 rather
+        //     than refuse to evaluate.
+        if let gate = zoneGateBySwimmer[swimmerId], gate.hasProfile {
+            let hard = gate.hardBoundarySecPer100
+            // Defensive: gate boundaries must be finite and
+            // positive to be meaningful. NaN/inf/zero/negative
+            // → fall through to V0.39 (any sane boundary is
+            // positive — s/100m pace for a swimmer who can move).
+            if hard.isFinite, hard > 0, distanceMeters > 0 {
+                // Per-100m pace in s/100m: (repTimeMs / 1000)
+                // gives seconds, × (100 / distanceMeters) scales
+                // to per-100m. Defensive: a non-finite or
+                // non-positive pace → fall through (should not
+                // happen with valid input — repTimeMs ≥ 0 and
+                // distanceMeters > 0 above — but the "never
+                // crashes" rule covers it).
+                let paceSecPer100 = (Double(repTimeMs) / 1000.0) * (100.0 / Double(distanceMeters))
+                if paceSecPer100.isFinite, paceSecPer100 > 0 {
+                    // Pace > hard (slower than Hard threshold,
+                    // higher s/100m = slower) → Easy or Steady
+                    // → gate CLOSED → no evaluation. Pace ≤ hard
+                    // (Hard or Sprint, lower s/100m = faster) →
+                    // gate OPEN → fall through to the V0.39
+                    // evaluate path.
+                    if paceSecPer100 > hard {
+                        return nil
+                    }
+                }
+            }
+        }
 
         // Maturity gate: predicted wins iff maturity is reliable
         // (6-15 samples) or excellent (16+) AND the VM supplied a
@@ -462,6 +581,13 @@ final class RestCountdownModel {
         // Without this, a retry of the same set would
         // double-write every strike row.
         restEvents.removeAll()
+        // V0.40 Slice 4 (2026-08-18): clear the per-swimmer zone
+        // gate. The VM repopulates this from a fresh
+        // swimmer_test_profiles fetch on the next `start()`; an
+        // empty gate is the V0.39 fallback (no profile → no
+        // per-swimmer zone gating → the global `setIsAnaerobic`
+        // gate is the only gate in play).
+        zoneGateBySwimmer.removeAll()
     }
 
     // MARK: - Helpers

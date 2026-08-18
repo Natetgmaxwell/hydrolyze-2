@@ -602,8 +602,23 @@ final class TimingViewModel: ObservableObject {
         // to seconds" gate). The new badge line lives on the view's
         // lastStrikeEvaluation + the model's extendedRestSec.
         if isAnaerobicSet, let base = intervalToSeconds(interval) {
-            restModel = RestCountdownModel(baseRestSec: base, setIsAnaerobic: true)
+            let model = RestCountdownModel(baseRestSec: base, setIsAnaerobic: true)
+            restModel = model
             restAccumulatorMs = 0
+            // V0.40 Slice 4 (2026-08-18): fetch the swimmer's
+            // usable 3MT profile (if any) and populate the model's
+            // per-swimmer zone gate. Best-effort + non-fatal — a
+            // fetch failure (network, RLS, decode, no usable
+            // profile) leaves the gate empty and V0.39's intensity
+            // gate is the fallback. The fetch kicks off AFTER the
+            // model is built so the rest of the timing flow (lap,
+            // evaluate, tick) is not blocked on the network — if
+            // the first lap evaluates before the fetch returns,
+            // the V0.39 path runs (gate empty); subsequent laps
+            // pick up the gate once it's populated.
+            Task { [weak self, model] in
+                await self?.applySwimmerZoneGate(to: model)
+            }
         } else {
             // Aerobic / no interval — the spec's "aerobic set: no
             // countdown chrome" path. Don't leave a stale model from
@@ -1513,6 +1528,95 @@ final class TimingViewModel: ObservableObject {
             }
         } catch {
             print("[TimingViewModel] Context load failed: \(error)")
+        }
+    }
+
+    /// V0.40 Slice 4 (2026-08-18): fetch the swimmer's
+    /// `swimmer_test_profiles` rows (keyed by `swimmer_id`, NOT by
+    /// session — single-swimmer timing flow), resolve the latest
+    /// usable profile via `TrainingZoneService.latestUsableProfile(...)`,
+    /// and derive the four zone boundaries via
+    /// `TrainingZoneService.derive(...)`. If both succeed, build a
+    /// `ZoneGate` and write it to the model's `zoneGateBySwimmer`
+    /// dict for this swimmer.
+    ///
+    /// If any step fails (fetch error, no usable profile, derive
+    /// returns nil) the gate stays empty and the V0.39
+    /// `setIsAnaerobic` gate is the fallback — the spec calls
+    /// this out as "zone resolution failure never crashes":
+    /// partial rows, mid-migration data, RLS denial, network drop,
+    /// and decode failures all fall through to V0.39 behavior.
+    /// The wrap-in-do/catch is the "never break the timing flow
+    /// on a profile-fetch failure" guarantee.
+    ///
+    /// Mirrors `SwimmerDetailViewModel.loadTrainingZones()`
+    /// (V0.40 Slice 3) — same supabase query, same resolver, same
+    /// fallback. The only difference is the key: this method is
+    /// keyed by `swimmer_id` (the single-swimmer timing flow),
+    /// not by `session_id` (the per-session review surface).
+    /// `selectedSwimmerId` is the active swimmer for this timing
+    /// session; if it's nil (e.g., the user discards before the
+    /// fetch returns) the fetch is a no-op.
+    ///
+    /// `@MainActor` isolation matches the timing flow: `lap()` →
+    /// `evaluate(...)` reads `zoneGateBySwimmer` on the main actor,
+    /// so the mutation must land on the same actor. The supabase
+    /// `.execute()` itself is non-blocking on its own executor;
+    /// the `await` suspends and resumes on the main actor (the
+    /// function's isolation), keeping the gate dict read/write
+    /// race-free without an explicit lock.
+    @MainActor
+    private func applySwimmerZoneGate(to model: RestCountdownModel) async {
+        guard let swimmerId = selectedSwimmerId else { return }
+        do {
+            let response = try await SupabaseService.shared.client
+                .from("swimmer_test_profiles")
+                .select()
+                .eq("swimmer_id", value: swimmerId)
+                .execute()
+            let profiles = try JSONDecoder().decode(
+                [SwimmerTestProfile].self,
+                from: response.data
+            )
+            // V0.40 Slice 4 (2026-08-18): resolver picks the
+            // latest usable profile (trial ≥ 2, no learning
+            // flag). If non-nil, derive the four zone boundaries
+            // and convert to s/100m for the model's gate. If
+            // either step returns nil, the gate stays empty and
+            // V0.39's intensity gate is the fallback.
+            if let profile = TrainingZoneService.latestUsableProfile(profiles: profiles),
+               let zones = TrainingZoneService.derive(
+                   criticalSpeedMps: profile.criticalSpeedMps,
+                   peakSpeedMps: profile.peakSpeedMps,
+                   sourceTrialNumber: profile.trialNumber
+               ) {
+                // Build a passive ZoneGate — the model receives the
+                // boundary paces pre-computed in s/100m and does NOT
+                // know about TrainingZones, SwimmerTestProfile, or
+                // the DB. The CLI test runner compiles the model
+                // without these types so the model stays decoupled.
+                // 100 / mps → s/100m (the boundaries in
+                // TrainingZones are stored as mps; the gate works
+                // in pace space).
+                let gate = ZoneGate(
+                    hasProfile: true,
+                    easyBoundarySecPer100: 100.0 / zones.easy.mps,
+                    steadyBoundarySecPer100: 100.0 / zones.steady.mps,
+                    hardBoundarySecPer100: 100.0 / zones.hard.mps,
+                    sprintBoundarySecPer100: 100.0 / zones.sprint.mps
+                )
+                model.zoneGateBySwimmer[swimmerId] = gate
+                log("V0.40 zone gate populated for \(swimmerId.prefix(8))… (trial \(profile.trialNumber))")
+            }
+            // No usable profile → leave the gate empty. The model
+            // treats an empty entry as V0.39 fallback (always
+            // evaluate when `setIsAnaerobic`).
+        } catch {
+            // V0.40 Slice 4 (2026-08-18): data-absent / fetch-
+            // failed = no zone gate. Log and proceed; the V0.39
+            // `isAnaerobicSet` gate is the fallback. The timing
+            // flow is never broken by a profile-fetch failure.
+            log("V0.40 zone gate fetch failed (non-fatal, V0.39 fallback): \(error.localizedDescription)")
         }
     }
 
