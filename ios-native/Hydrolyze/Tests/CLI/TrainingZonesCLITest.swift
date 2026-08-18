@@ -548,15 +548,236 @@ func runTrialNumberRoundTrip() -> Bool {
     return allPass
 }
 
+// MARK: - TEST 8 — usable-profile resolver (V0.40 Slice 2)
+
+// Slice 2 of V0.40 — the "is this profile usable?" gate. A usable
+// profile is the latest per (swimmer, stroke) with `trial_number >=
+// 2` and NO `learning_trial` quality flag. Trials 1–2 are flagged
+// learning per Piatrikova 2019; zones from a learning trial are
+// hidden with the "repeat before using" coach line, and the
+// downstream display (Slice 3) + drop-rule gate (Slice 4) both
+// rely on this resolver to pick the right profile.
+
+/// Build a `SwimmerTestProfile` with explicit control over the
+/// fields the resolver cares about (trial number, flags, swimmer
+/// id, stroke, test date). All other fields use placeholder
+/// values — the resolver only reads `swimmerId`, `stroke`,
+/// `trialNumber`, `qualityFlags`, `testDate`. Mirrors the
+/// ThreeMTCopyCLITest `makeProfile` shape, extended so the
+/// resolver tests can vary each input axis independently.
+func makeUsableProfile(
+    swimmerId: String = "swimmer-A",
+    stroke: String = "Free",
+    trialNumber: Int,
+    flags: [String] = [],
+    testDate: String = "2026-08-15T10:00:00Z"
+) -> SwimmerTestProfile {
+    return SwimmerTestProfile(
+        id: UUID().uuidString,
+        swimmerId: swimmerId,
+        sessionId: nil,
+        workoutSetId: nil,
+        stroke: stroke,
+        poolLength: 25,
+        testDate: testDate,
+        trialNumber: trialNumber,
+        peakSpeedMps: 1.9,
+        criticalSpeedMps: 1.3,
+        batteryMeters: 25.0,
+        qualityFlags: flags
+    )
+}
+
+/// Trial-1 only → nil. Per spec §Slice 2 acceptance: a swimmer
+/// with only trial 1 has no usable profile; zones are hidden
+/// until trial 2 runs and is clean.
+func runResolverTrial1Only() -> Bool {
+    print("\n=== TEST 8a: resolver — trial-1 only → nil ===")
+
+    var allPass = true
+    let profiles = [
+        makeUsableProfile(trialNumber: 1)
+    ]
+
+    allPass = assertTrue(
+        "trial-1 only → nil",
+        TrainingZoneService.latestUsableProfile(profiles: profiles) == nil
+    ) && allPass
+
+    print("  -> TEST 8a: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// Trial-1 (clean) + trial-2 (clean) → returns the trial-2
+/// profile. Per spec §Slice 2 acceptance: returns the trial-2
+/// profile when it exists.
+func runResolverTrial2Clean() -> Bool {
+    print("\n=== TEST 8b: resolver — trial-1 + trial-2 (both clean) → trial-2 ===")
+
+    var allPass = true
+    let t1 = makeUsableProfile(trialNumber: 1)
+    let t2 = makeUsableProfile(trialNumber: 2)
+    let profiles = [t1, t2]
+
+    let resolved = TrainingZoneService.latestUsableProfile(profiles: profiles)
+    allPass = assertTrue(
+        "trial-1 + trial-2 (both clean) → non-nil",
+        resolved != nil
+    ) && allPass
+    allPass = assertTrue(
+        "trial-1 + trial-2 (both clean) → returns trial-2",
+        resolved?.id == t2.id
+    ) && allPass
+    allPass = assertEq(
+        "trial-1 + trial-2 (both clean) → trialNumber = 2",
+        resolved?.trialNumber, 2
+    ) && allPass
+
+    print("  -> TEST 8b: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// Trial-2 (clean) + trial-3 (clean) → returns trial-3. Per
+/// spec §Slice 2 acceptance: prefers the newest usable trial
+/// (trial 3 beats trial 2 when both usable).
+func runResolverNewestWins() -> Bool {
+    print("\n=== TEST 8c: resolver — trial-2 + trial-3 (both clean) → trial-3 (newest wins) ===")
+
+    var allPass = true
+    let t2 = makeUsableProfile(trialNumber: 2)
+    let t3 = makeUsableProfile(trialNumber: 3)
+    let profiles = [t2, t3]
+
+    let resolved = TrainingZoneService.latestUsableProfile(profiles: profiles)
+    allPass = assertTrue(
+        "trial-2 + trial-3 (both clean) → non-nil",
+        resolved != nil
+    ) && allPass
+    allPass = assertTrue(
+        "trial-2 + trial-3 (both clean) → returns trial-3 (newest wins)",
+        resolved?.id == t3.id
+    ) && allPass
+    allPass = assertEq(
+        "trial-2 + trial-3 (both clean) → trialNumber = 3",
+        resolved?.trialNumber, 3
+    ) && allPass
+
+    print("  -> TEST 8c: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// Trial-1 (clean) + trial-2 (learning_trial flag) → nil.
+/// Learning trials are NOT usable per the spec ("learning
+/// trial is NOT usable"). Trial 2 alone with a learning flag
+/// means the swimmer has not yet completed the familiarisation
+/// trials — no usable profile yet.
+func runResolverLearningFlag() -> Bool {
+    print("\n=== TEST 8d: resolver — trial-1 + trial-2 (learning flag) → nil ===")
+
+    var allPass = true
+    let profiles = [
+        makeUsableProfile(trialNumber: 1),
+        makeUsableProfile(trialNumber: 2, flags: ["learning_trial"])
+    ]
+
+    allPass = assertTrue(
+        "trial-1 + trial-2 (learning) → nil (learning not usable)",
+        TrainingZoneService.latestUsableProfile(profiles: profiles) == nil
+    ) && allPass
+
+    print("  -> TEST 8d: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// Trial-2 (learning) + trial-3 (clean) → returns trial-3.
+/// The learning trial is filtered out; the cleanest usable
+/// profile wins (trial 3 here).
+func runResolverLearningBypassedByClean() -> Bool {
+    print("\n=== TEST 8e: resolver — trial-2 (learning) + trial-3 (clean) → trial-3 ===")
+
+    var allPass = true
+    let t2 = makeUsableProfile(trialNumber: 2, flags: ["learning_trial"])
+    let t3 = makeUsableProfile(trialNumber: 3)
+    let profiles = [t2, t3]
+
+    let resolved = TrainingZoneService.latestUsableProfile(profiles: profiles)
+    allPass = assertTrue(
+        "trial-2 (learning) + trial-3 (clean) → non-nil",
+        resolved != nil
+    ) && allPass
+    allPass = assertTrue(
+        "trial-2 (learning) + trial-3 (clean) → returns trial-3 (learning bypassed)",
+        resolved?.id == t3.id
+    ) && allPass
+    allPass = assertEq(
+        "trial-2 (learning) + trial-3 (clean) → trialNumber = 3",
+        resolved?.trialNumber, 3
+    ) && allPass
+
+    print("  -> TEST 8e: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// Empty array → nil. Defensive contract: the resolver never
+/// crashes on an empty input (the spec's "Never crashes" rule).
+func runResolverEmpty() -> Bool {
+    print("\n=== TEST 8f: resolver — empty array → nil ===")
+
+    var allPass = true
+    allPass = assertTrue(
+        "empty array → nil",
+        TrainingZoneService.latestUsableProfile(profiles: []) == nil
+    ) && allPass
+
+    print("  -> TEST 8f: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// Tie on trial number → broken by the most recent testDate.
+/// Per spec §Slice 2: "If multiple profiles share the same max
+/// trialNumber (rare — should not happen in practice), return
+/// the one with the most recent testDate (ISO8601 string;
+/// compare lexicographically — ISO8601 strings sort correctly
+/// chronologically)."
+func runResolverTestDateTieBreak() -> Bool {
+    print("\n=== TEST 8g: resolver — same trialNumber, later testDate wins ===")
+
+    var allPass = true
+    let earlyT3 = makeUsableProfile(
+        trialNumber: 3,
+        testDate: "2026-08-10T10:00:00Z"
+    )
+    let lateT3 = makeUsableProfile(
+        trialNumber: 3,
+        testDate: "2026-08-15T10:00:00Z"
+    )
+    // Order doesn't matter — the resolver picks the most recent.
+    let profiles = [earlyT3, lateT3]
+
+    let resolved = TrainingZoneService.latestUsableProfile(profiles: profiles)
+    allPass = assertTrue(
+        "same trialNumber, two testDates → non-nil",
+        resolved != nil
+    ) && allPass
+    allPass = assertTrue(
+        "same trialNumber → later testDate wins (lexicographic = chronological)",
+        resolved?.id == lateT3.id
+    ) && allPass
+
+    print("  -> TEST 8g: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
 // MARK: - Main
 
 @main
 struct TrainingZonesCLITest {
     static func main() {
-        print("=== TrainingZonesCLI Test — V0.40 Slice 1 ===")
+        print("=== TrainingZonesCLI Test — V0.40 Slices 1 + 2 ===")
         print("=== Pure-logic gate for TrainingZoneService ===")
         print("=== Easy/Steady/Hard/Sprint from 3MT critical speed ===")
         print("=== Boundary math, pace rendering, peak clamp, nil-on-bad-CS ===")
+        print("=== Usable-profile resolver (Slice 2): latest usable trial ===")
         print("")
 
         let t1 = runBoundaryMath()
@@ -567,6 +788,14 @@ struct TrainingZonesCLITest {
         let t6 = runInvalidPeakFallback()
         let t7 = runTrialNumberRoundTrip()
 
+        let t8a = runResolverTrial1Only()
+        let t8b = runResolverTrial2Clean()
+        let t8c = runResolverNewestWins()
+        let t8d = runResolverLearningFlag()
+        let t8e = runResolverLearningBypassedByClean()
+        let t8f = runResolverEmpty()
+        let t8g = runResolverTestDateTieBreak()
+
         let results: [(String, Bool)] = [
             ("TEST 1 boundary math",                 t1),
             ("TEST 2 pace strings",                  t2),
@@ -575,6 +804,13 @@ struct TrainingZonesCLITest {
             ("TEST 5 invalid CS returns nil",         t5),
             ("TEST 6 invalid peak falls back",       t6),
             ("TEST 7 sourceTrialNumber round-trips",  t7),
+            ("TEST 8a resolver trial-1 only → nil",  t8a),
+            ("TEST 8b resolver trial-2 clean wins",  t8b),
+            ("TEST 8c resolver trial-3 beats trial-2", t8c),
+            ("TEST 8d resolver learning flag → nil", t8d),
+            ("TEST 8e resolver learning bypassed by clean", t8e),
+            ("TEST 8f resolver empty array → nil",  t8f),
+            ("TEST 8g resolver testDate tie-break", t8g),
         ]
 
         print("\n=== Summary ===")

@@ -159,4 +159,100 @@ struct TrainingZoneService {
             sourceTrialNumber: sourceTrialNumber
         )
     }
+
+    // MARK: - Usable-profile resolver (V0.40 Slice 2)
+
+    /// The quality-flag rawValue the analyzer appends for a
+    /// familiarisation trial (trials 1–2 per Piatrikova 2019).
+    /// Mirrors `ThreeMinuteTestAnalyzer.QualityFlag.learningTrial.rawValue`
+    /// and `SwimmerTestProfile.qualityFlags` — same snake_case
+    /// string end-to-end. // why: kept here as a constant so the
+    /// resolver is self-contained — no analyzer import — and the
+    /// spec rule ("learning flag means not usable") is the only
+    /// thing the resolver needs to know about flags.
+    static let learningTrialFlag = "learning_trial"
+
+    /// The minimum trial number for a profile to be considered
+    /// usable. Trials 1–2 are familiarisation; the first real
+    /// reading lands on trial 2 (or trial 3 in a conservative
+    /// protocol). // why: pinned by the approved decisions table
+    /// #3 — change requires spec edit, not a code edit.
+    static let usableTrialThreshold = 2
+
+    /// Resolve the latest usable 3MT profile from a set of
+    /// `SwimmerTestProfile` rows. The "is this profile usable?"
+    /// gate per V0.40 §Slice 2: a usable profile is the latest
+    /// per (swimmer, stroke) with `trial_number >= 2` AND no
+    /// `learning_trial` quality flag. The downstream display
+    /// (Slice 3) and drop-rule gate (Slice 4) both rely on this
+    /// resolver to pick the right profile — zones from a
+    /// learning trial are hidden, with the "repeat before using"
+    /// coach line kept intact.
+    ///
+    /// Resolution rule (spec §Slice 2, approved decisions #3):
+    ///   1. Filter: `trialNumber >= usableTrialThreshold` AND
+    ///      `qualityFlags` does NOT contain `learningTrialFlag`.
+    ///   2. Pick the profile with the highest `trialNumber`
+    ///      among the survivors ("prefers the newest usable
+    ///      trial" — trial 3 beats trial 2 when both usable).
+    ///   3. Tie-break: if multiple profiles share the same max
+    ///      `trialNumber` (rare — should not happen in
+    ///      practice), return the one with the most recent
+    ///      `testDate`. `testDate` is an ISO8601 string in this
+    ///      struct (mirrors the Postgres wire format), and
+    ///      ISO8601 strings sort correctly chronologically with
+    ///      lexicographic comparison — so plain `>` is the
+    ///      right operator.
+    ///
+    /// - Parameter profiles: the per-(swimmer, stroke) candidate
+    ///   rows. The resolver does not group — the caller passes
+    ///   the set for a single (swimmer, stroke) pair, or for
+    ///   many pairs and asks for the overall newest usable row.
+    ///   The spec rule is per-(swimmer, stroke) but the resolver
+    ///   shape stays per-row so the caller can chain a groupBy
+    ///   in front of it without the resolver importing any
+    ///   grouping helper.
+    /// - Returns: the most-recent usable profile, or nil when
+    ///   no profile in the input clears the gate. Never crashes
+    ///   on an empty array or on rows missing fields.
+    static func latestUsableProfile(
+        profiles: [SwimmerTestProfile]
+    ) -> SwimmerTestProfile? {
+        // Single-pass filter + max-by (trialNumber, testDate). The
+        // sorted pattern (filter → sort → first) reads cleanly
+        // but allocates two arrays and an O(n log n) sort; this
+        // max-by walks the array once and tracks only the best
+        // survivor — same answer, no allocations.
+        //
+        // "best" = highest trialNumber; on tie, the later
+        // testDate wins. lexicographic compare on ISO8601
+        // strings gives chronological order.
+        var best: SwimmerTestProfile?
+        for profile in profiles {
+            // Gate: trialNumber must be at or above the
+            // familiarisation threshold AND the profile must
+            // not carry the learning-trial flag.
+            guard profile.trialNumber >= usableTrialThreshold else { continue }
+            guard !profile.qualityFlags.contains(learningTrialFlag) else { continue }
+
+            if let current = best {
+                if profile.trialNumber > current.trialNumber {
+                    best = profile
+                } else if profile.trialNumber == current.trialNumber,
+                          profile.testDate > current.testDate {
+                    // ISO8601 strings sort lexicographically in
+                    // chronological order; a later date string
+                    // compares greater than an earlier one. The
+                    // `>` (not `>=`) is intentional — when the
+                    // dates tie (which should not happen given
+                    // a UUID id differs), keep the existing
+                    // `best` so the resolver is deterministic.
+                    best = profile
+                }
+            } else {
+                best = profile
+            }
+        }
+        return best
+    }
 }
