@@ -41,13 +41,66 @@ final class TimingService {
                 created_at: timestamp,
                 intensity: session.intensityLabel ?? "race",
                 stroke: session.stroke,
-                pace_distance: session.distance,
-                workout_set_id: session.workoutSetId,
-                confidence: 100,
-                assignment_confidence: 1.0
-            )
+            pace_distance: session.distance,
+            workout_set_id: session.workoutSetId,
+            confidence: 100,
+            assignment_confidence: 1.0
+        )
         }
         try await supabase.from("recorded_times")
+            .insert(rows)
+            .execute()
+    }
+
+    /// V0.39 Slice 4 (2026-08-18): persist the drop-rule event
+    /// trail as `set_rest_events` rows. One row per extension
+    /// decision — strike rows with `reverted = false`, revert
+    /// rows with `reverted = true`. The recovery flywheel
+    /// (V0.40+) reads this table to learn per-swimmer
+    /// recovery-signature patterns.
+    ///
+    /// `sessionId` and `workoutSetId` are passed through from
+    /// the VM; both are optional to match the existing
+    /// `recorded_times` single-swimmer path (which currently
+    /// writes `session_id: nil`). The single-swimmer flow
+    /// passes `sessionId: nil` so the row's session_id key
+    /// is omitted from the wire JSON (consistent with the
+    /// `LapRow` pattern in `saveSession`); the migration's
+    /// `session_id` column default is consulted. For the
+    /// multi-swimmer path (a future slice), both ids are
+    /// supplied.
+    ///
+    /// The service owns the row construction + `created_at`
+    /// stamping (mirrors the `LapRow` pattern in
+    /// `saveSession` above) so the VM just hands over the
+    /// in-memory event trail.
+    ///
+    /// No-op when `events` is empty — the VM already gates
+    /// the call on `!restEvents.isEmpty`, but the early
+    /// return is cheap insurance against a retry double-write.
+    func saveRestEvents(
+        _ events: [RestEvent],
+        sessionId: String?,
+        workoutSetId: String?
+    ) async throws {
+        guard !events.isEmpty else { return }
+        // V0.39 Slice 4 (2026-08-18): stamp every row in this
+        // batch with the same created_at. The supabase-swift
+        // SDK forwards the JSON body verbatim to PostgREST, so
+        // each row carries its own `created_at` string —
+        // coalescing here (vs letting each row get `now()`)
+        // means the batch reads as a single set completion in
+        // the DB.
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let rows = events.map { event in
+            RestEventRow(
+                event: event,
+                sessionId: sessionId,
+                workoutSetId: workoutSetId,
+                createdAt: timestamp
+            )
+        }
+        try await supabase.from("set_rest_events")
             .insert(rows)
             .execute()
     }

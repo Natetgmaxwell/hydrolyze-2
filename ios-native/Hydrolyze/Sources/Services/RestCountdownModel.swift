@@ -62,6 +62,97 @@ struct RevertResult: Equatable, Sendable {
                                  // breaking the save-path encode.
 }
 
+/// V0.39 Slice 4 (2026-08-18): kind tag for one entry in the
+/// model's `restEvents` trail. The DB row carries the same data
+/// as a strike but with `reverted = true`; the in-memory event
+/// trail keeps the strike/revert distinction so the VM can
+/// decide what to render and the save path can build the right
+/// row without re-deriving it from the `reverted` flag.
+enum RestEventType: String, Equatable, Sendable {
+    case strike
+    case revert
+}
+
+/// V0.39 Slice 4 (2026-08-18): one entry in the per-set
+/// drop-rule event trail. The model appends a `.strike` entry on
+/// every evaluation where `struck == true` and a `.revert` entry
+/// on every `revert(swimmerId:)` call. The save path reads the
+/// trail in `save()` and encodes each entry as a
+/// `set_rest_events` row (via `RestEventRow`).
+///
+/// `extendedRestSec` carries the strike-time value (post-strike,
+/// pre-revert for `.revert` entries) so the flywheel can answer
+/// "what rest did the engine propose" without joining to the
+/// strike row. `reverted` is `true` only on `.revert` entries;
+/// the DB column is the wire-level mirror of this flag.
+struct RestEvent: Equatable, Sendable {
+    let swimmerId: String
+    let repIndex: Int
+    let repTimeMs: Int
+    let standardMs: Int
+    let standardSource: RestStandardSource
+    let baseRestSec: Int
+    let extendedRestSec: Int    // strike: post-strike; revert: pre-revert (the strike's value)
+    let deltaSec: Int           // 30 (strike 1) / 60 (strike 2+) for both strike and revert
+    let strikeCount: Int
+    let reverted: Bool          // true iff eventType == .revert
+    let eventType: RestEventType
+}
+
+/// V0.39 Slice 4 (2026-08-18): the wire shape of one
+/// `set_rest_events` insert row. Mirrors the columns from
+/// `supabase/migrations/20260818130000_drop_rule_rest_events.sql`
+/// 1:1 — field names are `snake_case` to match the Postgres
+/// wire format (the supabase-swift SDK does not auto-translate
+/// camelCase). Lives next to `RestEvent` because the conversion
+/// is a 1:1 lift and the model file is already pure
+/// (Foundation-only) — keeps the CLI runner at
+/// `build_and_run_restcountdown.sh` able to compile the
+/// Encodable shape without UIKit or Combine.
+struct RestEventRow: Encodable, Equatable, Sendable {
+    let id: String
+    let session_id: String?
+    let workout_set_id: String?
+    let swimmer_id: String
+    let rep_index: Int
+    let rep_time_ms: Int
+    let standard_ms: Int
+    let base_rest_sec: Int
+    let extended_rest_sec: Int
+    let delta_sec: Int
+    let strike_count: Int
+    let standard_source: String
+    let reverted: Bool
+    let created_at: String
+}
+
+extension RestEventRow {
+    /// V0.39 Slice 4 (2026-08-18): lift a `RestEvent` into a
+    /// `RestEventRow` for insert. The `session_id` and
+    /// `workout_set_id` are passed by the caller (the save path
+    /// has them from the prefill / `workoutSetId`); the row's
+    /// `id` and `created_at` are minted here so a single insert
+    /// call carries a consistent timestamp.
+    init(event: RestEvent, sessionId: String?, workoutSetId: String?, createdAt: String) {
+        self.init(
+            id: UUID().uuidString,
+            session_id: sessionId,
+            workout_set_id: workoutSetId,
+            swimmer_id: event.swimmerId,
+            rep_index: event.repIndex,
+            rep_time_ms: event.repTimeMs,
+            standard_ms: event.standardMs,
+            base_rest_sec: event.baseRestSec,
+            extended_rest_sec: event.extendedRestSec,
+            delta_sec: event.deltaSec,
+            strike_count: event.strikeCount,
+            standard_source: event.standardSource.rawValue,
+            reverted: event.reverted,
+            created_at: createdAt
+        )
+    }
+}
+
 /// The drop-rule state machine. Pure: no DB, no async, no UIKit,
 /// no Combine — only its own internal state mutates. The VM owns
 /// the model and drives it from its existing 10ms timer.
@@ -118,6 +209,17 @@ final class RestCountdownModel {
     /// extend the countdown — `remainingSec` catches up via
     /// `max(remainingSec, extendedRestSec - elapsedFromExtension)`.
     var extendedRestSec: Int
+
+    /// V0.39 Slice 4 (2026-08-18): the per-set drop-rule event
+    /// trail. One entry per strike (`.strike`) plus one per
+    /// revert (`.revert`). The save path in
+    /// `TimingViewModel.save(sessionId: nil)` reads this on set
+    /// completion and inserts a `set_rest_events` row per entry.
+    /// `private(set)` so the only writes happen inside the model
+    /// (evaluate / revert); the VM never appends directly.
+    /// Cleared by `reset()` so a retry / next set starts fresh
+    /// and the same strike isn't double-written.
+    private(set) var restEvents: [RestEvent] = []
 
     init(baseRestSec: Int, setIsAnaerobic: Bool) {
         self.baseRestSec = baseRestSec
@@ -205,6 +307,27 @@ final class RestCountdownModel {
             currentExtensionSec[swimmerId] = delta
             extendedRestSec = baseRestSec + maxExtension()
 
+            // V0.39 Slice 4 (2026-08-18): append a `.strike` event
+            // to the per-set trail. The spec says "one per
+            // extension decision" — a non-strike is not a
+            // decision (the engine decided NOT to extend), so it
+            // is NOT appended. The save path turns this into a
+            // `set_rest_events` row with `reverted = false`.
+            let strikeEvent = RestEvent(
+                swimmerId: swimmerId,
+                repIndex: repIndex,
+                repTimeMs: repTimeMs,
+                standardMs: standard,
+                standardSource: source,
+                baseRestSec: baseRestSec,
+                extendedRestSec: extendedRestSec,
+                deltaSec: delta,
+                strikeCount: next,
+                reverted: false,
+                eventType: .strike
+            )
+            restEvents.append(strikeEvent)
+
             return DropEvaluation(
                 swimmerId: swimmerId,
                 repIndex: repIndex,
@@ -251,9 +374,56 @@ final class RestCountdownModel {
     /// the VM records this with `reverted = true` in
     /// `set_rest_events` (V0.39 §Contract, decision 4).
     func revert(swimmerId: String) -> RevertResult {
+        // V0.39 Slice 4 (2026-08-18): look up the most recent
+        // strike for this swimmer so the trailing `.revert` event
+        // can carry the strike's fields (the spec's "carries the
+        // reverted strike's fields" — the flywheel reads a
+        // `reverted = true` row and wants to know WHICH
+        // extension was reverted, not just "the coach disagreed
+        // at some point"). Iterating in reverse is O(k) where k
+        // is the number of strikes for this swimmer — small in
+        // practice (cap is 2 per the spec, and a reset clears
+        // the trail), so no map-of-latest index needed.
+        let lastStrike = restEvents.reversed().first { event in
+            event.eventType == .strike && event.swimmerId == swimmerId
+        }
+
         currentExtensionSec[swimmerId] = 0
         strikes[swimmerId] = 0
         extendedRestSec = baseRestSec + maxExtension()
+
+        // V0.39 Slice 4 (2026-08-18): append the `.revert` event
+        // AFTER the state mutation so a future read of
+        // `restEvents` sees the post-revert model. The
+        // `extendedRestSec` carried on the row is the strike's
+        // value (pre-revert) — the rest the engine PROPOSED —
+        // not the model's now-base value. The `reverted` flag
+        // is the wire signal that the coach disagreed; the
+        // `extended_rest_sec` column shows what they reverted
+        // FROM.
+        //
+        // No prior strike → the VM only calls revert after a
+        // badge showed (so a strike MUST have preceded it in
+        // the trail), but be defensive: if the trail is empty
+        // for this swimmer, append nothing (a no-op revert
+        // would pollute the flywheel with phantom events).
+        if let strike = lastStrike {
+            let revertEvent = RestEvent(
+                swimmerId: swimmerId,
+                repIndex: strike.repIndex,
+                repTimeMs: strike.repTimeMs,
+                standardMs: strike.standardMs,
+                standardSource: strike.standardSource,
+                baseRestSec: strike.baseRestSec,
+                extendedRestSec: strike.extendedRestSec,   // pre-revert value
+                deltaSec: strike.deltaSec,                  // the strike's delta
+                strikeCount: strike.strikeCount,
+                reverted: true,
+                eventType: .revert
+            )
+            restEvents.append(revertEvent)
+        }
+
         return RevertResult(
             swimmerId: swimmerId,
             newExtendedRestSec: extendedRestSec,
@@ -285,6 +455,13 @@ final class RestCountdownModel {
         standardSource.removeAll()
         remainingSec = baseRestSec
         extendedRestSec = baseRestSec
+        // V0.39 Slice 4 (2026-08-18): clear the per-set event
+        // trail. The save path calls reset() AFTER it has
+        // persisted the rows, so this clears for the NEXT set
+        // (a retry / second anaerobic set in the same session).
+        // Without this, a retry of the same set would
+        // double-write every strike row.
+        restEvents.removeAll()
     }
 
     // MARK: - Helpers

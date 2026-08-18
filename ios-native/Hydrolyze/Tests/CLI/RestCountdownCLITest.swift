@@ -584,12 +584,285 @@ func runResetClearsState() -> Bool {
     return allPass
 }
 
+// MARK: - V0.39 Slice 4 — event trail tests (2026-08-18)
+//
+// The model now accumulates a per-set trail of `RestEvent`s so the
+// save path can persist one `set_rest_events` row per extension
+// decision. The pure accumulation carries the test burden; the
+// `TimingService` insert is thin and is verified by compile + the
+// live-DB acceptance (spec §Slice 4 TDD).
+
+// MARK: - Test 13: after a strike, restEvents has one .strike with correct fields
+
+/// One strike → exactly one .strike event in the trail, with the
+/// DropEvaluation's fields lifted into the event 1:1.
+func runTrailAppendsOnStrike() -> Bool {
+    print("\n=== TEST 13: trail appends on strike ===")
+    let baseRest = 180
+    let m = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    let swimmerId = "sw-A"
+
+    let _ = m.evaluate(
+        swimmerId: swimmerId, repIndex: 2, repTimeMs: 60700,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil, rep1TimeMs: 60000
+    )
+
+    var allPass = true
+    allPass = assertEq("trail length after one strike == 1", m.restEvents.count, 1) && allPass
+    guard let event = m.restEvents.first else { return false }
+    allPass = assertEq("event.eventType == .strike", event.eventType, RestEventType.strike) && allPass
+    allPass = assertEq("event.reverted == false", event.reverted, false) && allPass
+    allPass = assertEq("event.swimmerId round-trip", event.swimmerId, swimmerId) && allPass
+    allPass = assertEq("event.repIndex round-trip", event.repIndex, 2) && allPass
+    allPass = assertEq("event.repTimeMs round-trip", event.repTimeMs, 60700) && allPass
+    allPass = assertEq("event.standardMs round-trip", event.standardMs, 60000) && allPass
+    allPass = assertEq("event.standardSource == .rep1", event.standardSource, .rep1) && allPass
+    allPass = assertEq("event.baseRestSec round-trip", event.baseRestSec, baseRest) && allPass
+    allPass = assertEq("event.extendedRestSec == base + 30", event.extendedRestSec, baseRest + 30) && allPass
+    allPass = assertEq("event.deltaSec == 30", event.deltaSec, 30) && allPass
+    allPass = assertEq("event.strikeCount == 1", event.strikeCount, 1) && allPass
+
+    print("  -> TEST 13: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 14: a good (non-strike) rep does NOT append
+
+/// The spec says "one per extension decision" — a non-strike is
+/// NOT a decision. After one good rep, the trail is empty.
+func runTrailNoAppendOnNonStrike() -> Bool {
+    print("\n=== TEST 14: no append on non-strike rep ===")
+    let baseRest = 180
+    let m = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    let swimmerId = "sw-A"
+
+    let _ = m.evaluate(
+        swimmerId: swimmerId, repIndex: 1, repTimeMs: 60050,  // within threshold
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil, rep1TimeMs: 60000
+    )
+
+    var allPass = true
+    allPass = assertEq("trail length after non-strike == 0", m.restEvents.count, 0) && allPass
+
+    // And: a second non-strike → still empty.
+    let _ = m.evaluate(
+        swimmerId: swimmerId, repIndex: 2, repTimeMs: 60200,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil, rep1TimeMs: 60000
+    )
+    allPass = assertEq("trail length after two non-strikes == 0", m.restEvents.count, 0) && allPass
+
+    print("  -> TEST 14: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 15: revert appends .revert carrying the strike's fields
+
+/// After one strike → revert → the trail has [strike, revert]; the
+/// revert carries the strike's fields (repIndex, repTimeMs,
+/// standardMs, etc.), with `reverted = true` and the strike's
+/// `extendedRestSec` (pre-revert value).
+func runTrailRevertCarriesStrikeFields() -> Bool {
+    print("\n=== TEST 15: revert carries strike's fields ===")
+    let baseRest = 180
+    let m = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    let swimmerId = "sw-A"
+
+    let _ = m.evaluate(
+        swimmerId: swimmerId, repIndex: 2, repTimeMs: 60700,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil, rep1TimeMs: 60000
+    )
+    let _ = m.revert(swimmerId: swimmerId)
+
+    var allPass = true
+    allPass = assertEq("trail length after strike + revert == 2", m.restEvents.count, 2) && allPass
+    guard m.restEvents.count == 2 else { return false }
+    let strike = m.restEvents[0]
+    let revertEvent = m.restEvents[1]
+
+    // Strike: unchanged from before.
+    allPass = assertEq("strike.eventType == .strike", strike.eventType, RestEventType.strike) && allPass
+    allPass = assertEq("strike.reverted == false", strike.reverted, false) && allPass
+
+    // Revert: carries the strike's fields, but the eventType
+    // tag flips and the reverted flag flips.
+    allPass = assertEq("revert.eventType == .revert", revertEvent.eventType, RestEventType.revert) && allPass
+    allPass = assertEq("revert.reverted == true", revertEvent.reverted, true) && allPass
+    allPass = assertEq("revert.swimmerId == swimmer", revertEvent.swimmerId, swimmerId) && allPass
+    allPass = assertEq("revert.repIndex == strike.repIndex", revertEvent.repIndex, strike.repIndex) && allPass
+    allPass = assertEq("revert.repTimeMs == strike.repTimeMs", revertEvent.repTimeMs, strike.repTimeMs) && allPass
+    allPass = assertEq("revert.standardMs == strike.standardMs", revertEvent.standardMs, strike.standardMs) && allPass
+    allPass = assertEq("revert.standardSource == strike.standardSource", revertEvent.standardSource, strike.standardSource) && allPass
+    allPass = assertEq("revert.baseRestSec == strike.baseRestSec", revertEvent.baseRestSec, strike.baseRestSec) && allPass
+    // The key invariant: revert's extendedRestSec is the strike's
+    // value (pre-revert = base + 30 = 210), NOT the model's now-base
+    // value (180). The flywheel reads this column to learn what the
+    // engine proposed, before the coach disagreed.
+    allPass = assertEq("revert.extendedRestSec == strike.extendedRestSec (pre-revert)",
+                       revertEvent.extendedRestSec, strike.extendedRestSec) && allPass
+    allPass = assertEq("revert.extendedRestSec == base + 30 (210)", revertEvent.extendedRestSec, baseRest + 30) && allPass
+    allPass = assertEq("revert.deltaSec == strike.deltaSec (30)", revertEvent.deltaSec, strike.deltaSec) && allPass
+    allPass = assertEq("revert.strikeCount == strike.strikeCount (1)", revertEvent.strikeCount, strike.strikeCount) && allPass
+
+    print("  -> TEST 15: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 16: reset() clears the trail
+
+/// After a strike (trail has 1 event), reset() drops the trail to
+/// empty — so a retry / next set starts fresh and the same strike
+/// isn't double-written.
+func runTrailResetClears() -> Bool {
+    print("\n=== TEST 16: reset clears event trail ===")
+    let baseRest = 180
+    let m = RestCountdownModel(baseRestSec: baseRest, setIsAnaerobic: true)
+    let _ = m.evaluate(
+        swimmerId: "sw-A", repIndex: 1, repTimeMs: 60700,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil, rep1TimeMs: 60000
+    )
+    let _ = m.revert(swimmerId: "sw-A")
+    // Sanity: trail has 2 events
+    var allPass = true
+    allPass = assertEq("pre-reset trail length == 2", m.restEvents.count, 2) && allPass
+
+    m.reset()
+    allPass = assertEq("post-reset trail length == 0", m.restEvents.count, 0) && allPass
+
+    print("  -> TEST 16: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+// MARK: - Test 17: RestEventRow encodes with the correct snake_case keys
+
+/// The save path relies on the supabase-swift SDK writing the row
+/// with `snake_case` keys. The struct fields ARE snake_case so
+/// `JSONEncoder().encode(...)` produces the wire format directly;
+/// the test round-trips through a JSON parse to assert the key set.
+///
+/// Two sub-cases: (a) all fields populated → the encoded JSON has
+/// the full 14-key snake_case set; (b) optional fields nil → the
+/// encoding still works and the nil keys are dropped (consistent
+/// with `JSONEncoder` default behavior + the `LapRow` pattern in
+/// `TimingService.saveSession(...)`).
+func runRestEventRowEncodes() -> Bool {
+    print("\n=== TEST 17: RestEventRow encodes with snake_case keys ===")
+    let event = RestEvent(
+        swimmerId: "sw-A",
+        repIndex: 2,
+        repTimeMs: 60700,
+        standardMs: 60000,
+        standardSource: .rep1,
+        baseRestSec: 180,
+        extendedRestSec: 210,
+        deltaSec: 30,
+        strikeCount: 1,
+        reverted: false,
+        eventType: .strike
+    )
+
+    // (a) all fields populated: every snake_case key must be
+    // present. camelCase keys would silently fail the insert —
+    // the supabase SDK doesn't auto-translate.
+    let rowFull = RestEventRow(
+        event: event,
+        sessionId: "sess-1",
+        workoutSetId: "ws-1",
+        createdAt: "2026-08-18T13:00:00Z"
+    )
+    let dataFull: Data
+    do {
+        dataFull = try JSONEncoder().encode(rowFull)
+    } catch {
+        print("  [FAIL] encode threw: \(error)")
+        return false
+    }
+    guard let jsonFull = try? JSONSerialization.jsonObject(with: dataFull) as? [String: Any] else {
+        print("  [FAIL] encoded JSON is not a [String: Any]")
+        return false
+    }
+
+    let expectedKeys: Set<String> = [
+        "id", "session_id", "workout_set_id", "swimmer_id",
+        "rep_index", "rep_time_ms", "standard_ms",
+        "base_rest_sec", "extended_rest_sec", "delta_sec",
+        "strike_count", "standard_source", "reverted", "created_at"
+    ]
+    let actualKeys = Set(jsonFull.keys)
+    let missing = expectedKeys.subtracting(actualKeys)
+    let extra = actualKeys.subtracting(expectedKeys)
+
+    var allPass = true
+    allPass = assertEq("(a) encoded key set == expected snake_case set",
+                       actualKeys, expectedKeys) && allPass
+    if !missing.isEmpty {
+        allPass = assertTrue("(a) no missing keys", missing.isEmpty,
+                             extra: "missing=\(missing.sorted())") && allPass
+    }
+    if !extra.isEmpty {
+        allPass = assertTrue("(a) no extra keys", extra.isEmpty,
+                             extra: "extra=\(extra.sorted())") && allPass
+    }
+
+    // Field-value spot checks — guards against accidental renames
+    // in the init's argument order.
+    allPass = assertEq("(a) encoded swimmer_id", jsonFull["swimmer_id"] as? String, "sw-A") && allPass
+    allPass = assertEq("(a) encoded rep_index", jsonFull["rep_index"] as? Int, 2) && allPass
+    allPass = assertEq("(a) encoded rep_time_ms", jsonFull["rep_time_ms"] as? Int, 60700) && allPass
+    allPass = assertEq("(a) encoded standard_ms", jsonFull["standard_ms"] as? Int, 60000) && allPass
+    allPass = assertEq("(a) encoded standard_source", jsonFull["standard_source"] as? String, "rep1") && allPass
+    allPass = assertEq("(a) encoded base_rest_sec", jsonFull["base_rest_sec"] as? Int, 180) && allPass
+    allPass = assertEq("(a) encoded extended_rest_sec", jsonFull["extended_rest_sec"] as? Int, 210) && allPass
+    allPass = assertEq("(a) encoded delta_sec", jsonFull["delta_sec"] as? Int, 30) && allPass
+    allPass = assertEq("(a) encoded strike_count", jsonFull["strike_count"] as? Int, 1) && allPass
+    allPass = assertEq("(a) encoded reverted", jsonFull["reverted"] as? Bool, false) && allPass
+    allPass = assertEq("(a) encoded session_id", jsonFull["session_id"] as? String, "sess-1") && allPass
+    allPass = assertEq("(a) encoded workout_set_id", jsonFull["workout_set_id"] as? String, "ws-1") && allPass
+    allPass = assertEq("(a) encoded created_at", jsonFull["created_at"] as? String, "2026-08-18T13:00:00Z") && allPass
+
+    // (b) nil optional fields: encoding still succeeds, the nil
+    // keys are dropped (matches `LapRow` behavior in
+    // `TimingService.saveSession(...)`). The save path passes
+    // sessionId: nil for the single-swimmer flow; the wire
+    // payload simply omits the key.
+    let rowNil = RestEventRow(
+        event: event,
+        sessionId: nil,
+        workoutSetId: "ws-1",
+        createdAt: "2026-08-18T13:00:00Z"
+    )
+    let dataNil: Data
+    do {
+        dataNil = try JSONEncoder().encode(rowNil)
+    } catch {
+        print("  [FAIL] (b) encode threw: \(error)")
+        return false
+    }
+    guard let jsonNil = try? JSONSerialization.jsonObject(with: dataNil) as? [String: Any] else {
+        print("  [FAIL] (b) encoded JSON is not a [String: Any]")
+        return false
+    }
+    allPass = assertTrue("(b) nil session_id key is dropped from JSON (JSONEncoder default + LapRow parity)",
+                         jsonNil["session_id"] == nil) && allPass
+    allPass = assertTrue("(b) non-nil workout_set_id key is still present",
+                         jsonNil["workout_set_id"] as? String == "ws-1") && allPass
+    allPass = assertTrue("(b) swimmer_id still present",
+                         jsonNil["swimmer_id"] as? String == "sw-A") && allPass
+
+    print("  -> TEST 17: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
 // MARK: - Main
 
 @main
 struct RestCountdownCLITest {
     static func main() {
-        print("=== RestCountdownCLI Test — V0.39 Slice 2 ===")
+        print("=== RestCountdownCLI Test — V0.39 Slice 2 + Slice 4 ===")
         print("=== Pure-logic gate for the drop-rule state machine ===")
         print("=== Exercises real RestCountdownModel, no Supabase, no XCTest. ===")
         print("")
@@ -606,6 +879,11 @@ struct RestCountdownCLITest {
         let t10 = runLinearScaling100m()
         let t11 = runMultiSwimmer()
         let t12 = runResetClearsState()
+        let t13 = runTrailAppendsOnStrike()
+        let t14 = runTrailNoAppendOnNonStrike()
+        let t15 = runTrailRevertCarriesStrikeFields()
+        let t16 = runTrailResetClears()
+        let t17 = runRestEventRowEncodes()
 
         let results: [(String, Bool)] = [
             ("TEST 1 strike on 50m > 0.5s",     t1),
@@ -620,6 +898,11 @@ struct RestCountdownCLITest {
             ("TEST 10 100m linear scaling",       t10),
             ("TEST 11 multi-swimmer common clock", t11),
             ("TEST 12 reset clears state",        t12),
+            ("TEST 13 trail appends on strike",    t13),
+            ("TEST 14 no append on non-strike",   t14),
+            ("TEST 15 revert carries strike fields", t15),
+            ("TEST 16 reset clears trail",         t16),
+            ("TEST 17 RestEventRow snake_case JSON", t17),
         ]
 
         print("\n=== Summary ===")

@@ -945,6 +945,32 @@ final class TimingViewModel: ObservableObject {
                     endedAt: isoFormatter.string(from: Date())
                 )
                 try await timingService.saveSession(session)
+                // V0.39 Slice 4 (2026-08-18): persist the drop-rule
+                // event trail. Non-fatal — the recorded times are
+                // the source of truth; a rest-events write failure
+                // must not fail the save (the coach still sees
+                // their times). The `reverted` flag preserves
+                // coach-is-authority: a reverted extension is
+                // recorded (the flywheel learns the coach
+                // disagreed) but the rest was not extended.
+                //
+                // Aerobic sets never reach here: `restModel` is
+                // nil for aerobic (built in `start()` only when
+                // `isAnaerobicSet && intervalToSeconds(interval)`
+                // is non-nil), so `restEvents` is empty by
+                // construction. The early return below is the
+                // spec's "no rows for aerobic sets" acceptance.
+                if let model = restModel, !model.restEvents.isEmpty {
+                    do {
+                        try await timingService.saveRestEvents(
+                            model.restEvents,
+                            sessionId: nil,
+                            workoutSetId: workoutSetId
+                        )
+                    } catch {
+                        log("set_rest_events insert FAILED (non-fatal): \(error.localizedDescription)")
+                    }
+                }
                 reset()
             } catch {
                 errorMessage = "Couldn't save times. Try again."
