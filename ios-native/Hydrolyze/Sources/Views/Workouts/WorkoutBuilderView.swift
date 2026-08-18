@@ -121,7 +121,7 @@ struct WorkoutBuilderView: View {
     /// and iPhone (inlined in the outer ScrollView's VStack).
     private var inputColumnContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("WORKOUT BUILDER")
+            Text("Workout builder")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(Color.textFaint)
                 .tracking(1.5)
@@ -216,7 +216,7 @@ struct WorkoutBuilderView: View {
                 Haptics.selection()
             } label: {
                 HStack(spacing: 6) {
-                    Text("WORKOUT SYNTAX")
+                    Text("Workout syntax")
                         .font(.eyebrow)
                         .foregroundColor(Color.textFaint)
                         .tracking(1.2)
@@ -322,6 +322,14 @@ struct WorkoutBuilderView: View {
             Button {
                 Task {
                     if await viewModel.saveWorkout(authManager: authManager) != nil {
+                        // V0.44 Slice 3 (2026-08-18): tell 8 — micro-
+                        // interaction gap. Save completion had no tactile
+                        // resolution. Haptics.success() plays the
+                        // "ding-ding-rise" pattern: the form-submission
+                        // signal, matching the documented
+                        // Haptics.success() use case ("form submission
+                        // success, save complete").
+                        Haptics.success()
                         showScheduleSheet = true
                     }
                 }
@@ -342,6 +350,13 @@ struct WorkoutBuilderView: View {
             Button {
                 Task {
                     if await viewModel.saveWorkout(authManager: authManager) != nil {
+                        // V0.44 Slice 3 (2026-08-18): tell 8 — same
+                        // save-success haptic as the primary button.
+                        // Both call sites succeed via the same VM
+                        // method; the haptic is the form-submission
+                        // signal regardless of which next-step the
+                        // coach chose (schedule-sheet or dismiss).
+                        Haptics.success()
                         dismiss()
                     }
                 }

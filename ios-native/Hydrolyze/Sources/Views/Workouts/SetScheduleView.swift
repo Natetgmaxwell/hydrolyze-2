@@ -30,7 +30,7 @@ struct SetScheduleView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
                             // Step 1: Squad picker
-                            Text("SQUAD")
+                            Text("Squad")
                                 .font(.eyebrow)
                                 .foregroundColor(Color.textFaint)
                                 .tracking(1.5)
@@ -39,7 +39,7 @@ struct SetScheduleView: View {
 
                             if viewModel.selectedSquad != nil {
                                 // Step 2: Date (constrained to squad's active weekdays)
-                                Text("DATE")
+                                Text("Date")
                                     .font(.eyebrow)
                                     .foregroundColor(Color.textFaint)
                                     .tracking(1.5)
@@ -60,7 +60,7 @@ struct SetScheduleView: View {
 
                                 // Step 3: Session (only slots the squad offers on this day)
                                 if !viewModel.availableSlots.isEmpty {
-                                    Text("SESSION")
+                                    Text("Session")
                                         .font(.eyebrow)
                                         .foregroundColor(Color.textFaint)
                                         .tracking(1.5)

@@ -90,7 +90,7 @@ struct SwimmerSheetView: View {
 
     private var lastNameField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("LAST NAME")
+            Text("Last name")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             TextField("", text: $viewModel.lastName)
@@ -105,7 +105,7 @@ struct SwimmerSheetView: View {
 
     private var birthdateField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("BIRTHDATE")
+            Text("Birthdate")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             Button {
@@ -132,7 +132,7 @@ struct SwimmerSheetView: View {
 
     private var genderField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("GENDER")
+            Text("Gender")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             HStack(spacing: 8) {
@@ -156,7 +156,7 @@ struct SwimmerSheetView: View {
 
     private var mainStrokeField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("MAIN STROKE")
+            Text("Main stroke")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             Button {
@@ -188,7 +188,7 @@ struct SwimmerSheetView: View {
 
     private var formStrokeField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("FORM STROKE")
+            Text("Form stroke")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             Button {
@@ -220,7 +220,7 @@ struct SwimmerSheetView: View {
 
     private var groupsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("GROUPS")
+            Text("Groups")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             SwimLayout(spacing: 8) {
@@ -243,7 +243,7 @@ struct SwimmerSheetView: View {
 
     private var notesField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("NOTES")
+            Text("Notes")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             TextEditor(text: $viewModel.notes)

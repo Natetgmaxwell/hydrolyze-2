@@ -299,7 +299,7 @@ private struct SquadEditSheet: View {
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("SESSIONS")
+                Text("Sessions")
                     .font(.eyebrow)
                     .foregroundColor(Color.textMuted)
                 Spacer()

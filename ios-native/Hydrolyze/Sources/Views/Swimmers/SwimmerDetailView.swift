@@ -187,7 +187,7 @@ struct SwimmerDetailView: View {
 
     private func mainStrokeSection(_ swimmer: Swimmer) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("MAIN STROKE")
+            Text("Main stroke")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)
@@ -228,7 +228,7 @@ struct SwimmerDetailView: View {
 
     private func formStrokeSection(_ swimmer: Swimmer) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("FORM STROKE")
+            Text("Form stroke")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)
@@ -269,7 +269,7 @@ struct SwimmerDetailView: View {
 
     private var groupsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("GROUPS")
+            Text("Groups")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)
@@ -307,7 +307,7 @@ struct SwimmerDetailView: View {
     private var personalBestsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("PERSONAL BESTS")
+                Text("Personal bests")
                     .font(.eyebrow)
                     .foregroundColor(Color.textFaint)
                 Spacer()
@@ -339,6 +339,15 @@ struct SwimmerDetailView: View {
                 }) { pb in
                     pbRow(pb)
                 }
+                // V0.44 Slice 3 (2026-08-18): tell 8 — section expand.
+                // Animate the PB row count so newly fetched PBs
+                // settle in with Animations.springSoft ("section
+                // expand" per the spec table). SwimmerPB isn't
+                // Equatable, so the .animation(value:) is driven off
+                // the count — covers the async load-from-DB arrival
+                // (0→N) and any future add/delete without model
+                // surgery. Gated by reduceMotion for a11y.
+                .animation(reduceMotion ? nil : Animations.springSoft, value: viewModel.personalBests.count)
             }
         }
     }
@@ -421,7 +430,7 @@ struct SwimmerDetailView: View {
     private var zonesSection: some View {
         if let zones = viewModel.trainingZones {
             VStack(alignment: .leading, spacing: 0) {
-                Text("TRAINING ZONES")
+                Text("Training zones")
                     .font(.eyebrow)
                     .foregroundColor(Color.textFaint)
                     .padding(.horizontal, 16)
@@ -440,6 +449,16 @@ struct SwimmerDetailView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
+                // V0.44 Slice 3 (2026-08-18): tell 8 — section expand.
+                // TrainingZones is Equatable (see TrainingZoneService
+                // line 41), so the .animation(value:) is driven off
+                // the struct directly. The section fires when zones
+                // transitions nil → set (the @ViewBuilder gate
+                // above); .animation makes the settled-in reveal use
+                // Animations.springSoft — matching the spec table's
+                // "section expand = springSoft" language. Gated by
+                // reduceMotion for a11y.
+                .animation(reduceMotion ? nil : Animations.springSoft, value: viewModel.trainingZones)
             }
         }
     }
@@ -448,7 +467,7 @@ struct SwimmerDetailView: View {
 
     private var progressionSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("PROGRESSION (LAST 30 DAYS)")
+            Text("Progression (last 30 days)")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)
@@ -478,7 +497,7 @@ struct SwimmerDetailView: View {
 private var recoverySection: some View {
     if let line = viewModel.recoverySignatureLine {
         VStack(alignment: .leading, spacing: 8) {
-            Text("RECOVERY STRAIN")
+            Text("Recovery strain")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
                 .padding(.horizontal, 16)

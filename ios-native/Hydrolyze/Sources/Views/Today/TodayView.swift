@@ -180,7 +180,7 @@ struct TodayView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("QUICK ACTIONS")
+                    Text("Quick actions")
                         .font(.eyebrow)
                         .foregroundColor(Color.textFaint)
                     VStack(alignment: .leading, spacing: 8) {
@@ -194,7 +194,7 @@ struct TodayView: View {
                             }
                         } else {
                             quickActionRow(
-                                label: "Schedule Workout",
+                                label: "Plan a session",
                                 icon: "calendar.badge.plus",
                                 color: Color.accentCyan
                             ) {
@@ -202,7 +202,7 @@ struct TodayView: View {
                             }
                         }
                         quickActionRow(
-                            label: "View Swimmers",
+                            label: "Who's in today",
                             icon: "person.2.fill",
                             color: Color.textMuted
                         ) {

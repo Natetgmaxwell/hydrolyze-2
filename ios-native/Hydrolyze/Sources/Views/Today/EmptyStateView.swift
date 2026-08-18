@@ -21,11 +21,11 @@ struct EmptyStateView: View {
                     reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 1.6)
                 }
 
-            Text("No workout scheduled")
+            Text("The week's clear — plan a session.")
                 .font(.eyebrowLarge)
                 .foregroundColor(Color.textMuted)
 
-            Text("Tap Workouts to schedule one.")
+            Text("Head to Workouts to build one.")
                 .font(.caption)
                 .foregroundColor(Color.textFaint)
         }

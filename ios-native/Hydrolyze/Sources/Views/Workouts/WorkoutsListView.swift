@@ -53,7 +53,7 @@ final class WorkoutsListViewModel: ObservableObject {
 }
 
 /// Lightweight row data type — mirrors the RN's WorkoutRow interface.
-struct WorkoutRowData: Identifiable {
+struct WorkoutRowData: Identifiable, Equatable {
     let id: String
     let title: String?
     let status: WorkoutStatus
@@ -176,7 +176,7 @@ struct WorkoutsListView: View {
         List {
             if viewModel.workouts.isEmpty && !viewModel.isLoading {
                 VStack(spacing: 8) {
-                    Text("No \(emptyStateLabel) workouts")
+                    Text(emptyStateMessage)
                         .font(.body)
                         .foregroundColor(Color.textMuted)
                 }
@@ -192,8 +192,28 @@ struct WorkoutsListView: View {
                             WorkoutRowView(workout: workout, onDelete: {})
                                 .padding(.vertical, 6)
                         }
+                        // V0.44 Slice 3 (2026-08-18): tell 8 — micro-
+                        // interaction gap. NavigationLink doesn't take
+                        // an action closure, so we add a simultaneous
+                        // tap gesture purely for the haptic. The visual
+                        // press feedback is already handled by the
+                        // system's NavigationLink affordance (chevron +
+                        // highlight); this just adds the tactile "I
+                        // tapped a thing" tap that filter pills already
+                        // use via Haptics.selection(). Light tap, no
+                        // reduceMotion gate — haptics aren't motion.
+                        .simultaneousGesture(
+                            TapGesture().onEnded { Haptics.tap() }
+                        )
                         .listRowBackground(Color.bgBase)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        // V0.44 Slice 2 (2026-08-18): tell 5 — uniform
+                        // spacing, no rhythm. Bumped the vertical
+                        // insets 4 → 8 so the per-section gap lands
+                        // on a 4pt grid (8 = 2 × 4) and gives sections
+                        // breathing room. Leading / trailing stay at
+                        // 16 (matches the screen's outer margin from
+                        // the filter pills row).
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         .listRowSeparator(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button {
@@ -218,6 +238,16 @@ struct WorkoutsListView: View {
         }
         .listStyle(.plain)
         .redacted(reason: viewModel.isLoading && viewModel.workouts.isEmpty ? .placeholder : [])
+        // V0.44 Slice 3 (2026-08-18): tell 8 — row enter/exit. Animate
+        // the workouts array so inserts (initial load, refresh) and
+        // removes (archive swipe) settle in with Animations.springSoft
+        // — no overshoot, "settle without bounce." springSoft matches
+        // the spec table's "section expand = springSoft" feel: rows
+        // should look like they're arriving, not popping. WorkoutRowData
+        // is Equatable so the .animation(value:) works; gated by
+        // reduceMotion (a11y standard pattern, matches the on-appear
+        // reveal above).
+        .animation(reduceMotion ? nil : Animations.springSoft, value: viewModel.workouts)
         .refreshable {
             await viewModel.loadWorkouts(coachId: authManager.coachId)
         }
@@ -261,6 +291,14 @@ struct WorkoutsListView: View {
         case .complete: return "complete"
         }
     }
+
+    private var emptyStateMessage: String {
+        switch viewModel.selectedFilter {
+        case .all: return "No workouts yet — plan a session."
+        case .scheduled, .draft, .complete:
+            return "No \(emptyStateLabel) workouts here."
+        }
+    }
 }
 
 /// WorkoutRowView — standalone row (no NavigationLink inside, for use in List).
@@ -272,7 +310,19 @@ struct WorkoutRowView: View {
         // ponytail: card surface — raised background, rounded corners,
         // subtle hairline ring. Matches the Workouts surface identity
         // (cards on a dark surface, not raw text floating on screen).
-        HStack {
+        // V0.44 Slice 2 (2026-08-18): leading status dot. Tells 6 in
+        // the spec — "no color meaning for status" — was that draft /
+        // scheduled / complete were text-only. A 6pt filled circle at
+        // the leading edge (iOS-native list pattern, à la Mail /
+        // Reminders) gives the status a glance-readable color without
+        // crowding the title or status label. The dot reuses the
+        // existing `statusColor` computed property so dot + label
+        // stay coherent: same token, same color, same status.
+        HStack(spacing: 10) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
+
             VStack(alignment: .leading, spacing: 4) {
                 // ponytail: per-row date label REMOVED. The Section header
                 // (formatted via formatDateKey) already shows the date;
@@ -325,8 +375,21 @@ struct WorkoutRowView: View {
     }
 
     private var statusColor: Color {
+        // V0.44 Slice 2 (2026-08-18): draft re-mapped from accentAmber
+        // to textFaint. Tell 6 in the spec — "no color meaning for
+        // status" — listed draft as textFaint. Amber was reading
+        // "warning / needs attention" which isn't what a draft is;
+        // a draft is "not yet active" — quiet. textFaint says that.
+        // The status label text also picks up this color via the
+        // `.foregroundColor(statusColor)` on the Text above, so the
+        // dot and the label stay in sync (a textFaint dot + amber
+        // label would have been incoherent). inProgress is kept on
+        // accentCyan — it's an active state and cyan is the brand
+        // active color, even though inProgress isn't in the spec's
+        // dot list (the spec only enumerates draft / scheduled /
+        // complete).
         switch workout.status {
-        case .draft: return Color.accentAmber
+        case .draft: return Color.textFaint
         case .scheduled: return Color.accentCyan
         case .inProgress: return Color.accentCyan
         case .complete: return Color.statusSuccess

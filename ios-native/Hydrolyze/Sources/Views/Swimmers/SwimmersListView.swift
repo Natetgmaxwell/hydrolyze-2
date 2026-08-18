@@ -185,6 +185,17 @@ struct SwimmersListView: View {
 
     private var swimmersList: some View {
         ScrollView {
+            // V0.44 Slice 3 (2026-08-18): tell 8 — row enter/exit.
+            // Animate the row count so inserts (initial load, refresh,
+            // filter change) and removes (archive swipe) settle in
+            // with Animations.springSoft — "settle without bounce"
+            // matches the spec table's "section expand = springSoft"
+            // feel. Swimmer is Codable + Identifiable but not
+            // Equatable, so we drive the .animation(value:) off a
+            // stable scalar: filteredSwimmers.count. This covers all
+            // three triggers above (load → 0→N, filter → N→M,
+            // archive → M→M-1). Gated by reduceMotion per the
+            // standard a11y pattern.
             LazyVStack(spacing: 0) {
                 if viewModel.isLoading && viewModel.allSwimmers.isEmpty {
                     ProgressView()
@@ -214,12 +225,17 @@ struct SwimmersListView: View {
                                 swimmerRow(swimmer)
                             }
                         } header: {
-                            groupHeader(name: "NO GROUP", count: viewModel.noGroupSwimmers.count, onDelete: nil)
+                            // V0.44 Slice 1 (2026-08-18): the "No
+                            // group" fallback is a system label, not
+                            // a coach-named group — render in sentence
+                            // case (skip groupHeader's .uppercased()).
+                            groupHeader(name: "No group", count: viewModel.noGroupSwimmers.count, onDelete: nil, uppercased: false)
                         }
                     }
                 }
             }
             .padding(.bottom, 40)
+            .animation(reduceMotion ? nil : Animations.springSoft, value: viewModel.filteredSwimmers.count)
         }
     }
 
@@ -259,10 +275,15 @@ struct SwimmersListView: View {
         }
     }
 
-    // Group header row: name + count + optional delete
-    private func groupHeader(name: String, count: Int, onDelete: (() -> Void)?) -> some View {
+    // Group header row: name + count + optional delete.
+    // V0.44 Slice 1 (2026-08-18): added `uppercased:` flag so the
+    // "No group" system-label fallback can render in sentence case
+    // instead of going through `.uppercased()`. Coach-named groups
+    // (data) stay uppercase by default — this just lets the one
+    // system-label call site opt out.
+    private func groupHeader(name: String, count: Int, onDelete: (() -> Void)?, uppercased: Bool = true) -> some View {
         HStack {
-            Text(name.uppercased())
+            Text(uppercased ? name.uppercased() : name)
                 .font(.eyebrow)
                 .foregroundColor(Color.textMuted)
             Text("\(count)")
@@ -302,11 +323,11 @@ struct SwimmersListView: View {
                     .easeInOut(duration: 1.6)
                 }
 
-            Text("No swimmers yet.")
+            Text("The roster's empty.")
                 .font(.body)
                 .foregroundColor(Color.textMuted)
 
-            Text("Tap + Add to add your first swimmer")
+            Text("Tap + to add your first swimmer.")
                 .font(.caption)
                 .foregroundColor(Color.textFaint)
         }

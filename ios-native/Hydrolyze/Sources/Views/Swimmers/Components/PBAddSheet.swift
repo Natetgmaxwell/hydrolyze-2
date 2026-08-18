@@ -54,7 +54,7 @@ struct PBAddSheet: View {
 
     private var strokePills: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("STROKE")
+            Text("Stroke")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             HStack(spacing: 8) {
@@ -77,7 +77,7 @@ struct PBAddSheet: View {
 
     private var distancePills: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("DISTANCE")
+            Text("Distance")
                 .font(.eyebrow)
                 .foregroundColor(Color.textFaint)
             FlowLayout(spacing: 8) {

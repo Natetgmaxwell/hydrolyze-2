@@ -170,14 +170,52 @@ struct ContentView: View {
         if horizontalSizeClass == .regular {
             NavigationSplitView(columnVisibility: .constant(.all)) {
                 List(selection: $coachTabSelection) {
-                    ForEach(CoachTab.allCases) { tab in
-                        NavigationLink(value: tab) {
-                            Label(tab.title, systemImage: tab.systemImage)
+                    Section {
+                        ForEach(CoachTab.allCases) { tab in
+                            NavigationLink(value: tab) {
+                                // V0.44 Slice 2 (2026-08-18): tell 7 —
+                                // generic system-blue icons in sidebar.
+                                // The 20% cyan rule applied to chrome:
+                                // selected row reads in brand cyan,
+                                // unselected rows read in textFaint so
+                                // the inactive chrome recedes and the
+                                // active destination is the only
+                                // saturated thing in the sidebar.
+                                // The List's `.tint(Color.accentCyan)`
+                                // below pairs with this — the
+                                // selection highlight pill is also
+                                // brand cyan instead of system blue.
+                                Label(tab.title, systemImage: tab.systemImage)
+                                    .foregroundStyle(
+                                        coachTabSelection == tab
+                                            ? Color.accentCyan
+                                            : Color.textFaint
+                                    )
+                            }
                         }
+                    } header: {
+                        // V0.44 Slice 1 (2026-08-18): sidebar wordmark
+                        // — JetBrains Mono Bold. Small, quiet, confident
+                        // per the spec; replaces the prior
+                        // `.navigationTitle("Hydrolyze")` which was SF
+                        // bold. The mono is the brand signature: same
+                        // font that runs the timing screen numbers,
+                        // pulled up into the chrome.
+                        Text("Hydrolyze")
+                            .font(.jetBrainsMono(size: 20, weight: .bold))
+                            .foregroundColor(Color.textPrimary)
+                            .textCase(nil)
                     }
                 }
                 .listStyle(.sidebar)
-                .navigationTitle("Hydrolyze")
+                // V0.44 Slice 2 (2026-08-18): brand-cyan selection
+                // highlight on the sidebar. Default tint is system
+                // blue; we override so the selected row's accent
+                // pill is accentCyan, matching the rest of the
+                // cyan-on-20% chrome rule. Pairs with the per-Label
+                // `.foregroundStyle` switch above (selected = cyan
+                // text, unselected = textFaint).
+                .tint(Color.accentCyan)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 300)
             } detail: {
                 switch coachTabSelection ?? .today {

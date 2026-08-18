@@ -674,7 +674,7 @@ struct WavePreviewView: View {
     private var lanePicker: some View {
         VStack(spacing: 4) {
             HStack {
-                Text("LANES")
+                Text("Lanes")
                     .font(.eyebrow)
                     .tracking(1.0)
                     .foregroundColor(Color.textFaint)

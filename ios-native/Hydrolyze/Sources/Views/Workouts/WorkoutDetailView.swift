@@ -244,7 +244,7 @@ struct WorkoutDetailView: View {
         let fragmentlessSets = viewModel.sets.filter { ($0.fragments ?? []).isEmpty }
         if !fragmentlessSets.isEmpty || viewModel.sets.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                Text("SETS")
+                Text("Sets")
                     .font(.eyebrow)
                     .foregroundColor(Color.textFaint)
                     .tracking(1.5)

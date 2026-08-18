@@ -87,7 +87,7 @@ struct ProfileView: View {
     private var predictionAlgorithmSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("PREDICTION ALGORITHM")
+                Text("Prediction algorithm")
                     .font(.eyebrow)
                     .tracking(1.0)
                     .foregroundColor(Color.textFaint)
