@@ -537,7 +537,7 @@ final class WorkoutBuilderViewModel: ObservableObject {
             if let existingId = workoutId {
                 _ = try await workoutService.updateWorkout(workoutId: existingId, updates: [
                     "title": title,
-                    "description": workoutText,
+                    "workout_text": workoutText,
                     "status": "draft"
                 ])
                 if let parsed = parsedWorkout, !parsed.sections.isEmpty {
