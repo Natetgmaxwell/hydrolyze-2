@@ -223,6 +223,25 @@ final class TimingViewModel: ObservableObject {
     /// timing flow resolves each swimmer's zone pace as the drop-rule
     /// standard and surfaces it as the target.
     var zoneTerm: String?
+    /// V0.43a (2026-08-18): the set-level gear
+    /// (`[String]?`, mirrors `WorkoutSet.gear`). Copied from the prefill
+    /// in TimingView; read by `resolvedSaveGear` to stamp
+    /// `recorded_times.gear` for the multi-swimmer save path. The
+    /// parser already extracts it (V0.37) and the prediction path
+    /// already keys on it — the persistence path was the missing
+    /// link (saved as 'none' for all 432 live rows).
+    var gear: [String]?
+    /// V0.43a (2026-08-18): the single-text gear string the save
+    /// path writes to `recorded_times.gear`. Resolution rule:
+    /// fragment gear wins for composite sets (`fragmentContexts`
+    /// non-empty); otherwise the set-level `gear`. Returns the
+    /// first gear entry of the resolved source — `WorkoutSet.gear`
+    /// is `[String]?` but the DB column is a single text. nil for
+    /// bare sets with no gear (the save path omits the JSON key
+    /// so the DB stores NULL; matches `RecordedTime.gear: String?`).
+    private var resolvedSaveGear: String? {
+        fragmentContexts.first?.gear?.first ?? gear?.first
+    }
     /// V0.41 Slice 2 (2026-08-18): per-swimmer zone pace standard (ms)
     /// for the ACTIVE set, resolved at timing time from each swimmer's
     /// usable 3MT profile. Populated alongside the zone gate in
@@ -889,8 +908,19 @@ final class TimingViewModel: ObservableObject {
                 let source: String
                 let lap_order: Int
                 let paired_swimmer_id: String?  // nil
+                /// V0.43a (2026-08-18): gear stamp on the raw
+                /// (unpaired) insert path so SKIP PAIRING also
+                /// persists gear. Same resolution rule as
+                /// `resolvedSaveGear`: fragment-first, else
+                /// set-level, else nil (DB stores NULL).
+                let gear: String?
                 let created_at: String
             }
+            // V0.43a (2026-08-18): bind the resolved gear once so
+            // the same string stamps every row (consistent with the
+            // `let timestamp` pattern above — batch rows share a
+            // single value rather than re-resolving per lap).
+            let resolvedGear = self.resolvedSaveGear
             let timestamp = ISO8601DateFormatter().string(from: Date())
             let rows = self.laps.enumerated().map { (idx, lap) in
                 RawTimeRow(
@@ -905,6 +935,7 @@ final class TimingViewModel: ObservableObject {
                     source: "unpaired",
                     lap_order: lap.lapNumber,
                     paired_swimmer_id: nil,
+                    gear: resolvedGear,
                     created_at: timestamp
                 )
             }
@@ -1215,7 +1246,14 @@ final class TimingViewModel: ObservableObject {
                 // For non-composite sets, fragmentContexts is empty and
                 // the existing parent-set prediction path runs unchanged.
                 let intensity = self.intensityLabel ?? "moderate"
-                let gear = "none"  // save flow defaults to no gear
+                // V0.43a (2026-08-18): pull the resolved gear
+                // (fragment-first, else set-level, else nil) so the
+                // prediction key + the persisted `recorded_times.gear`
+                // row are both stamped with the parsed gear. Prior
+                // versions hardcoded "none" here; that's why the 432
+                // live rows show 'none' despite V0.37 parsing gear
+                // correctly upstream.
+                let gear = self.resolvedSaveGear
                 // PHASE 1 (T3.5, 2026-06-20): use the calibration
                 // populated by the parallel fetch above. It's in scope
                 // as a local and was awaited, so the cache is ready.
@@ -1374,6 +1412,12 @@ final class TimingViewModel: ObservableObject {
                         stroke: self.stroke,
                         distance: recordedTimesDistance,
                         intensity: recordedTimesIntensity,
+                        // V0.43a (2026-08-18): stamp every
+                        // recorded_time row with the resolved gear
+                        // (fragment-first, else set-level, else nil).
+                        // nil → the JSON omits the key → the DB stores
+                        // NULL for bare sets.
+                        gear: self.resolvedSaveGear,
                         assignments: result.assignments
                     )
                 }

@@ -106,11 +106,21 @@ final class TimingService {
     }
 
     /// Save paired laps from the ML pairing engine for a multi-swimmer session
+    ///
+    /// V0.43a (2026-08-18): gain `gear: String?` so the fragment
+    /// gear parsed by V0.37 (or the set-level gear when no
+    /// fragment) is persisted to `recorded_times.gear`. The prior
+    /// save path dropped it (the VM hardcoded "none") so all 432
+    /// live rows read 'none' — this + the VM resolution closes the
+    /// gap. nil means "no gear for this set"; the DB column is
+    /// nullable with no non-null default, so an absent JSON key
+    /// stores NULL.
     func savePairedLaps(
         sessionId: String,
         stroke: String,
         distance: Int,
         intensity: String,
+        gear: String?,
         assignments: [LapAssignment]
     ) async throws {
         struct PairedLapRow: Encodable {
@@ -124,6 +134,12 @@ final class TimingService {
             let intensity: String
             let stroke: String
             let pace_distance: Int?
+            /// V0.43a (2026-08-18): the fragment or set gear
+            /// (single text — `WorkoutSet.gear` is `[String]?` but
+            /// `recorded_times.gear` is a single text column).
+            /// nil for bare sets; the JSON encodes it as a
+            /// missing key so the DB stores NULL.
+            let gear: String?
             let created_at: String
             let confidence: Int
             /// PHASE 2.6 v1.17.0 (S5): the engine's Gaussian
@@ -151,6 +167,7 @@ final class TimingService {
                 intensity: intensity,
                 stroke: stroke,
                 pace_distance: distance,
+                gear: gear,
                 created_at: timestamp,
                 confidence: assignment.confidence,
                 assignment_confidence: assignment.assignmentConfidence,

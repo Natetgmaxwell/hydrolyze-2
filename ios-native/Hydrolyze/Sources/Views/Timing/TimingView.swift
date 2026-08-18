@@ -374,6 +374,12 @@ struct TimingView: View {
                 // term so the timing flow can resolve each swimmer's
                 // zone pace as the drop-rule standard + target.
                 viewModel.zoneTerm = prefill.zoneTerm
+                // V0.43a (2026-08-18): copy the set-level gear so the
+                // save path can persist it to `recorded_times.gear`.
+                // The fragment path (above) carries its own gear via
+                // FragmentContext.gear and uses resolvedSaveGear's
+                // fragment-first rule.
+                viewModel.gear = prefill.gear
                 // t_c74dffbc (2026-08-04): per-fragment contexts for
                 // composite sets. nil/empty means the existing
                 // parent-set prediction path; non-empty means the

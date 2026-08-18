@@ -75,6 +75,17 @@ struct SetPrefill: Sendable, Hashable {
     /// t_c74dffbc (2026-08-04): optional per-fragment contexts. nil for
     /// non-composite sets (the existing prefill path).
     let fragmentContexts: [FragmentContext]?
+    /// V0.43a (2026-08-18): the set-level gear parsed from
+    /// `WorkoutSet.gear` (`[String]?` — multi-gear sets). The VM
+    /// reads this when resolving the save-time gear and falls back
+    /// to `fragmentContexts.first?.gear` when the active fragment
+    /// is a composite. nil when the workout text carries no gear,
+    /// which the save path forwards to `recorded_times.gear` as a
+    /// missing JSON key (DB stores NULL). This is the input half
+    /// of the V0.43a persistence gap-close: the parser extracts
+    /// gear (V0.37), the prefill carries it here, the VM resolves
+    /// it in `resolvedSaveGear`.
+    let gear: [String]?
 
     /// Rich display label for the setup screen, e.g. "4 × 100 Free @ 1:30"
     var displayLabel: String {

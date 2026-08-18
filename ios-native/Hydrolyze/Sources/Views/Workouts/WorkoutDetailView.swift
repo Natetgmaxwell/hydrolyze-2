@@ -291,7 +291,12 @@ struct WorkoutDetailView: View {
             // term so the timing flow resolves each swimmer's zone
             // pace as the drop-rule standard + target.
             zoneTerm: set.zoneTerm,
-            fragmentContexts: nil
+            fragmentContexts: nil,
+            // V0.43a (2026-08-18): forward the set-level gear so the
+            // VM persists it to `recorded_times.gear`. Mirrors
+            // `WorkoutSet.gear: [String]?` — nil for bare sets, which
+            // the save path forwards as a missing JSON key.
+            gear: set.gear
         )
         let isTimeable = set.distance != nil && set.distance! > 0
 
@@ -502,7 +507,13 @@ struct WorkoutDetailView: View {
             // set inherits the parent's zone term — the per-fragment
             // timing still resolves each swimmer's zone pace.
             zoneTerm: parentSet?.zoneTerm,
-            fragmentContexts: [fragmentContext]
+            fragmentContexts: [fragmentContext],
+            // V0.43a (2026-08-18): fragments inherit the parent's
+            // gear because the per-fragment FragmentContext's own
+            // gear (when present) wins via resolvedSaveGear's
+            // fragment-first rule; this is the fallback for
+            // fragments without explicit gear entries.
+            gear: parentSet?.gear
         )
         timingPrefill = prefill
         pendingSessionId = UUID().uuidString
