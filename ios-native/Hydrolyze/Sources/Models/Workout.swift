@@ -20,6 +20,12 @@ struct Workout: Codable, Identifiable, Sendable {
     var status: WorkoutStatus
     var createdAt: String
     var updatedAt: String?
+    /// V0.45 (2026-08-18): first-class session template tag (e.g. "3mt").
+    /// Optional — old rows decode clean. The list view renders a badge
+    /// when sessionType == "3mt"; the create path accepts the value
+    /// when seeding a template workout so the row tag survives the
+    /// round-trip to the DB.
+    var sessionType: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -32,6 +38,7 @@ struct Workout: Codable, Identifiable, Sendable {
         case status
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case sessionType = "session_type"
     }
 }
 

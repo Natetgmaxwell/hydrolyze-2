@@ -75,7 +75,11 @@ final class WorkoutService {
     }
 
     /// Create a new workout with optional sets.
-    func createWorkout(coachId: String, title: String?, description: String?, scheduledAt: String? = nil, workoutText: String? = nil, groupId: String? = nil) async throws -> Workout {
+    /// V0.45 (2026-08-18): sessionType parameter added — lets the
+    /// template entry point tag a newly-created workout as "3mt" so
+    /// the row badge survives the round-trip to the DB. Defaults to
+    /// nil so existing callers are unaffected.
+    func createWorkout(coachId: String, title: String?, description: String?, scheduledAt: String? = nil, workoutText: String? = nil, groupId: String? = nil, sessionType: String? = nil) async throws -> Workout {
         struct CreatePayload: Encodable {
             let coachId: String
             let title: String?
@@ -84,6 +88,10 @@ final class WorkoutService {
             let status: String
             let workoutText: String?
             let groupId: String?
+            /// V0.45 (2026-08-18): session template tag (e.g. "3mt").
+            /// Optional — omitted from the payload when nil so the DB
+            /// keeps the column null for non-template rows.
+            let sessionType: String?
 
             enum CodingKeys: String, CodingKey {
                 case coachId = "coach_id"
@@ -93,6 +101,7 @@ final class WorkoutService {
                 case status
                 case workoutText = "workout_text"
                 case groupId = "group_id"
+                case sessionType = "session_type"
             }
         }
         let payload = CreatePayload(
@@ -102,7 +111,8 @@ final class WorkoutService {
             scheduledAt: scheduledAt,
             status: "draft",
             workoutText: workoutText,
-            groupId: groupId
+            groupId: groupId,
+            sessionType: sessionType
         )
         let response = try await supabase.from("workouts")
             .insert(payload)

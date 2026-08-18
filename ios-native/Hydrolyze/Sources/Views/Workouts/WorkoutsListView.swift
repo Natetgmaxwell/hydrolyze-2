@@ -59,12 +59,18 @@ struct WorkoutRowData: Identifiable, Equatable {
     let status: WorkoutStatus
     let scheduledAt: Date?
     let amPm: String?
+    /// V0.45 (2026-08-18): session template tag (e.g. "3mt"). Nil
+    /// for non-template rows — the row view checks for the literal
+    /// "3mt" before rendering the badge so other future templates
+    /// can opt in cleanly.
+    let sessionType: String?
 
     init(from workout: Workout) {
         self.id = workout.id
         self.title = workout.title
         self.status = workout.status
         self.amPm = workout.amPm
+        self.sessionType = workout.sessionType
         if let s = workout.scheduledAt {
             let formatter = ISO8601DateFormatter()
             self.scheduledAt = formatter.date(from: s + "T00:00:00Z")
@@ -85,6 +91,14 @@ struct WorkoutsListView: View {
     // the list fades + scales in over Animations.springSoft, gated by
     // Reduce Motion for a11y.
     @State private var animateIn: Bool = false
+    // V0.45 (2026-08-18): template entry point state. The "3MT test"
+    // menu item creates a draft workout with sessionType="3mt" and
+    // presents the builder pre-loaded so the coach can edit before
+    // saving. The id is kept here (not the viewModel) because it's a
+    // transient UI concern — the row doesn't refresh from the builder
+    // unless the coach explicitly navigates back.
+    @State private var templateWorkoutId: String?
+    @State private var showTemplateBuilder: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -100,7 +114,28 @@ struct WorkoutsListView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(destination: WorkoutBuilderView(workoutId: nil)) {
+                    // V0.45 (2026-08-18): the "+ New" pill is now a
+                    // Menu with two entries — "New workout" (plain
+                    // builder) and "3MT test" (creates a draft tagged
+                    // session_type="3mt" and opens the builder on it
+                    // so the coach edits before saving). The pill
+                    // styling stays identical to the previous version:
+                    // accentCyan background, black captionStrong text,
+                    // 8pt corner radius.
+                    Menu {
+                        // Plain new builder — NavigationLink inside
+                        // Menu pushes onto the enclosing NavigationStack,
+                        // matching the toolbar's previous behavior.
+                        NavigationLink(destination: WorkoutBuilderView(workoutId: nil)) {
+                            Label("New workout", systemImage: "square.and.pencil")
+                        }
+
+                        Button {
+                            Task { await create3MTTemplateWorkout() }
+                        } label: {
+                            Label("3MT test", systemImage: "stopwatch")
+                        }
+                    } label: {
                         Text("+ New")
                             .font(.captionStrong)
                             .foregroundColor(.black)
@@ -126,6 +161,44 @@ struct WorkoutsListView: View {
         .scaleEffect(animateIn ? 1.0 : 0.98)
         .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
         .onAppear { animateIn = true }
+        // V0.45 (2026-08-18): present the builder as a sheet for the
+        // 3MT template path. The builder wraps itself in its own
+        // NavigationStack, so nesting under another NavigationStack
+        // (the worklist's outer one) is fine — but a sheet avoids the
+        // nested-NavigationStack churn entirely and matches how
+        // WorkoutBuilderView already presents SetScheduleView.
+        .sheet(isPresented: $showTemplateBuilder) {
+            if let id = templateWorkoutId {
+                WorkoutBuilderView(workoutId: id)
+            }
+        }
+    }
+
+    /// V0.45 (2026-08-18): create a draft workout tagged as the 3MT
+    /// template, then open the builder on it so the coach edits before
+    /// saving. Guarded by coachId (auth) and wrapped in Task — a
+    /// failed create sets viewModel.errorMessage (same channel the
+    /// list load uses) and never crashes the view.
+    private func create3MTTemplateWorkout() async {
+        guard let coachId = authManager.coachId else {
+            viewModel.errorMessage = "Couldn't start 3MT test — no coach id."
+            return
+        }
+        let service = WorkoutService()
+        do {
+            let created = try await service.createWorkout(
+                coachId: coachId,
+                title: "3MT — 3-minute all-out test",
+                description: "All-out from the first push-off. Tap LAP at every wall. Two learning trials before the numbers are usable. Don't mix battery values across test types — watch the trend.",
+                workoutText: "3MT: 3 min all-out, 25m splits, Free",
+                sessionType: "3mt"
+            )
+            templateWorkoutId = created.id
+            showTemplateBuilder = true
+        } catch {
+            print("[WorkoutsListView] 3MT template create failed: \(error)")
+            viewModel.errorMessage = "Couldn't start 3MT test: \(error.localizedDescription)"
+        }
     }
 
     private var filterPills: some View {
@@ -335,6 +408,23 @@ struct WorkoutRowView: View {
                 Text(statusLabel)
                     .font(.numericSmall)
                     .foregroundColor(statusColor)
+            }
+
+            // V0.45 (2026-08-18): 3MT session tag. Renders a small
+            // "3MT" badge next to the title when the workout was
+            // created from the template entry point (session_type =
+            // "3mt" in the DB). Mono-styled to read as a label, not
+            // body text; accentCyan on a 15% accentCyan tint keeps it
+            // in the brand active state without competing with the
+            // status dot/label.
+            if workout.sessionType == "3mt" {
+                Text("3MT")
+                    .font(.jetBrainsMono(size: 11, weight: .bold))
+                    .foregroundColor(Color.accentCyan)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentCyan.opacity(0.15))
+                    .cornerRadius(4)
             }
 
             Spacer()
