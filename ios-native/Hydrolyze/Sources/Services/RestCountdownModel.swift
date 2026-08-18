@@ -30,6 +30,12 @@ enum RestStandardSource: String, Equatable, Sendable {
     /// fallback path: maturity < .reliable, or the predictor
     /// returned nil, or the VM chose to pass rep1 explicitly.
     case rep1
+    /// V0.41 Slice 2 (2026-08-18): the standard is the swimmer's
+    /// zone pace at the set's zone term, resolved from their usable
+    /// 3MT profile (TrainingZoneService). Authoritative — does NOT
+    /// go through the maturity gate (a zone pace is a direct
+    /// physiological prescription, not a statistical prediction).
+    case zone
 }
 
 /// One drop-rule decision for a single rep completion. Returned by
@@ -311,7 +317,8 @@ final class RestCountdownModel {
         distanceMeters: Int,
         predictedStandardMs: Int?,
         predictionMaturity: Prediction.Maturity?,
-        rep1TimeMs: Int
+        rep1TimeMs: Int,
+        zoneStandardMs: Int? = nil
     ) -> DropEvaluation? {
         // V0.39 zone gate (approved §3): aerobic sets → no
         // individualized rest. The VM derives setIsAnaerobic from
@@ -383,21 +390,34 @@ final class RestCountdownModel {
         // rep1. The asymmetry with the predictor's sigmaMs floor
         // is intentional — the drop standard is a fixed delta, not
         // a sigma multiple (research doc §4.2).
-        let usePredicted: Bool
-        switch predictionMaturity {
-        case .some(.reliable), .some(.excellent):
-            usePredicted = (predictedStandardMs != nil)
-        case .some(.learning), .some(Prediction.Maturity.none), nil:
-            usePredicted = false
-        }
+        // V0.41 Slice 2 (2026-08-18): the zone pace standard wins
+        // outright when present. It is a direct physiological
+        // prescription from a usable 3MT profile (trial ≥ 2), so it
+        // does NOT go through the maturity gate that guards
+        // statistical predictions. The VM resolves this per-swimmer
+        // at timing time; nil here means "no zone standard for this
+        // swimmer" (no usable profile, or not a zone set) → fall
+        // through to the predicted/rep1 selection below.
         let standard: Int
         let source: RestStandardSource
-        if usePredicted, let p = predictedStandardMs {
-            standard = p
-            source = .predicted
+        if let zone = zoneStandardMs, zone > 0 {
+            standard = zone
+            source = .zone
         } else {
-            standard = rep1TimeMs
-            source = .rep1
+            let usePredicted: Bool
+            switch predictionMaturity {
+            case .some(.reliable), .some(.excellent):
+                usePredicted = (predictedStandardMs != nil)
+            case .some(.learning), .some(Prediction.Maturity.none), nil:
+                usePredicted = false
+            }
+            if usePredicted, let p = predictedStandardMs {
+                standard = p
+                source = .predicted
+            } else {
+                standard = rep1TimeMs
+                source = .rep1
+            }
         }
         // Standard is per-evaluation — always update, even on a
         // non-strike. The VM may display "current standard:

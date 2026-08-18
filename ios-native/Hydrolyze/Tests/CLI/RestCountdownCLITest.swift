@@ -1250,6 +1250,145 @@ func runZoneGateInvalidBoundaries() -> Bool {
     return allPass
 }
 
+// MARK: - V0.41 Slice 2: zone-standard source
+
+/// A swimmer on a zone set WITH a usable profile → the zone pace is
+/// the drop-rule standard. A rep faster than the zone pace (by more
+/// than threshold) strikes; the standard reported is the zone pace
+/// and the source is `.zone` — even when a statistical prediction
+/// would have been lower-ranked.
+func runZoneStandardWins() -> Bool {
+    print("\n=== TEST 24: zone standard wins over predicted/rep1 ===")
+    let m = RestCountdownModel(baseRestSec: 180, setIsAnaerobic: true)
+    let swimmerId = "sw-Z"
+    let zoneMs = 60_000
+    let predictedMs = 75_000
+    let rep1Ms = 70_000
+    let repTimeMs = 80_000  // > 60s + threshold → strike
+
+    let d = m.evaluate(
+        swimmerId: swimmerId, repIndex: 2, repTimeMs: repTimeMs,
+        distanceMeters: 50,
+        predictedStandardMs: predictedMs, predictionMaturity: .reliable,
+        rep1TimeMs: rep1Ms, zoneStandardMs: zoneMs
+    )
+    var allPass = true
+    allPass = assertTrue("zone case non-nil", d != nil) && allPass
+    guard let d = d else { return false }
+    allPass = assertEq("zone → standard = zone pace", d.standardMs, zoneMs) && allPass
+    allPass = assertEq("zone → standardSource = .zone", d.standardSource, .zone) && allPass
+    allPass = assertTrue("zone → struck (80 > 60 + threshold)", d.struck) && allPass
+
+    print("  -> TEST 24: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// The zone pace is authoritative even with NO statistical prediction
+/// and NO maturity — it does NOT go through the maturity gate.
+func runZoneStandardNoMaturity() -> Bool {
+    print("\n=== TEST 25: zone standard wins without maturity ===")
+    let m = RestCountdownModel(baseRestSec: 180, setIsAnaerobic: true)
+    let swimmerId = "sw-Z"
+    let zoneMs = 60_000
+    let rep1Ms = 70_000
+
+    let d = m.evaluate(
+        swimmerId: swimmerId, repIndex: 2, repTimeMs: 60_400,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: rep1Ms, zoneStandardMs: zoneMs
+    )
+    var allPass = true
+    allPass = assertTrue("zone-no-maturity non-nil", d != nil) && allPass
+    guard let d = d else { return false }
+    allPass = assertEq("zone-no-maturity → standard = zone", d.standardMs, zoneMs) && allPass
+    allPass = assertEq("zone-no-maturity → source = .zone", d.standardSource, .zone) && allPass
+    allPass = assertTrue("zone-no-maturity → no strike (60.4 within 60+0.5 threshold)", !d.struck) && allPass
+
+    print("  -> TEST 25: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// No zone standard → predicted path unchanged (regression).
+func runZoneStandardNilPredicted() -> Bool {
+    print("\n=== TEST 26: no zone standard → predicted path unchanged ===")
+    let m = RestCountdownModel(baseRestSec: 180, setIsAnaerobic: true)
+    let swimmerId = "sw-Z"
+    let predictedMs = 75_000
+    let rep1Ms = 70_000
+
+    let d = m.evaluate(
+        swimmerId: swimmerId, repIndex: 2, repTimeMs: 80_000,
+        distanceMeters: 50,
+        predictedStandardMs: predictedMs, predictionMaturity: .reliable,
+        rep1TimeMs: rep1Ms, zoneStandardMs: nil
+    )
+    var allPass = true
+    allPass = assertTrue("nil-zone non-nil", d != nil) && allPass
+    guard let d = d else { return false }
+    allPass = assertEq("nil-zone → standard = predicted", d.standardMs, predictedMs) && allPass
+    allPass = assertEq("nil-zone → source = .predicted", d.standardSource, .predicted) && allPass
+
+    print("  -> TEST 26: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// No zone standard + no reliable prediction → rep1 fallback
+/// unchanged (regression).
+func runZoneStandardNilRep1() -> Bool {
+    print("\n=== TEST 27: no zone standard → rep1 fallback unchanged ===")
+    let m = RestCountdownModel(baseRestSec: 180, setIsAnaerobic: true)
+    let swimmerId = "sw-Z"
+    let rep1Ms = 70_000
+
+    let d = m.evaluate(
+        swimmerId: swimmerId, repIndex: 2, repTimeMs: 80_000,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: .learning,
+        rep1TimeMs: rep1Ms, zoneStandardMs: nil
+    )
+    var allPass = true
+    allPass = assertTrue("nil-zone-rep1 non-nil", d != nil) && allPass
+    guard let d = d else { return false }
+    allPass = assertEq("nil-zone-rep1 → standard = rep1", d.standardMs, rep1Ms) && allPass
+    allPass = assertEq("nil-zone-rep1 → source = .rep1", d.standardSource, .rep1) && allPass
+
+    print("  -> TEST 27: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// The V0.40 zone gate still closes for Easy/Steady sets even when a
+/// zone standard is passed — the gate runs FIRST, before the standard
+/// selection. Regression that the zone standard doesn't bypass the
+/// gate.
+func runZoneStandardGateStillCloses() -> Bool {
+    print("\n=== TEST 28: zone gate still closes for Easy/Steady with zone standard ===")
+    let m = RestCountdownModel(baseRestSec: 180, setIsAnaerobic: true)
+    let swimmerId = "sw-Z"
+    // Profiled swimmer with a hard boundary. Rep pace slower than
+    // hard → Steady/Easy → gate CLOSED → nil even with a zone standard.
+    m.zoneGateBySwimmer[swimmerId] = ZoneGate(
+        hasProfile: true,
+        easyBoundarySecPer100: 84.0,
+        steadyBoundarySecPer100: 75.0,
+        hardBoundarySecPer100: 65.0,
+        sprintBoundarySecPer100: 62.0
+    )
+    // 50m in 70s = 140 s/100m — way slower than hard boundary 65 → Easy/Steady.
+    let d = m.evaluate(
+        swimmerId: swimmerId, repIndex: 2, repTimeMs: 70_000,
+        distanceMeters: 50,
+        predictedStandardMs: nil, predictionMaturity: nil,
+        rep1TimeMs: 70_000, zoneStandardMs: 60_000
+    )
+    var allPass = true
+    allPass = assertEq("gate-closes → evaluate returns nil", d, nil) && allPass
+    allPass = assertEq("gate-closes → strikes untouched", m.strikes[swimmerId] ?? 0, 0) && allPass
+
+    print("  -> TEST 28: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
 // MARK: - Main
 
 @main
@@ -1283,6 +1422,11 @@ struct RestCountdownCLITest {
         let t21 = runZoneGateNoProfileAnaerobic()
         let t22 = runZoneGateNoProfileAerobic()
         let t23 = runZoneGateInvalidBoundaries()
+        let t24 = runZoneStandardWins()
+        let t25 = runZoneStandardNoMaturity()
+        let t26 = runZoneStandardNilPredicted()
+        let t27 = runZoneStandardNilRep1()
+        let t28 = runZoneStandardGateStillCloses()
 
         let results: [(String, Bool)] = [
             ("TEST 1 strike on 50m > 0.5s",     t1),
@@ -1308,6 +1452,11 @@ struct RestCountdownCLITest {
             ("TEST 21 zone gate no profile anaerobic → V0.39", t21),
             ("TEST 22 zone gate no profile aerobic → V0.39", t22),
             ("TEST 23 zone gate invalid boundaries → fallback", t23),
+            ("TEST 24 zone standard wins",         t24),
+            ("TEST 25 zone standard no maturity",  t25),
+            ("TEST 26 no zone → predicted",        t26),
+            ("TEST 27 no zone → rep1",             t27),
+            ("TEST 28 zone gate still closes with zone standard", t28),
         ]
 
         print("\n=== Summary ===")

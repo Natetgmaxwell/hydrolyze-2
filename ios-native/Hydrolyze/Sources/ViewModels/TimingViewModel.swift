@@ -217,6 +217,19 @@ final class TimingViewModel: ObservableObject {
     /// string-match the human label. Source of truth over `intensityLabel`
     /// because a workout can mix 3MT sets with training sets.
     var intensityType: String?
+    /// V0.41 Slice 2 (2026-08-18): the active set's zone term
+    /// ("easy" | "steady" | "hard" | "sprint"). Copied from the prefill
+    /// (which carries it from `WorkoutSet.zoneTerm`). When non-nil, the
+    /// timing flow resolves each swimmer's zone pace as the drop-rule
+    /// standard and surfaces it as the target.
+    var zoneTerm: String?
+    /// V0.41 Slice 2 (2026-08-18): per-swimmer zone pace standard (ms)
+    /// for the ACTIVE set, resolved at timing time from each swimmer's
+    /// usable 3MT profile. Populated alongside the zone gate in
+    /// `applySwimmerZoneGate`. Empty when the set is not a zone set,
+    /// the swimmer has no usable profile, or the fetch failed — the
+    /// drop rule then falls back to the predicted/rep1 standard.
+    private(set) var zoneStandardMsBySwimmer: [String: Int] = [:]
     var workoutSetId: String?
     /// t_c74dffbc (2026-08-04): per-fragment metadata the save flow
     /// reads to key the prediction per (swimmer, fragment). Set by the
@@ -699,7 +712,13 @@ final class TimingViewModel: ObservableObject {
                 distanceMeters: self.distance,
                 predictedStandardMs: nil,
                 predictionMaturity: nil,
-                rep1TimeMs: rep1TimeMs
+                rep1TimeMs: rep1TimeMs,
+                // V0.41 Slice 2 (2026-08-18): when the swimmer has a
+                // resolved zone pace for this zone set, use it as the
+                // drop-rule standard (authoritative — the zone pace is
+                // the target). nil for unprofiled swimmers → rep-1
+                // fallback (never a phantom strike).
+                zoneStandardMs: zoneStandardMsBySwimmer[swimmerId]
             ) {
                 if evaluation.struck {
                     // Surface the strike in the inline badge.
@@ -1495,6 +1514,11 @@ final class TimingViewModel: ObservableObject {
         restModel = nil
         restAccumulatorMs = 0
         lastStrikeEvaluation = nil
+        // V0.41 Slice 2 (2026-08-18): clear the per-swimmer zone
+        // standard map + the resolved zone target so a fresh session
+        // doesn't leak a stale zone pace from a previous set. zoneTerm
+        // itself is re-copied from the next prefill in TimingView.
+        zoneStandardMsBySwimmer = [:]
         state = .setup
     }
     /// Fetches session metadata to enable auto-stop logic
@@ -1607,6 +1631,21 @@ final class TimingViewModel: ObservableObject {
                 )
                 model.zoneGateBySwimmer[swimmerId] = gate
                 log("V0.40 zone gate populated for \(swimmerId.prefix(8))… (trial \(profile.trialNumber))")
+
+                // V0.41 Slice 2 (2026-08-18): when the active set is a
+                // zone set, resolve the swimmer's zone pace at the set's
+                // zone term as the drop-rule standard. The zone pace is
+                // authoritative (usable profile, trial >= 2) — it replaces
+                // the rep-1/predicted standard for a profiled swimmer on
+                // a zone set. Unknown/empty zone term, or a term that
+                // doesn't map to a boundary → no zone standard (rep-1
+                // fallback; never a phantom strike).
+                if let term = zoneTerm,
+                   let mps = Self.zoneBoundaryMps(for: term, zones: zones),
+                   mps.isFinite, mps > 0, distance > 0 {
+                    let zoneStandard = Int((Double(distance) / mps) * 1000.0)
+                    zoneStandardMsBySwimmer[swimmerId] = zoneStandard
+                }
             }
             // No usable profile → leave the gate empty. The model
             // treats an empty entry as V0.39 fallback (always
@@ -1618,6 +1657,47 @@ final class TimingViewModel: ObservableObject {
             // flow is never broken by a profile-fetch failure.
             log("V0.40 zone gate fetch failed (non-fatal, V0.39 fallback): \(error.localizedDescription)")
         }
+    }
+
+    /// V0.41 Slice 2 (2026-08-18): the boundary m/s for a zone term,
+    /// from a resolved `TrainingZones`. Maps the four coach zone words
+    /// to the corresponding boundary. Returns nil for an unknown/empty
+    /// term (so a malformed zone term falls back cleanly to the rep-1
+    /// standard — never a phantom strike).
+    private static func zoneBoundaryMps(
+        for term: String,
+        zones: TrainingZones
+    ) -> Double? {
+        switch term.lowercased() {
+        case "easy": return zones.easy.mps
+        case "steady": return zones.steady.mps
+        case "hard": return zones.hard.mps
+        case "sprint": return zones.sprint.mps
+        default: return nil
+        }
+    }
+
+    /// V0.41 Slice 2 (2026-08-18): the coach-facing zone target line
+    /// for the ready view, e.g. "Steady · 1:12/100m". Non-nil only when
+    /// the active set is a zone set AND the active swimmer has a usable
+    /// profile (zone pace resolved). nil when not a zone set, no usable
+    /// profile, or resolution failed — the view renders nothing (the
+    /// unprofiled swimmer times normally with predicted targets).
+    var zoneTargetText: String? {
+        guard let term = zoneTerm,
+              let swimmerId = selectedSwimmerId,
+              let zoneMs = zoneStandardMsBySwimmer[swimmerId],
+              zoneMs > 0,
+              distance > 0 else {
+            return nil
+        }
+        // Per-100m pace string from the zone standard: the standard is
+        // the whole-set ms; scale to per-100m ms and render m:ss/100m.
+        let per100Ms = Double(zoneMs) * (100.0 / Double(distance))
+        let totalSecs = Int(per100Ms / 1000.0)
+        let mins = totalSecs / 60
+        let secs = totalSecs % 60
+        return "\(term.capitalized) · \(mins):\(String(format: "%02d", secs))/100m"
     }
 
 

@@ -66,6 +66,12 @@ struct SetPrefill: Sendable, Hashable {
     /// correctly classifies the active set without false-positives
     /// from a workout-level session_type.
     let intensityType: String?
+    /// V0.41 Slice 2 (2026-08-18): the set-level zone term
+    /// ("easy" | "steady" | "hard" | "sprint") from `WorkoutSet.zoneTerm`.
+    /// When non-nil, the timing flow resolves each swimmer's zone pace
+    /// from their usable 3MT profile as the drop-rule standard (and
+    /// shows it as the target on the ready view). nil for non-zone sets.
+    var zoneTerm: String? = nil
     /// t_c74dffbc (2026-08-04): optional per-fragment contexts. nil for
     /// non-composite sets (the existing prefill path).
     let fragmentContexts: [FragmentContext]?

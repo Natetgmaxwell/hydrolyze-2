@@ -287,6 +287,10 @@ struct WorkoutDetailView: View {
             // label. The DB persists rawValue ("3mt"); the parser emits
             // label ("3-minute all-out"). Both flow through.
             intensityType: set.intensityType,
+            // V0.41 Slice 2 (2026-08-18): forward the set-level zone
+            // term so the timing flow resolves each swimmer's zone
+            // pace as the drop-rule standard + target.
+            zoneTerm: set.zoneTerm,
             fragmentContexts: nil
         )
         let isTimeable = set.distance != nil && set.distance! > 0
@@ -494,6 +498,10 @@ struct WorkoutDetailView: View {
             // triggers the 3MT timing flow. Fragments themselves don't
             // carry intensity_type — they inherit from the parent.
             intensityType: parentSet?.intensityType,
+            // V0.41 Slice 2 (2026-08-18): a fragment of a zone parent
+            // set inherits the parent's zone term — the per-fragment
+            // timing still resolves each swimmer's zone pace.
+            zoneTerm: parentSet?.zoneTerm,
             fragmentContexts: [fragmentContext]
         )
         timingPrefill = prefill

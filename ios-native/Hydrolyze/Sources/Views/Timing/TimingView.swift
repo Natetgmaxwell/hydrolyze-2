@@ -370,6 +370,10 @@ struct TimingView: View {
                 // session correctly via `viewModel.is3MTSession`.
                 viewModel.intensityType = prefill.intensityType
                 viewModel.workoutSetId = prefill.workoutSetId
+                // V0.41 Slice 2 (2026-08-18): copy the set-level zone
+                // term so the timing flow can resolve each swimmer's
+                // zone pace as the drop-rule standard + target.
+                viewModel.zoneTerm = prefill.zoneTerm
                 // t_c74dffbc (2026-08-04): per-fragment contexts for
                 // composite sets. nil/empty means the existing
                 // parent-set prediction path; non-empty means the
@@ -431,6 +435,18 @@ struct TimingView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.top, 12)
+
+            // V0.41 Slice 2 (2026-08-18): zone target line — the
+            // swimmer's zone pace for this zone set (e.g. "Steady ·
+            // 1:12/100m"). Renders only when the set is a zone set AND
+            // the swimmer has a usable profile (zone pace resolved).
+            // nil -> nothing renders (unprofiled swimmer times normally).
+            if let zoneTarget = viewModel.zoneTargetText {
+                Text(zoneTarget)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color.accentCyan)
+                    .padding(.top, 4)
+            }
 
             Text("Press volume up or tap to start")
                 .font(.caption)
