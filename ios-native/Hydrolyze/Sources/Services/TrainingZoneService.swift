@@ -160,6 +160,41 @@ struct TrainingZoneService {
         )
     }
 
+    // MARK: - Display helper (V0.40 Slice 3)
+
+    /// Build the four coach-facing zone lines for inline display
+    /// on the 3MT review panel and the swimmer detail. Returns an
+    /// array of `(label, paceString)` tuples in the canonical
+    /// order — Easy, Steady, Hard, Sprint — so the views render
+    /// the same way across both surfaces and the order is
+    /// regression-gated by the CLI test.
+    ///
+    /// The pace string is the rendered `m:ss/100m` from the
+    /// slice's `thresholdPaceString` reuse; when a boundary has
+    /// no pace string (defensive — should not happen with valid
+    /// CS, but the Optional is in the type for safety) the line
+    /// falls back to "—" so the coach sees a well-formed row
+    /// rather than a blank gap. The label is the coach-
+    /// vocabulary zone name (no "Zone 1—4", no abbreviation).
+    ///
+    /// Centralised here so the two view surfaces never drift on
+    /// either ordering or fallback character. The function is
+    /// pure (no I/O, no state); the only input is the
+    /// `TrainingZones` value. // why: spec slice 3 requires
+    /// both the 3MT panel and the swimmer detail to render the
+    /// same four lines in the same order — putting the builder
+    /// in the service guarantees that contract.
+    static func zoneLineSegments(
+        _ zones: TrainingZones
+    ) -> [(label: String, paceString: String)] {
+        return [
+            ("Easy",   zones.easy.paceString ?? "—"),
+            ("Steady", zones.steady.paceString ?? "—"),
+            ("Hard",   zones.hard.paceString ?? "—"),
+            ("Sprint", zones.sprint.paceString ?? "—"),
+        ]
+    }
+
     // MARK: - Usable-profile resolver (V0.40 Slice 2)
 
     /// The quality-flag rawValue the analyzer appends for a

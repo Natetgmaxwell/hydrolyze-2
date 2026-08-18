@@ -45,6 +45,18 @@ struct SwimmerDetailView: View {
                         formStrokeSection(swimmer)
                         groupsSection
                         personalBestsSection
+                        // V0.40 Slice 3 (2026-08-18): training
+                        // zones section. Shown ONLY when the VM
+                        // has a derived `trainingZones` value
+                        // (the swimmer has a usable profile —
+                        // trial ≥ 2, no learning flag). The
+                        // @ViewBuilder gate inside `zonesSection`
+                        // returns `EmptyView` when the property
+                        // is nil, so no "no zones yet" chrome
+                        // ever appears — the section is hidden
+                        // cleanly when the swimmer has no usable
+                        // 3MT profile.
+                        zonesSection
                         progressionSection
                         // V0.42 Slice 2 + 3 (2026-08-18): recovery
                         // signature + revert flag + sparkline.
@@ -386,6 +398,51 @@ struct SwimmerDetailView: View {
 
     @State private var showDeletePBAlert = false
     @State private var pbToDelete: SwimmerPB?
+
+    // MARK: - V0.40 Training Zones (Slice 3, 2026-08-18)
+
+    /// V0.40 Slice 3 (2026-08-18): training zones section. One
+    /// glanceable line per zone (Easy / Steady / Hard / Sprint)
+    /// with the per-100m pace from the most recent usable 3MT
+    /// profile. Hidden entirely when the VM has no derived
+    /// `trainingZones` — the @ViewBuilder gate returns
+    /// `EmptyView` and the section is removed from the layout
+    /// (no "no zones yet" chrome, no greyed-out rows).
+    ///
+    /// Sits between `personalBestsSection` and `progressionSection`
+    /// per the slice 3 brief — the zones are derived from the
+    /// swimmer's 3MT profile, which is conceptually adjacent to
+    /// the PBs (per-swimmer derived metrics) and ahead of the
+    /// progression chart (which is per-set recorded times).
+    ///
+    /// Tap-for-detail is explicitly deferred to a future slice
+    /// (V0.41 per the spec); the section is read-only.
+    @ViewBuilder
+    private var zonesSection: some View {
+        if let zones = viewModel.trainingZones {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("TRAINING ZONES")
+                    .font(.eyebrow)
+                    .foregroundColor(Color.textFaint)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(
+                        TrainingZoneService.zoneLineSegments(zones),
+                        id: \.label
+                    ) { segment in
+                        Text("\(segment.label): \(segment.paceString)")
+                            .font(.caption)
+                            .foregroundColor(Color.textPrimary)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+        }
+    }
 
     // MARK: - Progression Chart (Phase 3)
 

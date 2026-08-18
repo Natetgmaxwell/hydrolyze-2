@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 /// SwimmerDetailViewModel — view model for swimmer profile screen.
 /// Loads swimmer data, groups, PBs, and progression; drives archive/delete/
@@ -28,6 +29,14 @@ final class SwimmerDetailViewModel: ObservableObject {
     @Published var revertFlag: String?
     @Published var isLoading: Bool = true
     @Published var errorMessage: String?
+    /// V0.40 Slice 3 (2026-08-18): training zones for this swimmer,
+    /// derived from the most recent usable 3MT profile. Nil when
+    /// the swimmer has no usable profile (trial < 2, learning
+    /// trial, fetch failure, or no profiles at all). The view
+    /// hides the training zones section entirely when nil — the
+    /// spec's "hidden when no usable profile" contract, never
+    /// greyed-out chrome.
+    @Published var trainingZones: TrainingZones?
 
     var swimmerId: String
 
@@ -80,10 +89,68 @@ final class SwimmerDetailViewModel: ObservableObject {
             personalBests = try await swimmerService.fetchPersonalBests(swimmerId: swimmerId)
             await loadProgression()
             await loadRecovery()
+            await loadTrainingZones()
         } catch {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    /// V0.40 Slice 3 (2026-08-18): fetch the swimmer's
+    /// `swimmer_test_profiles` rows, resolve the most recent
+    /// usable profile (trial ≥ 2, no learning flag) via
+    /// `TrainingZoneService.latestUsableProfile(...)`, and derive
+    /// the four zone boundaries via `TrainingZoneService.derive(...)`.
+    ///
+    /// **Stroke resolution decision (named in the slice 3 report):**
+    /// the brief offered two paths — "most recent usable across
+    /// strokes" or "filter to form stroke, fall back to newest
+    /// overall". We pick the simpler: pass ALL the swimmer's
+    /// profiles (any stroke) to the resolver. `latestUsableProfile`
+    /// is per-row and picks the latest usable by `(trialNumber,
+    /// testDate)`, so the resolver naturally surfaces the
+    /// swimmer's most recent usable test regardless of stroke.
+    /// This keeps the VM's logic identical to the resolver's
+    /// contract (the resolver is the single source of truth for
+    /// "which profile wins") and avoids coupling the VM to a
+    /// stroke preference that the spec doesn't pin.
+    ///
+    /// **Non-fatal guarantee:** wrapped in its own do/catch so a
+    /// fetch failure leaves `trainingZones = nil` and the view
+    /// hides the section. The spec's "data-absent = hidden"
+    /// rule applies. The main `load(coachId:)` is never failed
+    /// by a 3MT-profiles fetch error.
+    private func loadTrainingZones() async {
+        do {
+            let response = try await SupabaseService.shared.client
+                .from("swimmer_test_profiles")
+                .select()
+                .eq("swimmer_id", value: swimmerId)
+                .execute()
+            let profiles = try JSONDecoder().decode(
+                [SwimmerTestProfile].self,
+                from: response.data
+            )
+            // V0.40 Slice 3 (2026-08-18): resolver picks the most
+            // recent usable profile across strokes (decision note
+            // above). If non-nil, derive the four zones from that
+            // profile's CS + peak.
+            if let profile = TrainingZoneService.latestUsableProfile(profiles: profiles) {
+                self.trainingZones = TrainingZoneService.derive(
+                    criticalSpeedMps: profile.criticalSpeedMps,
+                    peakSpeedMps: profile.peakSpeedMps,
+                    sourceTrialNumber: profile.trialNumber
+                )
+            } else {
+                self.trainingZones = nil
+            }
+        } catch {
+            // V0.40 Slice 3 (2026-08-18): data-absent = hidden. A
+            // fetch failure (network, RLS, decode) leaves the
+            // training zones field nil and the view's zones
+            // section short-circuits on the @ViewBuilder gate.
+            self.trainingZones = nil
+        }
     }
 
     /// V0.42 Slice 2 + 3 (2026-08-18): fetch the recovery

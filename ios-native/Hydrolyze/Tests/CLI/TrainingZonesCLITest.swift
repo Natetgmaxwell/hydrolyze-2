@@ -768,6 +768,137 @@ func runResolverTestDateTieBreak() -> Bool {
     return allPass
 }
 
+// MARK: - TEST 9 — zoneLineSegments helper (V0.40 Slice 3, 2026-08-18)
+
+/// The slice 3 display helper used by both the 3MT panel and the
+/// swimmer detail. The helper owns the canonical ordering
+/// (Easy / Steady / Hard / Sprint) and the "—" fallback for
+/// missing pace strings — regression-gating it here keeps the
+/// two view surfaces from drifting on either contract.
+func runZoneLineSegmentsOrder() -> Bool {
+    print("\n=== TEST 9a: zoneLineSegments — canonical order (Easy/Steady/Hard/Sprint) ===")
+
+    var allPass = true
+    // Use a known CS so the pace strings are well-formed and stable.
+    guard let zones = TrainingZoneService.derive(
+        criticalSpeedMps: 1.33,
+        peakSpeedMps: 1.50,
+        sourceTrialNumber: 3
+    ) else {
+        print("  [FAIL] derive(1.33, 1.50, 3) returned nil")
+        return false
+    }
+
+    let segments = TrainingZoneService.zoneLineSegments(zones)
+    let labels = segments.map { $0.label }
+    let expected = ["Easy", "Steady", "Hard", "Sprint"]
+
+    allPass = assertEq(
+        "canonical order is Easy/Steady/Hard/Sprint",
+        labels, expected
+    ) && allPass
+
+    // Each segment's paceString must equal the corresponding
+    // zone's paceString from the zones value (the helper is a
+    // pure re-projection, no transformation).
+    allPass = assertEq(
+        "easy segment pace = zones.easy.paceString",
+        segments[0].paceString, zones.easy.paceString ?? "—"
+    ) && allPass
+    allPass = assertEq(
+        "steady segment pace = zones.steady.paceString",
+        segments[1].paceString, zones.steady.paceString ?? "—"
+    ) && allPass
+    allPass = assertEq(
+        "hard segment pace = zones.hard.paceString",
+        segments[2].paceString, zones.hard.paceString ?? "—"
+    ) && allPass
+    allPass = assertEq(
+        "sprint segment pace = zones.sprint.paceString",
+        segments[3].paceString, zones.sprint.paceString ?? "—"
+    ) && allPass
+
+    // Paces contain "/100m" (the unit suffix pins the contract).
+    for (i, segment) in segments.enumerated() {
+        allPass = assertTrue(
+            "segment \(i) (\(segment.label)) contains /100m suffix",
+            segment.paceString.contains("/100m")
+        ) && allPass
+    }
+
+    print("  -> TEST 9a: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// When a boundary's paceString is nil (only possible via the
+/// `PacePer100m` Optional initializer — the service itself
+/// always produces a well-formed string for valid CS), the
+/// helper must fall back to "—" so the view always renders a
+/// well-formed row. We construct the `TrainingZones` value
+/// directly here to exercise the fallback path the production
+/// service never produces but the type allows.
+func runZoneLineSegmentsFallback() -> Bool {
+    print("\n=== TEST 9b: zoneLineSegments — nil paceString falls back to \"—\" ===")
+
+    var allPass = true
+    let empty: PacePer100m = PacePer100m(mps: 0, paceString: nil)
+    let zones = TrainingZones(
+        easy: empty,
+        steady: empty,
+        hard: empty,
+        sprint: empty,
+        criticalSpeedMps: 1.33,
+        sourceTrialNumber: 3
+    )
+
+    let segments = TrainingZoneService.zoneLineSegments(zones)
+    let fallback = "—"
+
+    for (i, segment) in segments.enumerated() {
+        allPass = assertEq(
+            "nil paceString → \"—\" fallback (segment \(i) = \(segment.label))",
+            segment.paceString, fallback
+        ) && allPass
+    }
+
+    print("  -> TEST 9b: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
+/// The helper never introduces banned jargon. The two view
+/// surfaces (3MT panel + swimmer detail) build their zone lines
+/// from this helper, so any leak of "Zone 1-4" / "LT" / "CS" /
+/// "vVO₂max" into a segment label is a regression we want to
+/// catch here.
+func runZoneLineSegmentsNoBannedJargon() -> Bool {
+    print("\n=== TEST 9c: zoneLineSegments — no banned jargon in labels ===")
+
+    var allPass = true
+    guard let zones = TrainingZoneService.derive(
+        criticalSpeedMps: 1.33,
+        peakSpeedMps: 1.50,
+        sourceTrialNumber: 3
+    ) else {
+        print("  [FAIL] derive(1.33, 1.50, 3) returned nil")
+        return false
+    }
+
+    let segments = TrainingZoneService.zoneLineSegments(zones)
+    let banned = ["LT", "vVO", "critical", "anaerobic", "D'", "Zone 1", "Zone 2", "Zone 3", "Zone 4"]
+    for segment in segments {
+        for word in banned {
+            allPass = assertTrue(
+                "label \"\(segment.label)\" omits banned term \"\(word)\"",
+                !segment.label.contains(word),
+                extra: "label=\"\(segment.label)\""
+            ) && allPass
+        }
+    }
+
+    print("  -> TEST 9c: \(allPass ? "PASS" : "FAIL")")
+    return allPass
+}
+
 // MARK: - Main
 
 @main
@@ -796,6 +927,10 @@ struct TrainingZonesCLITest {
         let t8f = runResolverEmpty()
         let t8g = runResolverTestDateTieBreak()
 
+        let t9a = runZoneLineSegmentsOrder()
+        let t9b = runZoneLineSegmentsFallback()
+        let t9c = runZoneLineSegmentsNoBannedJargon()
+
         let results: [(String, Bool)] = [
             ("TEST 1 boundary math",                 t1),
             ("TEST 2 pace strings",                  t2),
@@ -811,6 +946,9 @@ struct TrainingZonesCLITest {
             ("TEST 8e resolver learning bypassed by clean", t8e),
             ("TEST 8f resolver empty array → nil",  t8f),
             ("TEST 8g resolver testDate tie-break", t8g),
+            ("TEST 9a zoneLineSegments order",        t9a),
+            ("TEST 9b zoneLineSegments fallback",     t9b),
+            ("TEST 9c zoneLineSegments no jargon",    t9c),
         ]
 
         print("\n=== Summary ===")

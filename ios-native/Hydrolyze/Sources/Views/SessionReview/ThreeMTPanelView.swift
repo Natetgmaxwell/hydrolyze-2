@@ -49,6 +49,18 @@ struct ThreeMTPanelView: View {
             headerRow
             curveSection
             statsRow
+            // V0.40 Slice 3 (2026-08-18): zones section under the
+            // three numbers. Derived from the panel's profile
+            // via `TrainingZoneService.derive(...)` and rendered
+            // via the shared `zoneLineSegments` helper so the
+            // 3MT panel and swimmer detail use the same order
+            // (Easy / Steady / Hard / Sprint). Hidden when the
+            // trial is a learning trial (the existing flagCopy
+            // line already carries the "repeat before using"
+            // copy) OR when derive returns nil (defensive — a
+            // valid critical speed should always yield a
+            // TrainingZones, but the type is Optional).
+            zonesSection
             if let copy = flagCopy(qualityFlags: profile.qualityFlags) {
                 Text(copy)
                     .font(.caption)
@@ -140,6 +152,44 @@ struct ThreeMTPanelView: View {
                 value: String(format: "%.0f", profile.batteryMeters),
                 unit: "m"
             )
+        }
+    }
+
+    /// V0.40 Slice 3 (2026-08-18): four zone pace lines under the
+    /// three numbers, in coach vocabulary (Easy / Steady / Hard /
+    /// Sprint) with a per-100m pace after each colon. Hidden when:
+    ///   - the profile is a learning trial (the existing `flagCopy`
+    ///     line already shows "Learning trial — repeat before
+    ///     using for zones" — duplicating it here would be
+    ///     noise), OR
+    ///   - `TrainingZoneService.derive(...)` returns nil (the
+    ///     CS is non-finite or non-positive — defensive gate).
+    ///
+    /// @ViewBuilder short-circuits to `EmptyView` when either
+    /// gate is met, so the layout collapses cleanly (no
+    /// greyed-out chrome, no "no zones" caption). The match-key
+    /// on the ForEach is the zone label — repeated Easy/Steady/
+    /// Hard/Sprint segments are unique by construction, so the
+    /// id is stable across rebuilds.
+    @ViewBuilder
+    private var zonesSection: some View {
+        if !profile.qualityFlags.contains(TrainingZoneService.learningTrialFlag),
+           let zones = TrainingZoneService.derive(
+            criticalSpeedMps: profile.criticalSpeedMps,
+            peakSpeedMps: profile.peakSpeedMps,
+            sourceTrialNumber: profile.trialNumber
+           ) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(
+                    TrainingZoneService.zoneLineSegments(zones),
+                    id: \.label
+                ) { segment in
+                    Text("\(segment.label): \(segment.paceString)")
+                        .font(.caption)
+                        .foregroundColor(Color.textMuted)
+                        .lineLimit(1)
+                }
+            }
         }
     }
 
