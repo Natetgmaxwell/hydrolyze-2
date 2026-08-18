@@ -186,6 +186,27 @@ final class TimingViewModel: ObservableObject {
     /// are honored so the detection survives either path.
     @Published var is3MTSession: Bool = false
 
+    /// V0.39 Slice 3 (2026-08-18): the drop-rule state machine
+    /// owned by the timing flow. Built in `start()` when the active
+    /// set is anaerobic with a parseable interval; nil for aerobic
+    /// sets (the spec's "no countdown chrome" acceptance criterion).
+    /// The view reads `restCountdownText` and `lastStrikeEvaluation`
+    /// to render the countdown + inline badge. The model itself
+    /// holds the per-swimmer strike state + the common extended
+    /// rest; the VM owns the timer-coupling (`tick()` once per
+    /// second, NOT 100×/second from the 10ms cadence).
+    @Published var restModel: RestCountdownModel?
+
+    /// V0.39 Slice 3 (2026-08-18): the most recent strike
+    /// evaluation. Non-nil only after a rep triggered a strike AND
+    /// the user has not yet tapped REVERT. Cleared on REVERT (so
+    /// the badge re-renders base rest) and on the next LAP (so the
+    /// stale rep doesn't bleed into the next). The view binds
+    /// directly to this; the spec calls for "non-intrusive
+    /// confirmation surface — NEVER modal" (one line under the
+    /// countdown, above the lap list, with a one-tap revert).
+    @Published var lastStrikeEvaluation: DropEvaluation?
+
     // Set from prefill — carried through to save
     var reps: Int?
     var interval: String?
@@ -214,6 +235,13 @@ final class TimingViewModel: ObservableObject {
     private var timerCancellable: AnyCancellable?
     private var repStartMs: Int = 0              // Date.now() at session start
     private var sessionStartDate: Date?          // actual wall-clock start for save
+    /// V0.39 Slice 3 (2026-08-18): accumulates elapsed ms from the
+    /// 10ms timer so we can call `RestCountdownModel.tick()` exactly
+    /// once per second. Decrementing `remainingSec` on every 10ms
+    /// tick would burn through 100 seconds of rest in a single
+    /// stopwatch second. Reset on each LAP (the countdown snaps to
+    /// base / extended rest, so the accumulator starts fresh).
+    private var restAccumulatorMs: Int = 0
     /// t_bec2b88b (2026-08-06): wall-clock stop time. Set in `stop()`.
     /// Read by `assembleCapturePayload()` to populate
     /// `StopwatchCaptureMoment.stoppedAt` + `StopwatchCapturePayload.occurredAt`.
@@ -294,6 +322,50 @@ final class TimingViewModel: ObservableObject {
             return true
         }
         return false
+    }
+
+    // MARK: - V0.39 Slice 3 (2026-08-18) — drop-rule wiring
+
+    /// V0.39 Slice 3 (2026-08-18): true when the active set is
+    /// anaerobic — the V0.39 zone gate. Spec §Slice 2 rule 1: the
+    /// rule fires only on hard/race sets. The parser emits the
+    /// human label as a lowercase string ("hard", "race pace",
+    /// "atp", etc.) and the IntensityLevel enum uses displayName
+    /// ("Hard", "Race pace"); both flows are honored. Aerobic sets
+    /// ("moderate", "easy", "descend", "build", "threshold"...)
+    /// leave `restModel` nil and skip the countdown + badge entirely
+    /// — the spec's "aerobic set: no countdown chrome" acceptance
+    /// criterion.
+    private var isAnaerobicSet: Bool {
+        guard let label = intensityLabel?.lowercased() else { return false }
+        return label == "hard" || label == "race" || label == "race pace" || label == "atp"
+    }
+
+    /// V0.39 Slice 3 (2026-08-18): "m:ss" rest-clock text from the
+    /// model's live `remainingSec`. Empty string when no model is
+    /// active (aerobic set) so the view's `if !text.isEmpty`
+    /// check renders exactly as today — the gate is at the call
+    /// site, not in the VM.
+    var restCountdownText: String {
+        guard let m = restModel else { return "" }
+        return formatRestSec(m.remainingSec)
+    }
+
+    /// V0.39 Slice 3 (2026-08-18): true when the live countdown is
+    /// in its final third (the 3MT countdown pattern — amber when
+    /// <30s remain). The 30s threshold is the same as the 3MT gate
+    /// so the two countdowns use the same visual escalation.
+    var restCountdownIsAmber: Bool {
+        guard let m = restModel else { return false }
+        return m.remainingSec > 0 && m.remainingSec < 30
+    }
+
+    /// V0.39 Slice 3 (2026-08-18): formatted inline-badge line.
+    /// Empty when there is no pending strike (the view hides the
+    /// row entirely). Spec sample: `Rep 3: 27.8, +0.6 → rest 5:00`.
+    var strikeBadgeText: String {
+        guard let e = lastStrikeEvaluation else { return "" }
+        return "Rep \(e.repIndex): \(formatRepTime(e.repTimeMs)), \(formatRepDelta(repTimeMs: e.repTimeMs, standardMs: e.standardMs)) → rest \(formatRestSec(e.extendedRestSec))"
     }
 
     // MARK: - Capture payload assembly (t_bec2b88b, 2026-08-06)
@@ -520,6 +592,29 @@ final class TimingViewModel: ObservableObject {
         repStartMs = Date().millisecondsSince1970
         state = .running
 
+        // V0.39 Slice 3 (2026-08-18): build the drop-rule state
+        // machine if the active set is anaerobic with a parseable
+        // interval. The zone gate (aerobic vs anaerobic) and the
+        // interval parse are both required: aerobic sets → no model
+        // → no countdown chrome (spec's "aerobic set: no countdown
+        // chrome" acceptance criterion); missing/garbled interval →
+        // no model → no countdown (the spec's "interval_text parses
+        // to seconds" gate). The new badge line lives on the view's
+        // lastStrikeEvaluation + the model's extendedRestSec.
+        if isAnaerobicSet, let base = intervalToSeconds(interval) {
+            restModel = RestCountdownModel(baseRestSec: base, setIsAnaerobic: true)
+            restAccumulatorMs = 0
+        } else {
+            // Aerobic / no interval — the spec's "aerobic set: no
+            // countdown chrome" path. Don't leave a stale model from
+            // a previous session in place; the badge line is gated
+            // on `lastStrikeEvaluation != nil` and that's already
+            // cleared by reset() / confirmSetup.
+            restModel = nil
+            restAccumulatorMs = 0
+        }
+        lastStrikeEvaluation = nil
+
         // Keep screen awake while timing
         UIApplication.shared.isIdleTimerDisabled = true
 
@@ -557,6 +652,68 @@ final class TimingViewModel: ObservableObject {
         // Re-arm haptic for next press
         haptic.prepare()
 
+        // V0.39 Slice 3 (2026-08-18): drop-rule evaluation on each
+        // lap completion. Single-swimmer flow only — multi-swimmer
+        // sessions (sessionId set, selectedSwimmerId nil) have a
+        // shared lap stream and per-swimmer attribution only
+        // resolves at save-time pairing, so the live badge is
+        // out-of-scope for v1 (spec §Slice 3 doc: "per-swimmer
+        // flags ... is v1+; the single-swimmer badge satisfies
+        // the acceptance criteria"). The guard is
+        // `selectedSwimmerId != nil` — that's the unambiguous
+        // signal that "this lap is THIS swimmer's rep".
+        //
+        // The rep's time is `newLap.splitMs` (the split for THIS
+        // rep, not the cumulative elapsed) and the standard is
+        // rep-1 (the first lap's splitMs in this set). The
+        // predicted-standard refinement is reserved for Slice 4's
+        // save-time path; the live badge uses Eva's literal
+        // rep-1 rule (the spec calls this out as an
+        // approved-scope v1 simplification). On rep 1 the standard
+        // IS the rep time (no prior reference), so the delta is
+        // zero — `struck == false` and the badge stays clear.
+        if let swimmerId = selectedSwimmerId, let model = restModel {
+            // Rep 1's standard = rep 1's split (no prior reference).
+            // Subsequent reps' standard = rep 1's split.
+            let firstLap = laps.first
+            let rep1TimeMs = firstLap?.splitMs ?? newLap.splitMs
+            if let evaluation = model.evaluate(
+                swimmerId: swimmerId,
+                repIndex: newLap.lapNumber,
+                repTimeMs: newLap.splitMs,
+                distanceMeters: self.distance,
+                predictedStandardMs: nil,
+                predictionMaturity: nil,
+                rep1TimeMs: rep1TimeMs
+            ) {
+                if evaluation.struck {
+                    // Surface the strike in the inline badge.
+                    // The view binds to this; the spec's
+                    // "non-intrusive confirmation surface — NEVER
+                    // modal" lives below the countdown, above the
+                    // lap list.
+                    lastStrikeEvaluation = evaluation
+                    // Reset the countdown to the EXTENDED rest
+                    // immediately (the coach sees the +30/+60 land
+                    // at the moment the strike does, not after the
+                    // next tick). The spec: "On LAP, reset the
+                    // countdown to baseRestSec (or the extended
+                    // rest if a strike just landed)".
+                    model.remainingSec = model.extendedRestSec
+                    restAccumulatorMs = 0
+                } else {
+                    // Within threshold — clear any pending badge
+                    // (a subsequent good rep "earns back" the
+                    // base rest, per Eva: "he's allowed two
+                    // strikes again") and reset the countdown to
+                    // base.
+                    lastStrikeEvaluation = nil
+                    model.remainingSec = model.baseRestSec
+                    restAccumulatorMs = 0
+                }
+            }
+        }
+
         // V0.38 Slice 4 (2026-08-16): 3MT sessions have no lap cap —
         // swimmers hit the wall when they hit it. The expectedLapCount
         // gate is a multi-swimmer "every swimmer has touched" heuristic
@@ -567,6 +724,23 @@ final class TimingViewModel: ObservableObject {
            let limit = expectedLapCount, laps.count >= limit {
             stop()
         }
+    }
+
+    /// V0.39 Slice 3 (2026-08-18): one-tap revert for the most
+    /// recent strike. Restores the common rest to base (clears the
+    /// per-swimmer extension + strike count), clears the badge,
+    /// and arms the Slice 4 save path with a `RevertResult` to
+    /// persist as `set_rest_events.reverted = true`. The spec:
+    /// "every extension is visible in the badge and revertible"
+    /// — the engine never silently extends.
+    func revertRestExtension() {
+        guard let swimmerId = selectedSwimmerId, let model = restModel else { return }
+        let result = model.revert(swimmerId: swimmerId)
+        lastStrikeEvaluation = nil
+        // After revert the common clock is base rest (recompute via
+        // the model's extendedRestSec, which the revert call updated).
+        model.remainingSec = result.newExtendedRestSec
+        restAccumulatorMs = 0
     }
 
     /// Stop the stopwatch and move to .finished — called by on-screen STOP button
@@ -1272,6 +1446,14 @@ final class TimingViewModel: ObservableObject {
         sessionStartDate = nil
         selectedSwimmerId = nil
         expectedLapCount = nil
+        // V0.39 Slice 3 (2026-08-18): clear the drop-rule model +
+        // pending strike + accumulator so a fresh session starts
+        // with the badge blank and the accumulator at 0. The
+        // model is rebuilt in `start()` when the next anaerobic
+        // set with an interval is timed.
+        restModel = nil
+        restAccumulatorMs = 0
+        lastStrikeEvaluation = nil
         state = .setup
     }
     /// Fetches session metadata to enable auto-stop logic
@@ -1320,6 +1502,22 @@ final class TimingViewModel: ObservableObject {
         // over-shoot after stop() initiated is a no-op.
         if is3MTSession, elapsedMs >= Self.threeMinuteTestDurationMs {
             stop()
+        }
+        // V0.39 Slice 3 (2026-08-18): drive the rest countdown at
+        // 1Hz from the 10ms display cadence. The Timer.publish
+        // machinery is the same one the stopwatch uses — no new
+        // timer, no new Combine subscriptions, no extra main-runloop
+        // load. The accumulator holds the millisecond remainder so
+        // we call `model.tick()` exactly once per full second (the
+        // model's tick() decrements `remainingSec` by 1 with a 0
+        // floor; calling 100×/s would burn through 100s of rest in
+        // a single stopwatch second).
+        if let model = restModel, state == .running {
+            restAccumulatorMs += 10
+            if restAccumulatorMs >= 1000 {
+                restAccumulatorMs -= 1000
+                model.tick()
+            }
         }
     }
 }

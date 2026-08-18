@@ -309,3 +309,79 @@ final class RestCountdownModel {
         currentExtensionSec.values.max() ?? 0
     }
 }
+
+// MARK: - V0.39 Slice 3 display helpers (2026-08-18)
+//
+// Pure helpers used by the timing screen's countdown + inline badge.
+// Lives in this file (same as the model) so the CLI runner at
+// `build_and_run_restcountdown.sh` can compile them without UIKit —
+// the UI-side strings are still coach-readable plain text. The
+// spec mandates "m:ss" for the rest countdown (NOT "m:ss.SS" — the
+// centiseconds format is reserved for the audit-trail stopwatch),
+// "Rep N: 27.8, +0.6 → rest 5:00" for the badge, and "no new
+// vocabulary" — so the helpers stay in coach words (rest, strike,
+// extended) and reuse `TimingSession.formatMs` for the stopwatch
+// display.
+
+/// Parse an interval string into seconds. Accepts:
+///   - "m:ss" (canonical parser output, e.g. "4:30" → 270)
+///   - bare seconds (e.g. "45" → 45)
+///   - "m" bare minutes (e.g. "3" → 180, only when accompanied by no colon)
+///
+/// Returns nil for malformed input. The spec is explicit: "on 4:30"
+/// → 270s; the parser emits "m:ss" so that is the common case. The
+/// bare-seconds fallback covers the legacy DB rows where the
+/// `interval_text` column stores e.g. "60" (60 seconds).
+func intervalToSeconds(_ raw: String?) -> Int? {
+    guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else {
+        return nil
+    }
+    // "m:ss" or "m:s" — split on the first colon.
+    if let colon = raw.firstIndex(of: ":") {
+        let minStr = raw[raw.startIndex..<colon]
+        let secStr = raw[raw.index(after: colon)..<raw.endIndex]
+        guard let minutes = Int(minStr), let seconds = Int(secStr),
+              !secStr.isEmpty else {
+            return nil
+        }
+        return minutes * 60 + seconds
+    }
+    // Bare digits — interpret as seconds (coaches sometimes write "60"
+    // for a 60-second rest, or "3" for 3 minutes). The spec lists "45"
+    // → 45s, so the bare-seconds path is the primary fallback.
+    if let n = Int(raw) {
+        return n
+    }
+    return nil
+}
+
+/// Format a millisecond delta as the over/under standard coach UI
+/// string. Spec sample: `(27800 - 27000) / 1000 = 0.8` → `"+0.8"`.
+/// Negative when a rep is faster than standard (rendered "-0.4");
+/// zero renders as "0.0" (the inline badge line still reads cleanly
+/// even when the rep landed exactly on the standard).
+func formatRepDelta(repTimeMs: Int, standardMs: Int) -> String {
+    let deltaTenths = Double(repTimeMs - standardMs) / 1000.0
+    let sign = deltaTenths >= 0 ? "+" : ""
+    return String(format: "\(sign)%.1f", deltaTenths)
+}
+
+/// Format a rep time (ms) as "27.8" seconds (1 decimal). The single
+/// decimal is what Eva's transcript uses ("twenty-seven-eight") and
+/// matches the spec's sample ("27.8"). Pads to 1 decimal even when
+/// the value is exact ("27.0" rather than "27").
+func formatRepTime(_ repTimeMs: Int) -> String {
+    return String(format: "%.1f", Double(repTimeMs) / 1000.0)
+}
+
+/// Format seconds as the "m:ss" rest-clock string ("5:00", "0:30").
+/// The spec mandates this is the common-clock format for the V0.39
+/// rest countdown — NOT centiseconds. The audit-trail stopwatch
+/// keeps "m:ss.SS" via `TimingSession.formatMs`; the rest clock is
+/// the at-a-glance timer the coach reads in peripheral vision.
+func formatRestSec(_ seconds: Int) -> String {
+    let clamped = max(0, seconds)
+    let m = clamped / 60
+    let s = clamped % 60
+    return String(format: "%d:%02d", m, s)
+}

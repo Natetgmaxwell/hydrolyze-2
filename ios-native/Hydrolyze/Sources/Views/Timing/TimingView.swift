@@ -539,6 +539,79 @@ struct TimingView: View {
                         .padding(.bottom, 8)
                 }
 
+                // V0.39 Slice 3 (2026-08-18): rest countdown. Shown
+                // only when the active set is anaerobic with a
+                // parseable interval (the VM sets `restModel` only
+                // in that case — see TimingViewModel.start()). The
+                // "m:ss" format matches the existing 3MT countdown
+                // pattern (smaller monospaced, secondary, <30s →
+                // amber) but stays distinct in the coach's
+                // peripheral vision: the 3MT goes from 3:00 → 0:00
+                // and the rest countdown goes from the interval
+                // (e.g. 4:30) → 0:00. Both reuse `Color.accentAmber`
+                // and `.jetBrainsMono` — NO new colors / fonts
+                // (per spec: "reuse existing type scale + colors
+                // only").
+                if !viewModel.restCountdownText.isEmpty {
+                    Text(viewModel.restCountdownText)
+                        .font(.jetBrainsMono(size: 32, weight: .semibold))
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                        .padding(.horizontal, 16)
+                        .foregroundColor(
+                            viewModel.restCountdownIsAmber
+                                ? Color.accentAmber
+                                : .white.opacity(0.85)
+                        )
+                        .padding(.bottom, 8)
+                }
+
+                // V0.39 Slice 3 (2026-08-18): inline strike badge.
+                // Non-intrusive — NEVER modal (spec §Slice 3
+                // anti-patterns). One line, directly above the lap
+                // list, compact (`caption` type scale, amber accent),
+                // with a one-tap revert. The rep-index + rep time +
+                // over-standard delta + extended rest read in
+                // coach-words only: "rest", "strike", "extended".
+                // The word "standard" is intentionally NOT used —
+                // the spec calls out "do NOT say 'standard' — use
+                // 'their usual' or just show the delta." We show
+                // the delta (the "+0.6" portion) and the extended
+                // rest ("rest 5:00") and let the coach read the
+                // number without naming a concept.
+                //
+                // Hidden when `lastStrikeEvaluation == nil` (aerobic
+                // set, no recent strike, after revert). Visible only
+                // during the brief window between "strike" and
+                // "next LAP" (or revert).
+                if !viewModel.strikeBadgeText.isEmpty {
+                    HStack(spacing: 10) {
+                        Text(viewModel.strikeBadgeText)
+                            .font(.caption)
+                            .foregroundColor(Color.accentAmber)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Button {
+                            Haptics.selection()
+                            viewModel.revertRestExtension()
+                        } label: {
+                            Text("UNDO")
+                                .font(.system(size: 11, weight: .semibold))
+                                .tracking(1.5)
+                                .foregroundColor(Color.accentAmber)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Color.accentAmber, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(PressFeedbackStyle(scale: 0.94, dim: 0.7))
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 8)
+                }
+
                 // "LAP N" counter — subtle, white 0.7
                 Text("LAP \(viewModel.laps.count + 1)")
                     .font(.system(size: 14, weight: .semibold))
