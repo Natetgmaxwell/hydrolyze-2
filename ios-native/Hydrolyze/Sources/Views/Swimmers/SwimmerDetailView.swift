@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 /// SwimmerDetailView — single swimmer profile with PB management and group toggling.
 /// Presented by NavigationLink push from SwimmersListView.
@@ -45,6 +46,13 @@ struct SwimmerDetailView: View {
                         groupsSection
                         personalBestsSection
                         progressionSection
+                        // V0.42 Slice 2 + 3 (2026-08-18): recovery
+                        // signature + revert flag + sparkline.
+                        // Renders ONLY when the VM has a signature
+                        // line (data-absent = hidden; never greyed-
+                        // out chrome). @ViewBuilder-gated via the
+                        // if-let inside `recoverySection` itself.
+                        recoverySection
                         actionButtons
                     }
                     .padding(.bottom, 40)
@@ -399,7 +407,77 @@ struct SwimmerDetailView: View {
         }
     }
 
-    // MARK: - Action Buttons
+    // MARK: - V0.42 Recovery Signature (Slice 2 + 3, 2026-08-18)
+//
+// Pure pass-through from the VM. The section is `@ViewBuilder`
+// (the if-let returns EmptyView when the line is nil) so the
+// gating matches the V0.42 spec: data-absent = section does not
+// appear at all. The sparkline inside is gated on
+// `hasEightWeeksOfData` (8 distinct weeks of strike rows) —
+// otherwise hidden. The revert flag is a single inline line in
+// `Color.accentAmber`, no modal surface.
+
+@ViewBuilder
+private var recoverySection: some View {
+    if let line = viewModel.recoverySignatureLine {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("RECOVERY STRAIN")
+                .font(.eyebrow)
+                .foregroundColor(Color.textFaint)
+                .padding(.horizontal, 16)
+                .padding(.top, 24)
+                .padding(.bottom, 4)
+
+            Text(line)
+                .font(.body)
+                .foregroundColor(Color.textPrimary)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
+
+            if viewModel.hasEightWeeksOfData {
+                // Sparkline: small, ~48pt tall. LineMark over the
+                // week-start x-axis vs strikes-per-100-reps y-axis.
+                // Colors reuse the existing palette (`accentCyan`
+                // matches ProgressionChart/TrendChart). The x-axis
+                // labels would be unreadable at this height, so we
+                // hide them — the eyebrow + signature line above
+                // tell the coach what they're looking at.
+                Chart(viewModel.weeklyStrain) { point in
+                    LineMark(
+                        x: .value("Week", point.weekStartISO),
+                        y: .value("Strain", point.strikesPer100Reps)
+                    )
+                    .foregroundStyle(Color.accentCyan)
+                    .interpolationMethod(.monotone)
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .chartPlotStyle { plot in
+                    plot.background(Color.bgInset.opacity(0.4))
+                        .cornerRadius(6)
+                }
+                .frame(height: 48)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+
+            if let flag = viewModel.revertFlag {
+                // Slice 3 (2026-08-18): one inline line in
+                // `accentAmber`, `caption` type, never modal. The
+                // VM gates this on `revertRate > 0.30` (a LOCKED
+                // threshold inside `RecoveryAggregator`); we just
+                // render the resulting copy.
+                Text(flag)
+                    .font(.caption)
+                    .foregroundColor(Color.accentAmber)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+            }
+        }
+    }
+}
+
+// MARK: - Action Buttons
 
     private var actionButtons: some View {
         VStack(spacing: 12) {
