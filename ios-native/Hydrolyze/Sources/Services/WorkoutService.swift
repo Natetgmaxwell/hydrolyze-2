@@ -341,7 +341,14 @@ final class WorkoutService {
                             distanceMeters: f.distance ?? 0,
                             reps: group.reps ?? 1,
                             intensity: f.intensity?.label ?? "unknown",
-                            startType: dive ? "dive" : "in_water",
+                            // FIX (2026-08-19): per-fragment start type —
+                            // was smearing the PARENT's dive flag onto every
+                            // fragment, so "75 DIVE + 25 easy" timed the
+                            // easy leg as a dive too. The fragment's own
+                            // parsed start_type is authoritative (dive/push/
+                            // wall from the server); the coach's rule: all
+                            // fragments default to push unless stated.
+                            startType: f.startType ?? "push",
                             paceTargetSec: Self.paceTargetSeconds(from: group.interval),
                             confidence: f.confidence
                         )

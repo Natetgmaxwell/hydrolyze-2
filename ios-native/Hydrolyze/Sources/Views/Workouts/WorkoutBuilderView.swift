@@ -177,7 +177,12 @@ struct WorkoutBuilderView: View {
     /// iPhone (inlined in the outer ScrollView's VStack).
     private var previewColumnContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if viewModel.isLoading {
+            // FIX (2026-08-19): speed — the sync parse lands in ~10ms,
+            // but this branch hid it behind a spinner for the whole
+            // server round-trip (1-5s). The coach saw a blank preview
+            // while data was already available. Spinner only when there
+            // is NO preview at all yet.
+            if viewModel.isLoading && viewModel.parsedWorkout == nil {
                 HStack {
                     Spacer()
                     ProgressView()

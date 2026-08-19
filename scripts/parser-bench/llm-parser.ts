@@ -520,6 +520,26 @@ function parseIntensity(text: string): ParsedIntensity | null {
   return null;
 }
 
+function cleanFragmentIntensity(
+  intensity: { type: string; label: string } | null,
+  segText: string
+): { type: string; label: string } | null {
+  if (intensity) {
+    // FIX (2026-08-19): "75 @ 100 pace DIVE" — the LLM emits the
+    // pace-target as the fragment's intensity label ("@ 100 pace").
+    // That's a target, not an intensity word. Map it to race_pace
+    // with a tidy label so pairing keys on the effort tier and the
+    // preview doesn't show "@ 100 pace" as an intensity.
+    // Mirrors _llm.ts (4-place sync).
+    const paceMatch = intensity.label.match(/^@?\s*(\d+)\s*(?:m|mtr)?\s*pace$/i);
+    if (paceMatch) {
+      return { type: "race_pace", label: `${paceMatch[1]} pace` };
+    }
+    return intensity;
+  }
+  return parseIntensity(segText);
+}
+
 function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
   return llmOutput.sections.map((section) => ({
     title: section.title,
@@ -546,7 +566,11 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
           const segText = [f.stroke, f.instruction].filter(Boolean).join(" ");
           return {
             ...f,
-            intensity: f.intensity ?? parseIntensity(segText),
+            // FIX (2026-08-19): cleanFragmentIntensity — the LLM emits
+            // pace-targets ("@ 100 pace") as fragment intensities; map
+            // them to race_pace so pairing keys on the effort tier.
+            // Mirrors _llm.ts (4-place sync).
+            intensity: cleanFragmentIntensity(f.intensity ?? null, segText),
             gear: f.gear ?? extractGear(segText),
             start_type: f.start_type ?? deriveStartType(segText)
           };

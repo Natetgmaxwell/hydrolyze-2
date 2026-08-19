@@ -1063,7 +1063,11 @@ private struct FragmentCTARow: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    if let start = fragment.startType, !start.isEmpty {
+                    // FIX (2026-08-19): only badge NON-default starts.
+                    // All fragments default to push unless stated — a
+                    // PUSH badge on every row is noise. DIVE/WALL are
+                    // the exceptions worth surfacing.
+                    if let start = fragment.startType, !start.isEmpty, start != "push" {
                         MetadataBadge(text: start.uppercased(), color: Color.textMuted)
                     }
                     if let pace = paceTargetText, !pace.isEmpty {
