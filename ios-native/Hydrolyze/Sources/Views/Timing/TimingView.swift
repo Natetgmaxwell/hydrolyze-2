@@ -97,6 +97,15 @@ struct TimingView: View {
     /// so the direct-render branch above can use it as a fallback.
     private var timingBody: some View {
         ZStack {
+            // V0.46 Slice 3: the whole timing flow (setup → ready →
+            // running → saving → finished) sits on bgDeep — the one
+            // elevated panel in the app (spec: "elevated panels,
+            // timing backdrop"). A single base layer here, rather
+            // than per-state backgrounds, means the state crossfades
+            // blend bgDeep into bgDeep — no bgBase flash-through.
+            Color.bgDeep
+                .ignoresSafeArea()
+
             // PHASE 2.6 v1.17.0: emotional-design Slice 1 — state
             // transitions are now smooth crossfades (each state's
             // view carries a .transition modifier, and the ZStack
@@ -159,7 +168,7 @@ struct TimingView: View {
             if saved {
                 // Success haptic when the save completes and we're
                 // about to navigate to SessionReviewView. Pairs
-                // with the cyan flash + the SPAV navigate. The
+                // with the coral flash + the SPAV navigate. The
                 // "ding-ding-rise" pattern signals "your session
                 // is on disk and ready to review."
                 Haptics.success()
@@ -415,7 +424,7 @@ struct TimingView: View {
         .buttonStyle(PressFeedbackStyle(scale: 0.94, dim: 0.85))
     }
 
-    // MARK: - Ready (Phase 2.5-c: B&W + 20% cyan stopwatch aesthetic)
+    // MARK: - Ready (V0.46: deep-teal instrument panel)
 
     private var readyView: some View {
         VStack(spacing: 0) {
@@ -461,7 +470,7 @@ struct TimingView: View {
 
             Spacer()
 
-            // Big cyan START button — the 20% splash.
+            // Big coral START button — the one loud colour moment (V0.46).
             //
             // Micro-interactions:
             // - Haptics.action() on tap — the loudest "I did the
@@ -509,24 +518,25 @@ struct TimingView: View {
         }
     }
 
-    // MARK: - Running (Phase 2.5-c: B&W + 20% cyan stopwatch aesthetic)
+    // MARK: - Running (V0.46: deep-teal instrument panel)
 
     private var runningView: some View {
         ZStack {
             VStack(spacing: 0) {
-                // HUGE time display — the main visual element, white monospaced
-                // (JetBrains Mono Nerd Font — see Fonts/README.md for the file).
-                // .minimumScaleFactor(0.5) lets the text shrink on narrow
-                // devices (iPhone 13 = 390pt, 86pt at JetBrains Mono is well
-                // within the screen, but the safety net stays for narrower
-                // devices like iPhone SE). .lineLimit(1) prevents
-                // truncation-with-"..." if a longer time format appears
-                // (e.g., a 10-minute set).
+                // HUGE time display — the main visual element, mist
+                // digits on bgDeep (V0.46). The numeric-roll content
+                // transition is anchored to `elapsedSecond` (1Hz) —
+                // the m:ss head rolls once per second; the hundredths
+                // tail (weight-stepped in Slice 2) updates without a
+                // transition. Rolling at the 10ms tick would smear
+                // the digits into noise.
                 stopwatchDigits(viewModel.formattedTime)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                     .padding(.horizontal, 16)
                     .foregroundColor(Color.textPrimary)
+                    .numericRollTransition()
+                    .animation(reduceMotion ? nil : Animations.numericRoll, value: viewModel.elapsedSecond)
                     .padding(.top, 60)
                     .padding(.bottom, 4)
 
@@ -557,6 +567,8 @@ struct TimingView: View {
                                 ? Color.accentAmber
                                 : Color.textPrimary.opacity(0.85)
                         )
+                        .numericRollTransition()
+                        .animation(reduceMotion ? nil : Animations.numericRoll, value: viewModel.threeMinuteTestRemainingMs / 1000)
                         .padding(.bottom, 8)
                 }
 
@@ -584,6 +596,8 @@ struct TimingView: View {
                                 ? Color.accentAmber
                                 : Color.textPrimary.opacity(0.85)
                         )
+                        .numericRollTransition()
+                        .animation(reduceMotion ? nil : Animations.numericRoll, value: viewModel.restCountdownText)
                         .padding(.bottom, 8)
                 }
 
@@ -633,12 +647,36 @@ struct TimingView: View {
                     .padding(.bottom, 8)
                 }
 
-                // "LAP N" counter — subtle, white 0.7
-                Text("LAP \(viewModel.laps.count + 1)")
-                    .font(.numericSmall)
-                    .foregroundColor(Color.textMuted)
-                    .tracking(2)
+                // V0.46 Slice 3: set progress as discrete rep dots
+                // (spec §Research #11 — discrete steps sidestep the
+                // stalling-progress-bar problem entirely; no bar is
+                // rendered on this screen). Shown only when the lap
+                // stream maps 1:1 to a known rep count (single-
+                // swimmer prefill path). Multi-swimmer sessions and
+                // open-ended bare starts keep the LAP N counter — a
+                // wrong dot count would lie about the set.
+                // Milestone haptics (halfway / final) fire in
+                // TimingViewModel.lap(); the dots only report.
+                if viewModel.showRepDots, let reps = viewModel.reps {
+                    HStack(spacing: 8) {
+                        ForEach(0..<reps, id: \.self) { rep in
+                            Circle()
+                                .fill(rep < viewModel.laps.count ? Color.textPrimary : Color.textPrimary.opacity(0.25))
+                                .frame(width: 8, height: 8)
+                        }
+                    }
                     .padding(.bottom, 16)
+                    .animation(reduceMotion ? nil : Animations.gentle, value: viewModel.laps.count)
+                } else {
+                    // "LAP N" counter — subtle (V0.46: mist, not white)
+                    Text("LAP \(viewModel.laps.count + 1)")
+                        .font(.numericSmall)
+                        .foregroundColor(Color.textMuted)
+                        .tracking(2)
+                        .numericRollTransition()
+                        .animation(reduceMotion ? nil : Animations.numericRoll, value: viewModel.laps.count)
+                        .padding(.bottom, 16)
+                }
 
                 // Lap list (kept as-is per Nathan's Q1 answer)
                 lapList
@@ -646,7 +684,7 @@ struct TimingView: View {
 
                 Spacer()
 
-                // Big cyan LAP button — the 20% splash.
+                // Big coral LAP button — the one loud colour moment (V0.46).
                 //
                 // Micro-interactions:
                 // - Haptics.action() on tap. The LAP tap is the
@@ -658,7 +696,7 @@ struct TimingView: View {
                 // - StrongPressFeedbackStyle — visible press
                 //   compression (0.92 scale + dim) so the tap is
                 //   obviously registered.
-                // - Cyan flash overlay — see `lapFlashOpacity`
+                // - Coral flash overlay (V0.46) — see `lapFlashOpacity`
                 //   below. Spring-animated (not easeOut) for a
                 //   more "punchy" feel that matches the medium
                 //   haptic.
@@ -696,10 +734,11 @@ struct TimingView: View {
                 .buttonStyle(PressFeedbackStyle(scale: 0.96, dim: 0.7))
             }
 
-            // Cyan flash overlay — pulses on each lap for
-            // haptic-visual confirmation. Spring-animated (not
-            // easeOut) for a more "punchy" feel that matches the
-            // medium LAP haptic.
+            // Coral flash overlay (V0.46 Slice 1 token swap; was
+            // cyan) — pulses on each lap for haptic-visual
+            // confirmation. The one loud colour moment on this
+            // screen. Spring-animated (not easeOut) for a more
+            // "punchy" feel that matches the medium LAP haptic.
             Color.accentAction
                 .opacity(lapFlashOpacity)
                 .ignoresSafeArea()
@@ -707,11 +746,10 @@ struct TimingView: View {
                 .animation(reduceMotion ? .linear(duration: 0.01) : Animations.springSnappy, value: lapFlashOpacity)
         }
         .onChange(of: viewModel.lapFlashTrigger) { _, _ in
-            // Pulse the cyan flash to 0.4 (was 0.35 — slightly
-            // more visible to match the stronger spring) and
-            // decay back via spring. .task(id:) below handles
-            // the decay; this onChange handles the up-spike
-            // synchronously so the flash feels instant on tap.
+            // Pulse the coral flash to 0.4 and decay back via
+            // spring. .task(id:) below handles the decay; this
+            // onChange handles the up-spike synchronously so the
+            // flash feels instant on tap.
             lapFlashOpacity = 0.4
         }
         .task(id: viewModel.lapFlashTrigger) {
@@ -795,7 +833,7 @@ struct TimingView: View {
 
             // PHASE 2.6 v1.17.0: emotional-design Slice 3 — the
             // saving state now uses the new PhasedProgressView
-            // component (1-5 dots, active dot pulses cyan). Replaces
+            // component (1-5 dots, active dot pulses coral). Replaces
             // the generic ProgressView + rawValue text with a phased
             // indicator that shows WHERE the save is (fetching /
             // predicting / pairing / saving / done) instead of a
@@ -943,7 +981,7 @@ struct TimingView: View {
         }
     }
 
-    // MARK: - Finished (Phase 2.5-c: B&W + 20% cyan stopwatch aesthetic)
+    // MARK: - Finished (V0.46: deep-teal instrument panel)
 
     private var finishedView: some View {
         VStack(spacing: 0) {
@@ -976,7 +1014,7 @@ struct TimingView: View {
             }
 
             HStack(spacing: 16) {
-                // DISCARD — subtle, no cyan (it's a destructive action, deliberately quieter).
+                // DISCARD — subtle, no coral (destructive action, deliberately quieter).
                 // Micro-interaction: Haptics.heavy() on tap. The
                 // heavy impact signals "this destroys data" so the
                 // coach is sure before they confirm in the alert.
@@ -994,7 +1032,7 @@ struct TimingView: View {
                 }
                 .buttonStyle(PressFeedbackStyle(scale: 0.97, dim: 0.85))
 
-                // SAVE — cyan, the positive action.
+                // SAVE — coral, the positive action (the one loud colour moment).
                 // Micro-interaction: Haptics.action() on tap.
                 // The success haptic (ding-ding-rise) fires when
                 // the save completes and we're about to navigate

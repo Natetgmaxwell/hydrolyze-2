@@ -295,6 +295,28 @@ final class TimingViewModel: ObservableObject {
         TimingSession.formatMs(elapsedMs)
     }
 
+    /// V0.46 Slice 3: whole-second bucket of the running clock.
+    /// The view drives the numeric-roll content transition from
+    /// this value — 1Hz — so the m:ss head rolls once per second
+    /// while the hundredths tail updates without a transition
+    /// (animating at the 10ms tick would smear the digits; the
+    /// mono weight-step from Slice 2 already sets the tail apart).
+    var elapsedSecond: Int {
+        elapsedMs / 1000
+    }
+
+    /// V0.46 Slice 3: rep dots replace the LAP N counter only when
+    /// the lap stream maps 1:1 to a known rep count — the single-
+    /// swimmer prefill path. Multi-swimmer sessions (per-swimmer
+    /// attribution resolves at save-time pairing) and bare starts
+    /// (no reps) keep the counter: a wrong dot count would lie
+    /// about the set. Capped at 24 dots for legibility; a 30-rep
+    /// set would render as noise, so those keep the counter too.
+    var showRepDots: Bool {
+        guard let reps = reps, selectedSwimmerId != nil else { return false }
+        return reps > 0 && reps <= 24
+    }
+
     var formattedLaps: [(number: Int, elapsed: String, split: String)] {
         laps.map { lap in
             (number: lap.lapNumber, elapsed: TimingSession.formatMs(lap.elapsedMs), split: TimingSession.formatMs(lap.splitMs))
@@ -695,6 +717,26 @@ final class TimingViewModel: ObservableObject {
 
         // Trigger visual flash in the UI
         lapFlashTrigger = UUID()
+
+        // V0.46 Slice 3: set-progress milestone haptics, fired only
+        // when the lap stream maps 1:1 to a known rep count (single-
+        // swimmer prefill path — multi-swimmer attribution resolves
+        // at save-time pairing, so a "final rep" would be a guess).
+        // Weber-Fechner: the final rep's beat must be perceptibly
+        // stronger than halfway. Halfway = success notification;
+        // final = success + heavy impact stacked (a compound beat,
+        // not just a louder single one). These layer on top of the
+        // medium impact above — the coach still gets the same LAP
+        // confirmation they've trained on; milestones add colour.
+        if let reps = reps, reps > 1, selectedSwimmerId != nil {
+            let completed = laps.count
+            if completed == reps {
+                Haptics.success()
+                Haptics.heavy()
+            } else if completed == (reps + 1) / 2 {
+                Haptics.success()
+            }
+        }
 
         // Re-arm haptic for next press
         haptic.prepare()
