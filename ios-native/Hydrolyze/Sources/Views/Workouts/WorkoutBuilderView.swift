@@ -405,6 +405,29 @@ final class WorkoutBuilderViewModel: ObservableObject {
     private var lastSentText: String = ""
     private let cacheLimit = 50
 
+    /// FIX (2026-08-19): hard timeout via task group — the URLSession
+    /// timeoutInterval does not fire reliably on flaky cellular/QUIC
+    /// paths (observed 180s hangs). Same pattern as
+    /// TimingViewModel.withTimeout. The first task to complete wins;
+    /// the loser is cancelled.
+    private func withTimeout<T: Sendable>(
+        _ seconds: TimeInterval,
+        label: String,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw NSError(domain: "WorkoutBuilder", code: -1,
+                              userInfo: [NSLocalizedDescriptionKey: "\(label) timed out after \(Int(seconds))s"])
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
     private func cacheKey(for text: String) -> String {
         String(text.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) })
     }
@@ -472,7 +495,14 @@ final class WorkoutBuilderViewModel: ObservableObject {
         //    only fires when the server call ITSELF throws (network error,
         //    auth failure, JSON decode error).
         do {
-            let serverResult = try await workoutService.parseWorkout(text: text)
+            // FIX (2026-08-19): hard timeout on the server call. The
+            // URLSession timeoutInterval (30s) does NOT fire reliably on
+            // flaky cellular/QUIC paths (observed: 180s hangs on device
+            // and simulator). The task-group timeout is the real ceiling —
+            // same pattern as TimingViewModel.withTimeout.
+            let serverResult = try await withTimeout(30, label: "parse-workout") {
+                try await workoutService.parseWorkout(text: text)
+            }
             let serverSectionCount = serverResult.sections.count
             let serverSetCount = serverResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
             NSLog("[PARSE] server: \(serverSectionCount) sections, \(serverSetCount) sets — adopting")
@@ -591,7 +621,12 @@ final class WorkoutBuilderViewModel: ObservableObject {
             workoutId = id
             if let wt = workout.description {
                 workoutText = wt
-                await parse(wt)
+                // FIX (2026-08-19): route through debouncedParse instead
+                // of parse() directly. The direct call raced the .onChange
+                // debounced call — two concurrent server parses, and on a
+                // flaky network the device froze with no timeout firing.
+                // debouncedParse cancels the prior task and dedupes.
+                debouncedParse(wt)
             }
         } catch {
             parseError = "Couldn't load workout: \(error)"
