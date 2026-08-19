@@ -159,7 +159,13 @@ final class SwimmersListViewModel: ObservableObject {
     /// shape on a club account. Network is never touched.
     func seedV46DemoRoster() {
         func group(_ id: String, _ name: String) -> CoachGroup {
-            CoachGroup(id: id, coachId: "v46-demo-coach", name: name)
+            // CoachGroup's only inits are the decoder + this DEBUG
+            // factory — round-trip through JSON so the memberwise
+            // path stays unavailable to production code.
+            let json = """
+            {"id":"\(id)","coach_id":"v46-demo-coach","name":"\(name)"}
+            """
+            return try! JSONDecoder().decode(CoachGroup.self, from: Data(json.utf8))
         }
         let squads = [group("v46-g-senior", "Senior Squad"), group("v46-g-junior", "Junior Squad")]
         func swimmer(_ i: Int, _ first: String, _ last: String, squad: CoachGroup?) -> Swimmer {

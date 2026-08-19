@@ -165,8 +165,8 @@ final class SwimmerHomeViewModel: ObservableObject {
     func seedV46DemoSwimmerData() {
         let cal = Calendar.current
         func entry(_ dayOffset: Int, _ hour: Int, _ ms: Int, rep: Int, sessionKey: String) -> TimeEntry {
-            let date = cal.date(byAdding: .day, value: dayOffset,
-                                to: cal.date(bySettingHour: hour, minute: 30, second: 0, of: Date()))!
+            let base = cal.date(bySettingHour: hour, minute: 30, second: 0, of: Date()) ?? Date()
+            let date = cal.date(byAdding: .day, value: dayOffset, to: base) ?? base
             return TimeEntry(
                 id: "v46-te-\(sessionKey)-\(rep)",
                 timeMs: ms,
