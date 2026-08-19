@@ -96,7 +96,11 @@ final class WorkoutService {
             enum CodingKeys: String, CodingKey {
                 case coachId = "coach_id"
                 case title
-                case description = "workout_text"
+                // NOTE: `description` is deliberately NOT in CodingKeys —
+                // it maps to the same column as workoutText (workout_text),
+                // and a duplicate raw value is a compile error. The
+                // property stays for call-site compatibility; it never
+                // encodes. workoutText is the single source for the column.
                 case scheduledAt = "scheduled_at"
                 case status
                 case workoutText = "workout_text"
