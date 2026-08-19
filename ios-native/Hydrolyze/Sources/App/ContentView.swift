@@ -50,17 +50,24 @@ struct ContentView: View {
     @State private var hasRequestedOrientation = false
 
     var body: some View {
+        #if DEBUG
+        // V0.46 Slice 3: screenshot harness route. `-v46-demo-timing`
+        // replaces the whole shell with the timing surface — headless
+        // simctl capture can't sign in or tap through SessionStart.
+        // The state-machine drive lives in TimingView.setupView.
+        // DEBUG-only; a stripped build routes straight to primaryBody.
+        if ProcessInfo.processInfo.arguments.contains("-v46-demo-timing") {
+            v46DemoTimingRoot
+        } else {
+            primaryBody
+        }
+        #else
+        primaryBody
+        #endif
+    }
+
+    private var primaryBody: some View {
         Group {
-            #if DEBUG
-            // V0.46 Slice 3: screenshot harness route. `-v46-demo-timing`
-            // replaces the whole shell with the timing surface — headless
-            // simctl capture can't sign in or tap through SessionStart.
-            // The state-machine drive lives in TimingView.setupView.
-            // DEBUG-only; stripped build is byte-identical to before.
-            if ProcessInfo.processInfo.arguments.contains("-v46-demo-timing") {
-                v46DemoTimingRoot
-            } else
-            #endif
             if authManager.isLoading {
                 loadingView
             } else if authManager.currentUser == nil {
