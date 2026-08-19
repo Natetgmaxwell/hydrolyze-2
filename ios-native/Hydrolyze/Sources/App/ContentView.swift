@@ -51,13 +51,13 @@ struct ContentView: View {
 
     var body: some View {
         #if DEBUG
-        // V0.46 Slice 3: screenshot harness route. `-v46-demo-timing`
-        // replaces the whole shell with the timing surface — headless
-        // simctl capture can't sign in or tap through SessionStart.
-        // The state-machine drive lives in TimingView.setupView.
-        // DEBUG-only; a stripped build routes straight to primaryBody.
-        if ProcessInfo.processInfo.arguments.contains("-v46-demo-timing") {
-            v46DemoTimingRoot
+        // V0.46 Slice 5: screenshot harness routes (extends Slice 3's
+        // `-v46-demo-timing`). Each surface renders standalone with a
+        // DEBUG seed branch in its `.task` — headless simctl capture
+        // can't sign in or tap through the coach shell. DEBUG-only;
+        // a stripped build routes straight to primaryBody.
+        if let surface = V46DemoSurface.detect() {
+            v46DemoRoot(surface)
         } else {
             primaryBody
         }
@@ -131,9 +131,41 @@ struct ContentView: View {
     /// "Coming in v2" surface competing for the coach's
     /// attention.
     #if DEBUG
-    /// V0.46 Slice 3: root for the `-v46-demo-timing` screenshot
-    /// harness. Wraps the real TimingView with a 4-rep 50m Free
-    /// prefill (single-swimmer + known reps = the rep-dot path).
+    /// V0.46 Slice 5: surfaces reachable via `-v46-demo-<surface>` launch
+    /// args for the screenshot harness. Each case routes to the real view;
+    /// the surface's `.task` seeds DEBUG state (see the per-view seed
+    /// branches). `timing` keeps Slice 3's name for continuity.
+    private enum V46DemoSurface: String, CaseIterable {
+        case today, timing, review, swimmers, workouts, builder, swimmer
+
+        static func detect() -> V46DemoSurface? {
+            let args = ProcessInfo.processInfo.arguments
+            for surface in allCases where args.contains("-v46-demo-\(surface.rawValue)") {
+                return surface
+            }
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private func v46DemoRoot(_ surface: V46DemoSurface) -> some View {
+        switch surface {
+        case .today:     TodayView()
+        case .timing:    v46DemoTimingRoot
+        case .review:    SessionReviewView(sessionId: "v46-demo")
+        case .swimmers:  SwimmersListView()
+        case .workouts:  WorkoutsListView()
+        case .builder:   WorkoutBuilderView(workoutId: nil)
+        case .swimmer:
+            SwimmerHomeView()
+                .environment(authManager)
+                .task { authManager.seedV46DemoStateIfNeeded() }
+        }
+    }
+
+    /// V0.46 Slice 3 (kept for the timing route): wraps the real
+    /// TimingView with a 4-rep 50m Free prefill (single-swimmer +
+    /// known reps = the rep-dot path).
     private var v46DemoTimingRoot: some View {
         NavigationStack {
             TimingView(

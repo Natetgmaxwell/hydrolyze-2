@@ -60,6 +60,14 @@ struct TodayView: View {
         }
         .onAppear { animateIn = true }
         .task {
+            #if DEBUG
+            // V0.46 Slice 5: screenshot harness — seed a realistic
+            // Monday-morning squad session; no network in the demo path.
+            if ProcessInfo.processInfo.arguments.contains("-v46-demo-today") {
+                viewModel.seedV46DemoToday()
+                return
+            }
+            #endif
             await reloadAll(coachId: authManager.coachId)
         }
     }
@@ -364,6 +372,61 @@ final class TodayViewModel: ObservableObject {
 
         isLoading = false
     }
+
+    #if DEBUG
+    /// V0.46 Slice 5: screenshot-harness seed. The shape mirrors a real
+    /// Monday-morning fetch: one scheduled workout, five sets across the
+    /// zone ramp, a 14-swimmer squad. Network is never touched.
+    func seedV46DemoToday() {
+        let today = ISO8601DateFormatter().string(from: Date())
+        let workout = Workout(
+            id: "v46-demo-workout",
+            coachId: "v46-demo-coach",
+            title: "Threshold Tuesday",
+            description: "Warm-up, main threshold block, warm-down.",
+            scheduledAt: today,
+            amPm: "am",
+            completedAt: nil,
+            status: .scheduled,
+            createdAt: today,
+            updatedAt: nil,
+            sessionType: nil
+        )
+        func set(_ i: Int, _ reps: Int?, _ distance: Int?, _ stroke: String?, _ zone: String?) -> WorkoutSet {
+            WorkoutSet(
+                id: "v46-demo-set-\(i)",
+                workoutId: workout.id,
+                orderIndex: i,
+                reps: reps,
+                distance: distance,
+                stroke: stroke,
+                intervalText: nil,
+                intensityType: nil,
+                intensityLabel: nil,
+                zoneTerm: zone,
+                paceTargetDistance: nil,
+                gear: nil,
+                suit: nil,
+                startType: nil,
+                dive: nil,
+                fragments: nil,
+                createdAt: today
+            )
+        }
+        todayWorkout = workout
+        todayWorkoutSets = [
+            set(0, 1, 400, "Free", "easy"),
+            set(1, 8, 50, "Free", "easy"),
+            set(2, 6, 100, "Free", "steady"),
+            set(3, 5, 100, "Free", "hard"),
+            set(4, 8, 25, "Free", "sprint"),
+        ]
+        setCount = todayWorkoutSets.count
+        swimmerCount = 14
+        isLoading = false
+        errorMessage = nil
+    }
+    #endif
 }
 
 #Preview {

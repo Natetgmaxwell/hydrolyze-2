@@ -869,4 +869,67 @@ final class SessionReviewViewModel: ObservableObject {
             }
         }
     }
+
+    #if DEBUG
+    /// V0.46 Slice 5: screenshot-harness seed. Builds ReviewRows
+    /// directly — a realistic post-session mix: green auto-matches,
+    /// amber likely-correct, one red flagged row with a variance
+    /// hint. Network is never touched.
+    func seedV46DemoRows() {
+        sessionId = "v46-demo"
+        let now = ISO8601DateFormatter().string(from: Date())
+        func time(_ lap: Int, _ swimmerId: String, _ ms: Int, _ rep: Int, conf: Int?) -> RecordedTime {
+            RecordedTime(
+                id: "v46-rt-\(lap)",
+                sessionId: "v46-demo",
+                swimmerId: "v46-source",
+                workoutSetId: nil,
+                workoutId: nil,
+                timeMs: ms,
+                repIndex: rep,
+                intensity: "steady",
+                gear: nil,
+                waveNumber: 1,
+                paceDistance: 50,
+                createdAt: now,
+                lapOrder: lap,
+                pairedSwimmerId: swimmerId,
+                confidence: conf,
+                source: "auto",
+                assignmentConfidence: conf.map { Double($0) / 100.0 },
+                stroke: "Free",
+                workout: nil,
+                fragmentId: nil,
+                distanceMeters: 50,
+                fragmentStartType: nil,
+                paceTargetSec: nil,
+                rawText: nil
+            )
+        }
+        func row(_ lap: Int, _ name: String, _ ms: Int, _ rep: Int, conf: Int, pred: Int?) -> ReviewRow {
+            ReviewRow(
+                id: "v46-rt-\(lap)",
+                recordedTime: time(lap, "v46-swimmer-\(lap)", ms, rep, conf: conf),
+                swimmerName: name,
+                lane: 1 + lap % 4,
+                wave: 1,
+                confidence: conf,
+                predictedTimeMs: pred,
+                suitDeltaMs: nil,
+                startDeltaMs: nil
+            )
+        }
+        rows = [
+            row(1, "Mia Thompson", 31_420, 1, conf: 92, pred: 31_800),
+            row(2, "Noah Baker", 29_870, 1, conf: 87, pred: 30_100),
+            row(3, "Ava Kelly", 33_050, 1, conf: 64, pred: 32_400),
+            row(4, "Liam Chen", 30_910, 1, conf: 71, pred: 31_200),
+            row(5, "Zoe Martin", 34_780, 2, conf: 38, pred: 31_900),
+            row(6, "Jack Reid", 32_140, 2, conf: 81, pred: 32_500),
+        ]
+        filter = .all
+        isLoading = false
+        errorMessage = nil
+    }
+    #endif
 }

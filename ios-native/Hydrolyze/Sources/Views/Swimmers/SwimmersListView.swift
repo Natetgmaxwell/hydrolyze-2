@@ -108,6 +108,14 @@ struct SwimmersListView: View {
                 Text("\(swimmerToArchive?.fullName ?? "This swimmer") will be hidden from the active roster but can be restored from Archived.")
             }
             .task {
+                #if DEBUG
+                // V0.46 Slice 5: screenshot harness — seed the roster;
+                // no network in the demo path.
+                if ProcessInfo.processInfo.arguments.contains("-v46-demo-swimmers") {
+                    viewModel.seedV46DemoRoster()
+                    return
+                }
+                #endif
                 await viewModel.loadSwimmers(coachId: coachId)
             }
             // PHASE 2.8.6: re-trigger loadSwimmers when authManager.coachId

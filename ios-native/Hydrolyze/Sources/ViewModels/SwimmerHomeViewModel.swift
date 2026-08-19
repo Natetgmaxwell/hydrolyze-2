@@ -157,4 +157,42 @@ final class SwimmerHomeViewModel: ObservableObject {
         if days < 30 { return "\(days / 7)w ago" }
         return "\(days / 30)mo ago"
     }
+
+    #if DEBUG
+    /// V0.46 Slice 5: screenshot-harness seed. Two sessions of 50m
+    /// Free times plus four PBs — the My Swims / My PBs shape.
+    /// Network is never touched.
+    func seedV46DemoSwimmerData() {
+        let cal = Calendar.current
+        func entry(_ dayOffset: Int, _ hour: Int, _ ms: Int, rep: Int, sessionKey: String) -> TimeEntry {
+            let date = cal.date(byAdding: .day, value: dayOffset,
+                                to: cal.date(bySettingHour: hour, minute: 30, second: 0, of: Date()))!
+            return TimeEntry(
+                id: "v46-te-\(sessionKey)-\(rep)",
+                timeMs: ms,
+                stroke: "Free",
+                distance: 50,
+                relativeDate: relativeDateString(from: date),
+                createdAt: date,
+                sessionKey: sessionKey,
+                sessionDate: cal.startOfDay(for: date),
+                workoutTitle: sessionKey == "v46-s1" ? "Threshold Tuesday" : "Sprint pyramid"
+            )
+        }
+        let s1 = (1...4).map { entry(-2, 6, 31_400 + $0 * 260, rep: $0, sessionKey: "v46-s1") }
+        let s2 = (1...4).map { entry(-6, 6, 30_980 + $0 * 310, rep: $0, sessionKey: "v46-s2") }
+        recentSessions = [
+            SessionEntry(id: "v46-s1", date: s1[0].sessionDate, title: "Threshold Tuesday", times: s1),
+            SessionEntry(id: "v46-s2", date: s2[0].sessionDate, title: "Sprint pyramid", times: s2),
+        ]
+        pbs = [
+            PBEntry(id: "v46-pb-1", stroke: "Free", distance: 50, timeMs: 29_870, intensity: nil),
+            PBEntry(id: "v46-pb-2", stroke: "Free", distance: 100, timeMs: 65_210, intensity: nil),
+            PBEntry(id: "v46-pb-3", stroke: "Back", distance: 50, timeMs: 33_540, intensity: nil),
+            PBEntry(id: "v46-pb-4", stroke: "Fly", distance: 50, timeMs: 31_020, intensity: nil),
+        ]
+        isLoading = false
+        errorMessage = nil
+    }
+    #endif
 }

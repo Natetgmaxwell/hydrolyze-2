@@ -33,6 +33,43 @@ final class WorkoutsListViewModel: ObservableObject {
         isLoading = false
     }
 
+    #if DEBUG
+    /// V0.46 Slice 5: screenshot-harness seed. Three statuses across
+    /// two weeks plus a 3MT template row — the list's real shape.
+    /// Network is never touched.
+    func seedV46DemoWorkouts() {
+        let fmt = ISO8601DateFormatter()
+        let cal = Calendar.current
+        func day(_ offset: Int) -> String { fmt.string(from: cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: Date()))!) }
+        func row(_ id: String, _ title: String, _ status: WorkoutStatus, _ dayOffset: Int, amPm: String? = "am", sessionType: String? = nil) -> WorkoutRowData {
+            WorkoutRowData(from: Workout(
+                id: id,
+                coachId: "v46-demo-coach",
+                title: title,
+                description: nil,
+                scheduledAt: day(dayOffset),
+                amPm: amPm,
+                completedAt: nil,
+                status: status,
+                createdAt: day(dayOffset),
+                updatedAt: nil,
+                sessionType: sessionType
+            ))
+        }
+        workouts = [
+            row("v46-w-today", "Threshold Tuesday", .scheduled, 0),
+            row("v46-w-3mt", "3MT test", .scheduled, 1, sessionType: "3mt"),
+            row("v46-w-thu", "Sprint pyramid", .scheduled, 2),
+            row("v46-w-next", "Aerobic base", .scheduled, 7),
+            row("v46-w-done", "IM mixer", .complete, -3),
+            row("v46-w-draft", "Saturday long", .draft, 4),
+        ]
+        selectedFilter = .all
+        isLoading = false
+        errorMessage = nil
+    }
+    #endif
+
     func archiveWorkout(id: String) async {
         do {
             try await workoutService.archiveWorkout(workoutId: id)
@@ -149,6 +186,14 @@ struct WorkoutsListView: View {
         }
         .task {
             viewModel.selectedFilter = .all
+            #if DEBUG
+            // V0.46 Slice 5: screenshot harness — seed the list; no
+            // network in the demo path.
+            if ProcessInfo.processInfo.arguments.contains("-v46-demo-workouts") {
+                viewModel.seedV46DemoWorkouts()
+                return
+            }
+            #endif
             await viewModel.loadWorkouts(coachId: authManager.coachId)
         }
         .onChange(of: viewModel.selectedFilter) { _, _ in

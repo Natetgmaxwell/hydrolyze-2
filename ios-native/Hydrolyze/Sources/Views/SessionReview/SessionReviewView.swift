@@ -82,6 +82,14 @@ struct SessionReviewView: View {
             }
         }
         .task {
+            #if DEBUG
+            // V0.46 Slice 5: screenshot harness — seed review rows
+            // across all three confidence bands; no network.
+            if ProcessInfo.processInfo.arguments.contains("-v46-demo-review") {
+                viewModel.seedV46DemoRows()
+                return
+            }
+            #endif
             await viewModel.load(sessionId: sessionId)
         }
     }

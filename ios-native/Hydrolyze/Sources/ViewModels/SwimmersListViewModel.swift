@@ -152,7 +152,55 @@ final class SwimmersListViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+    #if DEBUG
+    /// V0.46 Slice 5: screenshot-harness seed. 10 active swimmers
+    /// across two squads plus two ungrouped — the roster's real
+    /// shape on a club account. Network is never touched.
+    func seedV46DemoRoster() {
+        func group(_ id: String, _ name: String) -> CoachGroup {
+            CoachGroup(id: id, coachId: "v46-demo-coach", name: name)
+        }
+        let squads = [group("v46-g-senior", "Senior Squad"), group("v46-g-junior", "Junior Squad")]
+        func swimmer(_ i: Int, _ first: String, _ last: String, squad: CoachGroup?) -> Swimmer {
+            var s = Swimmer(
+                id: "v46-swimmer-\(i)",
+                coachId: "v46-demo-coach",
+                firstName: first,
+                lastName: last,
+                birthdate: nil,
+                gender: nil,
+                notes: nil,
+                preferredGear: nil,
+                formStroke: nil,
+                mainStroke: nil,
+                archivedAt: nil,
+                createdAt: nil
+            )
+            s.groups = squad.map { [$0] } ?? []
+            return s
+        }
+        allSwimmers = [
+            swimmer(1, "Mia", "Thompson", squad: squads[0]),
+            swimmer(2, "Noah", "Baker", squad: squads[0]),
+            swimmer(3, "Ava", "Kelly", squad: squads[0]),
+            swimmer(4, "Liam", "Chen", squad: squads[0]),
+            swimmer(5, "Zoe", "Martin", squad: squads[0]),
+            swimmer(6, "Jack", "Reid", squad: squads[1]),
+            swimmer(7, "Isla", "Walker", squad: squads[1]),
+            swimmer(8, "Leo", "Grant", squad: squads[1]),
+            swimmer(9, "Ruby", "Foster", squad: nil),
+            swimmer(10, "Oscar", "Nguyen", squad: nil),
+        ]
+        groups = squads
+        selectedFilter = .active
+        rebuildGroupMap()
+        isLoading = false
+        errorMessage = nil
+    }
+    #endif
 }
+
 extension SwimmerService {
     func fetchSwimmersWithGroups(coachId: String, includeArchived: Bool) async throws -> ([Swimmer], [CoachGroup]) {
         let swimmers: [Swimmer]

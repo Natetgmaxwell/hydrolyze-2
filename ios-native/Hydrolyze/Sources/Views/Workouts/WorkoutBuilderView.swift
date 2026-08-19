@@ -59,6 +59,16 @@ struct WorkoutBuilderView: View {
             // already been mapped.
             await VocabularyService.shared.loadVocabulary()
 
+            #if DEBUG
+            // V0.46 Slice 5: screenshot harness — seed a parsed practice.
+            // The real parse is a server round-trip; the demo path keeps
+            // it local so the harness has no network dependency.
+            if ProcessInfo.processInfo.arguments.contains("-v46-demo-builder") {
+                viewModel.seedV46DemoParsedWorkout()
+                return
+            }
+            #endif
+
             // Phase 2.7 performance: warm up the parse-workout Edge Function on
             // first appearance. The function has a ~574ms cold-start on first call
             // after idle; warming it here means the coach's first keystroke is
@@ -640,6 +650,66 @@ final class WorkoutBuilderViewModel: ObservableObject {
         }
         isLoading = false
     }
+
+    #if DEBUG
+    /// V0.46 Slice 5: screenshot-harness seed. Fills the title, the
+    /// practice text, and a hand-built ParsedWorkout — the preview
+    /// renders without a server round-trip. The text is also seeded
+    /// into the parse cache so the .onChange debounce hits the cache
+    /// instead of the Edge Function. Network is never touched.
+    func seedV46DemoParsedWorkout() {
+        let text = """
+        400 free easy
+        8×50 free @ steady
+        6×100 free @ threshold on 1:30
+        5×100 pull @ hard
+        8×25 sprint on 45
+        200 warm-down
+        """
+        let section = ParsedSection(
+            title: nil,
+            namedSets: [
+                ParsedNamedSet(label: "Warm-up", note: nil, repGroups: [
+                    ParsedRepGroup(reps: 1, distance: 400, stroke: "Free", interval: nil,
+                                   intensity: ParsedIntensity(type: .easy, label: "easy"),
+                                   zoneTerm: "easy"),
+                ]),
+                ParsedNamedSet(label: "Pre-set", note: nil, repGroups: [
+                    ParsedRepGroup(reps: 8, distance: 50, stroke: "Free", interval: nil,
+                                   intensity: ParsedIntensity(type: .aerobic, label: "steady"),
+                                   zoneTerm: "steady"),
+                ]),
+                ParsedNamedSet(label: "Main", note: nil, repGroups: [
+                    ParsedRepGroup(reps: 6, distance: 100, stroke: "Free", interval: "1:30",
+                                   intensity: ParsedIntensity(type: .threshold, label: "threshold"),
+                                   zoneTerm: "hard"),
+                    ParsedRepGroup(reps: 5, distance: 100, stroke: nil, interval: nil,
+                                   intensity: ParsedIntensity(type: .threshold, label: "hard"),
+                                   zoneTerm: "hard"),
+                ]),
+                ParsedNamedSet(label: "Sprint", note: nil, repGroups: [
+                    ParsedRepGroup(reps: 8, distance: 25, stroke: "Free", interval: "45",
+                                   intensity: ParsedIntensity(type: .sprint, label: "sprint"),
+                                   zoneTerm: "sprint"),
+                ]),
+                ParsedNamedSet(label: "Warm-down", note: nil, repGroups: [
+                    ParsedRepGroup(reps: 1, distance: 200, stroke: "Free", interval: nil,
+                                   intensity: ParsedIntensity(type: .easy, label: "easy"),
+                                   zoneTerm: "easy"),
+                ]),
+            ]
+        )
+        let parsed = ParsedWorkout(title: nil, sections: [section], degraded: nil, degradedReason: nil)
+
+        title = "Threshold Tuesday"
+        workoutText = text
+        parsedWorkout = parsed
+        parseSuccess = true
+        isPendingParse = false
+        cache[cacheKey(for: text)] = CachedParse(trimmedText: text, workout: parsed)
+        lastSentText = text
+    }
+    #endif
 }
 
 #Preview {

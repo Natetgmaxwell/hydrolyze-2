@@ -54,6 +54,15 @@ struct SwimmerHomeView: View {
             }
         }
         .task {
+            #if DEBUG
+            // V0.46 Slice 5: screenshot harness — the swimmer surface
+            // gates on authManager.currentSwimmer; seed it plus the
+            // VM's sessions + PBs. No network.
+            if ProcessInfo.processInfo.arguments.contains("-v46-demo-swimmer") {
+                viewModel.seedV46DemoSwimmerData()
+                return
+            }
+            #endif
             await viewModel.load(swimmerId: authManager.swimmerId)
         }
     }

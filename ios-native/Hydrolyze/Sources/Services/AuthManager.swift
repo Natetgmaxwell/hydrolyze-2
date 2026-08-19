@@ -60,6 +60,35 @@ final class AuthManager {
         }
     }
 
+    #if DEBUG
+    /// V0.46 Slice 5: screenshot harness — the swimmer home surface
+    /// gates on `currentSwimmer`; the harness can't sign in, so this
+    /// seeds the swimmer identity the view needs. DEBUG-only; the
+    /// launch arg is only passed by the capture harness.
+    func seedV46DemoStateIfNeeded() {
+        guard ProcessInfo.processInfo.arguments.contains("-v46-demo-swimmer"),
+              currentSwimmer == nil else { return }
+        var demo = Swimmer(
+            id: "v46-swimmer-1",
+            coachId: "v46-demo-coach",
+            firstName: "Mia",
+            lastName: "Thompson",
+            birthdate: nil,
+            gender: nil,
+            notes: nil,
+            preferredGear: nil,
+            formStroke: nil,
+            mainStroke: "Free",
+            archivedAt: nil,
+            createdAt: nil
+        )
+        demo.groups = []
+        currentSwimmer = demo
+        swimmerId = demo.id
+        isLoading = false
+    }
+    #endif
+
     private func checkExistingSession() async {
         do {
             let currentSession = try await supabase.auth.session
