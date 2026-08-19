@@ -65,7 +65,9 @@ struct WorkoutBuilderView: View {
             // served from the warm path. Empty text is a no-op on the server side
             // but the round-trip still counts as warmup.
             Task.detached(priority: .background) {
-                try? await viewModel.warmupParseWorkout()
+                // warmupParseWorkout is non-throwing (catches internally) —
+                // `try?` is invalid here under strict concurrency.
+                await viewModel.warmupParseWorkout()
             }
             if let id = workoutId {
                 await viewModel.loadWorkout(id: id)
@@ -501,7 +503,7 @@ final class WorkoutBuilderViewModel: ObservableObject {
             // and simulator). The task-group timeout is the real ceiling —
             // same pattern as TimingViewModel.withTimeout.
             let serverResult = try await withTimeout(30, label: "parse-workout") {
-                try await workoutService.parseWorkout(text: text)
+                try await self.workoutService.parseWorkout(text: text)
             }
             let serverSectionCount = serverResult.sections.count
             let serverSetCount = serverResult.sections.flatMap { $0.namedSets }.flatMap { $0.repGroups }.count
