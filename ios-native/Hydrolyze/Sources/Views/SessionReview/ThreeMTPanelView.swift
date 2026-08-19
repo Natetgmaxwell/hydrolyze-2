@@ -111,7 +111,7 @@ struct ThreeMTPanelView: View {
                     x: .value("Split", p.splitIndex),
                     y: .value("Speed", p.speedMps)
                 )
-                .foregroundStyle(Color.accentAction)
+                .foregroundStyle(Color.textMuted)
                 .interpolationMethod(.monotone)
             }
             ForEach(points) { p in
@@ -119,7 +119,7 @@ struct ThreeMTPanelView: View {
                     x: .value("Split", p.splitIndex),
                     y: .value("Speed", p.speedMps)
                 )
-                .foregroundStyle(Color.accentAction)
+                .foregroundStyle(Color.textMuted)
                 .symbolSize(20)
             }
         }

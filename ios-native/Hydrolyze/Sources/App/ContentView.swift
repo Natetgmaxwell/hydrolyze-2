@@ -104,7 +104,7 @@ struct ContentView: View {
     private var loadingView: some View {
         VStack(spacing: 16) {
             ProgressView()
-                .tint(Color.accentAction)
+                .tint(Color.textMuted)
             Text("Loading...")
                 .font(.system(.body, design: .default))
                 .foregroundColor(Color.textMuted)
@@ -175,7 +175,7 @@ struct ContentView: View {
                     Label("Profile", systemImage: "gearshape.fill")
                 }
         }
-        .tint(Color.accentAction)
+        .tint(Color.textPrimary)
         // ponytail: tab bar gets a real surface (Color.bgRaised),
         // not transparent-floating. Visually anchors the bottom of
         // the app — the bar feels "on" the surface, not hovering.
@@ -215,20 +215,17 @@ struct ContentView: View {
                             NavigationLink(value: tab) {
                                 // V0.44 Slice 2 (2026-08-18): tell 7 —
                                 // generic system-blue icons in sidebar.
-                                // The 20% cyan rule applied to chrome:
-                                // selected row reads in brand cyan,
-                                // unselected rows read in textFaint so
-                                // the inactive chrome recedes and the
-                                // active destination is the only
-                                // saturated thing in the sidebar.
-                                // The List's `.tint(Color.accentAction)`
-                                // below pairs with this — the
-                                // selection highlight pill is also
-                                // brand coral instead of system blue.
+                                // V0.46 Slice 4: selected tab = wayfinding state, not an
+                                // action — selected reads mist
+                                // (textPrimary), unselected textFaint,
+                                // and the List tint below pairs with
+                                // this so the selection pill is
+                                // teal-family too. Coral never appears
+                                // in persistent navigation chrome.
                                 Label(tab.title, systemImage: tab.systemImage)
                                     .foregroundStyle(
                                         coachTabSelection == tab
-                                            ? Color.accentAction
+                                            ? Color.textPrimary
                                             : Color.textFaint
                                     )
                             }
@@ -248,14 +245,12 @@ struct ContentView: View {
                     }
                 }
                 .listStyle(.sidebar)
-                // V0.44 Slice 2 (2026-08-18): brand-coral selection
-                // highlight on the sidebar. Default tint is system
-                // blue; we override so the selected row's accent
-                // pill is accentAction, matching the rest of the
-                // cyan-on-20% chrome rule. Pairs with the per-Label
-                // `.foregroundStyle` switch above (selected = cyan
-                // text, unselected = textFaint).
-                .tint(Color.accentAction)
+                // V0.46 Slice 4: selection tint is teal-family (mist), not
+                // coral — the tab bar carries wayfinding state, and
+                // coral is reserved for the one action per screen.
+                // Pairs with the per-Label `.foregroundStyle` switch
+                // above (selected = mist, unselected = textFaint).
+                .tint(Color.textPrimary)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 300)
             } detail: {
                 switch coachTabSelection ?? .today {

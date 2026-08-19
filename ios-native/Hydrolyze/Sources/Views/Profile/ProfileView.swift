@@ -55,7 +55,7 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Profile")
                 .font(.titleLarge)
-                .foregroundColor(Color.accentAction)
+                .foregroundColor(Color.textPrimary)
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
 

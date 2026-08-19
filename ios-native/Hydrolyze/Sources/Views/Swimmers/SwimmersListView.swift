@@ -56,7 +56,7 @@ struct SwimmersListView: View {
                     } label: {
                         Image(systemName: "person.2.crop.square.stack")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color.accentAction)
+                            .foregroundColor(Color.textMuted)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -125,9 +125,9 @@ struct SwimmersListView: View {
             .refreshable {
                 await viewModel.loadSwimmers(coachId: coachId)
             }
-            // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion
-            // change. Cyan-tinted pull-to-refresh indicator.
-            .tint(Color.accentAction)
+            // V0.46 Slice 4: pull-to-refresh reads fog — teal-family
+            // chrome, coral reserved for CTAs.
+            .tint(Color.textMuted)
         }
         .sheet(item: $swimmerToMove) { swimmer in
             MoveSwimmerSheet(swimmer: swimmer, viewModel: viewModel)
@@ -151,21 +151,21 @@ struct SwimmersListView: View {
                         .font(.captionStrong)
                         .foregroundColor(
                             viewModel.selectedFilter == filter
-                            ? Color.accentAction
+                            ? Color.textPrimary
                             : Color.textMuted
                         )
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
                             viewModel.selectedFilter == filter
-                            ? Color.accentAction.opacity(0.15)
+                            ? Color.bgSelected
                             : Color.bgInset
                         )
                         .cornerRadius(8)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(
-                                    viewModel.selectedFilter == filter ? Color.accentAction : Color.divider,
+                                    viewModel.selectedFilter == filter ? Color.textMuted : Color.divider,
                                     lineWidth: 1
                                 )
                         )
@@ -199,7 +199,7 @@ struct SwimmersListView: View {
             LazyVStack(spacing: 0) {
                 if viewModel.isLoading && viewModel.allSwimmers.isEmpty {
                     ProgressView()
-                        .tint(Color.accentAction)
+                        .tint(Color.textMuted)
                         .padding(.top, 40)
                 } else if viewModel.allSwimmers.isEmpty, let errorMessage = viewModel.errorMessage {
                     errorState(errorMessage)
@@ -307,21 +307,12 @@ struct SwimmersListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion change.
-            // The person.fill icon breathes (gentle scale 1.0 → 1.06
-            // → 1.0 on a 1.6s cycle) — same pattern as the house icon
-            // in EmptyStateView. "Alive but patient, waiting for you."
-            // The text stays clinical ("No swimmers yet.") per the
-            // warmth-through-motion direction — the breathing is the
-            // warmth, not the copy. See [[concepts/warmth-through-motion]].
+            // V0.46 Slice 4: static icon — breathing is idle-CTA-only
+            // (an empty state carries no state; motion here was
+            // ornamental). See [[concepts/warmth-through-motion]].
             Image(systemName: "person.fill")
                 .font(.system(size: 48))
                 .foregroundColor(Color.textFaint)
-                .phaseAnimator([1.0, 1.06, 1.0]) { content, scale in
-                    content.scaleEffect(scale)
-                } animation: { _ in
-                    .easeInOut(duration: 1.6)
-                }
 
             Text("The roster's empty.")
                 .font(.body)
@@ -354,7 +345,7 @@ struct SwimmersListView: View {
                 Task { await viewModel.loadSwimmers(coachId: coachId) }
             }
             .font(.caption)
-            .foregroundColor(Color.accentAction)
+            .foregroundColor(Color.textMuted)
             .padding(.top, 8)
         }
         .padding(.top, 80)
@@ -386,7 +377,7 @@ private struct MoveSwimmerSheet: View {
                                 Spacer()
                                 if selectedGroupId == nil {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color.accentAction)
+                                        .foregroundColor(Color.textPrimary)
                                 }
                             }
                         }
@@ -401,7 +392,7 @@ private struct MoveSwimmerSheet: View {
                                     Spacer()
                                     if selectedGroupId == group.id {
                                         Image(systemName: "checkmark")
-                                            .foregroundColor(Color.accentAction)
+                                            .foregroundColor(Color.textPrimary)
                                     }
                                 }
                             }
@@ -417,7 +408,7 @@ private struct MoveSwimmerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Move") {
@@ -426,7 +417,7 @@ private struct MoveSwimmerSheet: View {
                             dismiss()
                         }
                     }
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textPrimary)
                 }
             }
             .task {

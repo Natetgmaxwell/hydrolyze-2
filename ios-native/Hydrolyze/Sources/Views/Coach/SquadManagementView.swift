@@ -29,7 +29,7 @@ struct SquadManagementView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -88,7 +88,7 @@ struct SquadManagementView: View {
             LazyVStack(spacing: 0) {
                 if viewModel.isLoading && viewModel.squads.isEmpty {
                     ProgressView()
-                        .tint(Color.accentAction)
+                        .tint(Color.textMuted)
                         .padding(.top, 40)
                 } else if viewModel.squads.isEmpty {
                     emptyState
@@ -175,7 +175,7 @@ struct SquadManagementView: View {
                         newSquadName = ""
                         showCreateSheet = false
                     }
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Create") {
@@ -257,7 +257,7 @@ private struct SquadEditSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -266,7 +266,7 @@ private struct SquadEditSheet: View {
                     } label: {
                         Image(systemName: "pencil")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color.accentAction)
+                            .foregroundColor(Color.textMuted)
                     }
                 }
             }
@@ -311,7 +311,7 @@ private struct SquadEditSheet: View {
                 HStack(spacing: 12) {
                     Image(systemName: "calendar.badge.clock")
                         .font(.system(size: 18))
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textMuted)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Weekly sessions")
                             .font(.body)
@@ -409,7 +409,7 @@ private struct SquadEditSheet: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textMuted)
             }
         }
         .padding(.horizontal, 16)
@@ -481,7 +481,7 @@ private struct CoachAssignmentSheet: View {
                                 Spacer()
                                 if isAssigned {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color.accentAction)
+                                        .foregroundColor(Color.textPrimary)
                                 }
                             }
                         }
@@ -496,7 +496,7 @@ private struct CoachAssignmentSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
             }
         }
@@ -533,7 +533,7 @@ private struct SwimmerAssignmentSheet: View {
                                 Spacer()
                                 if isAssigned {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color.accentAction)
+                                        .foregroundColor(Color.textPrimary)
                                 }
                             }
                         }
@@ -548,7 +548,7 @@ private struct SwimmerAssignmentSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
             }
         }

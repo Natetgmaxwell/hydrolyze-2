@@ -2,11 +2,10 @@ import SwiftUI
 
 /// EmptyStateView — shown when no workout is scheduled today.
 ///
-/// Micro-interaction: the house icon breathes (gentle scale 1.0 →
-/// 1.06 → 1.0 on a 1.6s cycle). The breath is intentionally slow
-/// and small — it reads as "alive but patient" rather than
-/// "pulsing alert." The first impression for an empty state is
-/// that the app is waiting for the user, not broken.
+/// V0.46 Slice 4: the house icon is static. Breathing is reserved
+/// for idle CTAs (spec: "Breathing stays on idle CTAs only") — an
+/// empty state carries no state to animate, so motion here was
+/// ornamental and fails the "does it carry state?" test.
 struct EmptyStateView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
 
@@ -15,11 +14,6 @@ struct EmptyStateView: View {
             Image(systemName: "house.fill")
                 .font(.system(size: 48))
                 .foregroundColor(Color.textFaint)
-                .phaseAnimator([1.0, 1.06, 1.0]) { content, scale in
-                    content.scaleEffect(scale)
-                } animation: { _ in
-                    reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 1.6)
-                }
 
             Text("The week's clear — plan a session.")
                 .font(.eyebrowLarge)

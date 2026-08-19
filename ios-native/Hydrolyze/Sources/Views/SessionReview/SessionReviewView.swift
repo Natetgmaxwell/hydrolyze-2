@@ -112,11 +112,11 @@ struct SessionReviewView: View {
                             .font(.system(size: 12, weight: .regular))
                             .foregroundColor(
                                 viewModel.filter == f
-                                ? Color.accentAction.opacity(0.75)
+                                ? Color.textPrimary.opacity(0.75)
                                 : Color.textFaint.opacity(0.75)
                             )
                     }
-                    .foregroundColor(viewModel.filter == f ? Color.accentAction : Color.textFaint)
+                    .foregroundColor(viewModel.filter == f ? Color.textPrimary : Color.textFaint)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(
@@ -521,7 +521,7 @@ struct ReviewRowView: View {
                                     // .contentShape(Rectangle()).
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 18))
-                                        .foregroundColor(Color.accentAction)
+                                        .foregroundColor(Color.textPrimary)
                                         .frame(width: 44, height: 44)
                                         .contentShape(Rectangle())
                                 }
@@ -571,7 +571,7 @@ struct ReviewRowView: View {
                     // auto-paired high-confidence green.
                     Image(systemName: "hand.thumbsup.fill")
                         .font(.system(size: 12))
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.statusSuccess)
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12))
@@ -676,7 +676,7 @@ struct ReassignSheet: View {
                                 }
                                 if candidate.id == row.id {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color.accentAction)
+                                        .foregroundColor(Color.textPrimary)
                                 }
                             }
                         }
@@ -693,7 +693,7 @@ struct ReassignSheet: View {
                         Haptics.tap()
                         dismiss()
                     }
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textPrimary)
                 }
             }
         }

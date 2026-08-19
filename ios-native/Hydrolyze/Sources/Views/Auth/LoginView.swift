@@ -70,7 +70,7 @@ struct LoginView: View {
         VStack(spacing: 8) {
             Text("HYDROLYZE")
                 .font(.displayLarge)
-                .foregroundColor(Color.accentAction)
+                .foregroundColor(Color.textPrimary)
                 .opacity(animateIn ? 1.0 : 0.0)
                 .scaleEffect(animateIn ? 1.0 : 0.95)
                 .animation(Animations.springSoft, value: animateIn)
@@ -93,10 +93,10 @@ struct LoginView: View {
                 } label: {
                     Text(tab.rawValue)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(role == tab ? Color.textOnAccent : Color.textMuted)
+                        .foregroundColor(role == tab ? Color.textPrimary : Color.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(role == tab ? Color.accentAction : Color.clear)
+                        .background(role == tab ? Color.bgSelected : Color.clear)
                 }
                 .buttonStyle(.plain)
             }
@@ -190,7 +190,7 @@ struct CoachLoginFlow: View {
             } label: {
                 Text(mode == .signIn ? "Don't have an account? Sign Up" : "Have an account? Sign In")
                     .font(.caption)
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textMuted)
             }
             .buttonStyle(.plain)
 
@@ -327,10 +327,10 @@ struct SwimmerLoginFlow: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 13, weight: isActive ? .semibold : .regular))
-                .foregroundColor(isActive ? Color.textOnAccent : Color.textMuted)
+                .foregroundColor(isActive ? Color.textPrimary : Color.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(isActive ? Color.accentAction : Color.clear)
+                .background(isActive ? Color.bgSelected : Color.clear)
                 .cornerRadius(8)
         }
         .buttonStyle(.plain)

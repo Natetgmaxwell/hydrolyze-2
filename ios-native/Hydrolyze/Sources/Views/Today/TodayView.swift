@@ -115,11 +115,9 @@ struct TodayView: View {
                 }
                 .redacted(reason: viewModel.isLoading && viewModel.todayWorkout == nil ? .placeholder : [])
                 .refreshable { await reloadAll(coachId: authManager.coachId) }
-                // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion
-                // change. The pull-to-refresh indicator picks up the
-                // cyan tint automatically — small detail that makes
-                // the surface feel brand-consistent.
-                .tint(Color.accentAction)
+                // V0.46 Slice 4: pull-to-refresh reads mist — wayfinding
+                // chrome is teal-family; coral stays CTA-only.
+                .tint(Color.textPrimary)
             }
             .navigationTitle("TODAY")
             .navigationBarTitleDisplayMode(.inline)
@@ -219,7 +217,7 @@ struct TodayView: View {
         }
         .redacted(reason: viewModel.isLoading && viewModel.todayWorkout == nil ? .placeholder : [])
         .refreshable { await reloadAll(coachId: authManager.coachId) }
-        .tint(Color.accentAction)
+        .tint(Color.textPrimary)
     }
 
     @ViewBuilder

@@ -221,19 +221,19 @@ struct WorkoutsListView: View {
                     } label: {
                         Text(filter.rawValue)
                             .font(.captionStrong)
-                            .foregroundColor(viewModel.selectedFilter == filter ? Color.accentAction : Color.textMuted)
+                            .foregroundColor(viewModel.selectedFilter == filter ? Color.textPrimary : Color.textMuted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(
                                 viewModel.selectedFilter == filter
-                                    ? Color.accentAction.opacity(0.15)
+                                    ? Color.bgSelected
                                     : Color.bgInset
                             )
                             .cornerRadius(8)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(
-                                        viewModel.selectedFilter == filter ? Color.accentAction : Color.divider,
+                                        viewModel.selectedFilter == filter ? Color.textMuted : Color.divider,
                                         lineWidth: 1
                                     )
                             )
@@ -421,16 +421,16 @@ struct WorkoutRowView: View {
             // "3MT" badge next to the title when the workout was
             // created from the template entry point (session_type =
             // "3mt" in the DB). Mono-styled to read as a label, not
-            // body text; accentAction on a 15% accentAction tint keeps it
-            // in the brand active state without competing with the
-            // status dot/label.
+            // body text; textMuted on bgInset keeps it a quiet data
+            // badge that doesn't compete with the status dot/label
+            // or the coral "+ New" CTA.
             if workout.sessionType == "3mt" {
                 Text("3MT")
                     .font(.jetBrainsMono(size: 11, weight: .bold))
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textMuted)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.accentAction.opacity(0.15))
+                    .background(Color.bgInset)
                     .cornerRadius(4)
             }
 
@@ -480,15 +480,15 @@ struct WorkoutRowView: View {
         // The status label text also picks up this color via the
         // `.foregroundColor(statusColor)` on the Text above, so the
         // dot and the label stay in sync (a textFaint dot + amber
-        // label would have been incoherent). inProgress is kept on
-        // accentAction — it's an active state and cyan is the brand
-        // active color, even though inProgress isn't in the spec's
-        // dot list (the spec only enumerates draft / scheduled /
-        // complete).
+        // label would have been incoherent). V0.46 Slice 4: coral is
+        // CTA-only — status wayfinding reads: draft textFaint (not
+        // yet active), scheduled textMuted, inProgress accentAmber
+        // (live — amber is the live/warning family), complete
+        // statusSuccess. Zero coral in status.
         switch workout.status {
         case .draft: return Color.textFaint
-        case .scheduled: return Color.accentAction
-        case .inProgress: return Color.accentAction
+        case .scheduled: return Color.textMuted
+        case .inProgress: return Color.accentAmber
         case .complete: return Color.statusSuccess
         }
     }

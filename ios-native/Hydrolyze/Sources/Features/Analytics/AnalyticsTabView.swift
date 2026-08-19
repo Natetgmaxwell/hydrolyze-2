@@ -47,7 +47,7 @@ struct AnalyticsTabView: View {
                         if isLoading {
                             HStack {
                                 Spacer()
-                                ProgressView().tint(Color.accentAction)
+                                ProgressView().tint(Color.textMuted)
                                 Spacer()
                             }
                             .padding(.vertical, 40)
@@ -164,7 +164,7 @@ struct AnalyticsTabView: View {
                         label: "Gear",
                         count: gb.repsWithGear,
                         total: gb.totalReps,
-                        color: Color.accentAction
+                        color: Color.textMuted
                     )
                     breakdownTile(
                         label: "Suit",

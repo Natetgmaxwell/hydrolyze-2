@@ -29,12 +29,12 @@ struct TrendChart: View {
 
     private var swimmerColorMap: [String: Color] {
         let palette: [Color] = [
-            Color.accentAction,
+            Color.textMuted,
             Color.statusSuccess,
             Color.accentAmber,
             Color.statusError,
             Color.textPrimary,
-            Color.accentActionDim,
+            Color.divider,
             Color.accentAmber
         ]
         let uniqueIds = Array(Set(buckets.map { $0.swimmerId })).sorted()

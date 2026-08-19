@@ -437,10 +437,10 @@ struct TimingView: View {
         } label: {
             Text(label)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(selected ? Color.textOnAccent : Color.textMuted)
+                .foregroundColor(selected ? Color.textPrimary : Color.textMuted)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(selected ? Color.accentAction : Color.bgRaised)
+                .background(selected ? Color.bgSelected : Color.bgRaised)
                 .cornerRadius(20)
         }
         // Subtle scale on press for the chip — these are tappable
@@ -484,7 +484,7 @@ struct TimingView: View {
             if let zoneTarget = viewModel.zoneTargetText {
                 Text(zoneTarget)
                     .font(.numeric)
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textMuted)
                     .padding(.top, 4)
             }
 
@@ -943,12 +943,12 @@ struct TimingView: View {
                     Text("SKIP PAIRING — JUST RECORD TIMES")
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(1.5)
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textMuted)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
-                                .stroke(Color.accentAction, lineWidth: 1)
+                                .stroke(Color.textMuted, lineWidth: 1)
                         )
                 }
 
@@ -1144,7 +1144,7 @@ struct SwimmerPickerSheet: View {
                 Color.bgBase.ignoresSafeArea()
 
                 if viewModel.isLoading {
-                    ProgressView().tint(Color.accentAction)
+                    ProgressView().tint(Color.textMuted)
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 2) {
@@ -1162,7 +1162,7 @@ struct SwimmerPickerSheet: View {
                                         Spacer()
                                         if selectedId == swimmer.id {
                                             Image(systemName: "checkmark")
-                                                .foregroundColor(Color.accentAction)
+                                                .foregroundColor(Color.textPrimary)
                                         }
                                     }
                                     .padding(.horizontal, 16)
@@ -1181,7 +1181,7 @@ struct SwimmerPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
             }
             .task {

@@ -46,7 +46,7 @@ struct PBAddSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
             }
         }
@@ -64,10 +64,10 @@ struct PBAddSheet: View {
                     } label: {
                         Text(stroke)
                             .font(.captionStrong)
-                            .foregroundColor(selectedStroke == stroke ? Color.textOnAccent : Color.textMuted)
+                            .foregroundColor(selectedStroke == stroke ? Color.textPrimary : Color.textMuted)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(selectedStroke == stroke ? Color.accentAction : Color.bgInset)
+                            .background(selectedStroke == stroke ? Color.bgSelected : Color.bgInset)
                             .cornerRadius(20)
                     }
                 }
@@ -87,10 +87,10 @@ struct PBAddSheet: View {
                     } label: {
                         Text("\(d)")
                             .font(.captionStrong)
-                            .foregroundColor(selectedDistance == d ? Color.textOnAccent : Color.textMuted)
+                            .foregroundColor(selectedDistance == d ? Color.textPrimary : Color.textMuted)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(selectedDistance == d ? Color.accentAction : Color.bgInset)
+                            .background(selectedDistance == d ? Color.bgSelected : Color.bgInset)
                             .cornerRadius(20)
                     }
                 }

@@ -64,9 +64,9 @@ struct WorkoutRow: View {
 
     private static func statusColor(for status: WorkoutStatus) -> Color {
         switch status {
-        case .draft: return Color.accentAmber
-        case .scheduled: return Color.accentAction
-        case .inProgress: return Color.accentAction
+        case .draft: return Color.textFaint
+        case .scheduled: return Color.textMuted
+        case .inProgress: return Color.accentAmber
         case .complete: return Color.statusSuccess
         }
     }

@@ -36,7 +36,7 @@ struct SwimmerAnalyticsView: View {
 
             if viewModel.isLoading && viewModel.swimmer == nil {
                 ProgressView()
-                    .tint(Color.accentAction)
+                    .tint(Color.textMuted)
             } else if let swimmer = viewModel.swimmer {
                 ScrollView {
                     VStack(spacing: 16) {
@@ -214,7 +214,7 @@ struct SwimmerAnalyticsView: View {
                 .foregroundColor(Color.textMuted)
             Text(value)
                 .font(.numericLarge)
-                .foregroundColor(Color.accentAction)
+                .foregroundColor(Color.textPrimary)
             Text(hint)
                 .font(.system(size: 9))
                 .foregroundColor(Color.textFaint)
@@ -262,7 +262,7 @@ private struct SwimmerAnalyticsHeader: View {
                 .overlay(
                     Text(initials)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textMuted)
                 )
             Text(swimmer.fullName)
                 .font(.system(size: 22, weight: .semibold))
@@ -288,7 +288,7 @@ private struct SwimmerAnalyticsHeader: View {
         VStack(spacing: 2) {
             Text(value)
                 .font(.numeric)
-                .foregroundColor(Color.accentAction)
+                .foregroundColor(Color.textPrimary)
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
@@ -333,7 +333,7 @@ private struct TrainingBandView: View {
                 Spacer()
                 Text(formatMs(mean))
                     .font(.numeric)
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textPrimary)
                 Spacer()
                 Text(formatMs(maxMs))
                     .font(.numericSmall)
@@ -347,7 +347,7 @@ private struct TrainingBandView: View {
                         .frame(height: 16)
                     // ±1σ range
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.accentAction.opacity(0.3))
+                        .fill(Color.bgSelected)
                         .frame(width: geo.size.width, height: 16)
                     // PB marker (if it's within the visible range)
                     if let pb = personalBestMs, pb >= minMs, pb <= maxMs {

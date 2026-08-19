@@ -66,7 +66,7 @@ struct InviteSwimmerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
             }
         }
@@ -84,7 +84,7 @@ struct InviteSwimmerSheet: View {
         VStack(spacing: 8) {
             Image(systemName: "person.badge.plus")
                 .font(.system(size: 44))
-                .foregroundColor(Color.accentAction)
+                .foregroundColor(Color.textMuted)
             Text("Invite \(swimmerName)")
                 .font(.title2.weight(.semibold))
                 .foregroundColor(Color.textPrimary)
@@ -99,7 +99,7 @@ struct InviteSwimmerSheet: View {
     private var loadingState: some View {
         VStack(spacing: 12) {
             ProgressView()
-                .tint(Color.accentAction)
+                .tint(Color.textMuted)
             Text("Generating code…")
                 .font(.footnote)
                 .foregroundColor(Color.textMuted)
@@ -112,7 +112,7 @@ struct InviteSwimmerSheet: View {
         VStack(spacing: 12) {
             Image(systemName: "envelope.badge.shield.half.filled")
                 .font(.displayLarge)
-                .foregroundColor(Color.accentAction.opacity(0.6))
+                .foregroundColor(Color.textMuted.opacity(0.6))
             Text("Ready to invite")
                 .font(.headline)
                 .foregroundColor(Color.textPrimary)
@@ -128,7 +128,7 @@ struct InviteSwimmerSheet: View {
                 ForEach(Array(code), id: \.self) { char in
                     Text(String(char))
                         .font(.system(size: 36, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                         .frame(width: 44, height: 56)
                         .background(Color.bgInset)
                         .cornerRadius(8)
@@ -149,8 +149,8 @@ struct InviteSwimmerSheet: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(Color.accentAction.opacity(0.2))
-                .foregroundColor(Color.accentAction)
+                .background(Color.bgInset)
+                .foregroundColor(Color.textMuted)
                 .cornerRadius(10)
             }
 

@@ -62,7 +62,7 @@ struct SwimmerUpcomingView: View {
                     } label: {
                         Image(systemName: "calendar.badge.clock")
                     }
-                    .foregroundStyle(Color.accentAction)
+                    .foregroundStyle(Color.textMuted)
                     .accessibilityLabel("My schedule")
                 }
             }
@@ -264,7 +264,7 @@ private struct UpcomingWorkoutRow: View {
                     label: "I'm in",
                     isSelected: workout.isAttending,
                     isDisabled: isToggling,
-                    accent: Color.accentActionDim,
+                    accent: Color.statusSuccess,
                     action: onMarkIn
                 )
                 IntentPill(

@@ -82,7 +82,7 @@ struct WorkoutPreview: View {
             if let onRetry {
                 Button("Retry") { onRetry() }
                     .font(.captionStrong)
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textMuted)
             }
         }
         .padding(12)
@@ -137,7 +137,7 @@ private struct SectionView: View {
                     if let label = namedSet.label, !label.isEmpty {
                         Text(label.uppercased())
                             .font(.eyebrow)
-                            .foregroundColor(Color.accentAction)
+                            .foregroundColor(Color.textFaint)
                             .tracking(0.8)
                     }
 
@@ -185,7 +185,7 @@ private struct RepGroupRowView: View {
                     if let stroke = rg.stroke {
                         Text(stroke)
                             .font(.body)
-                            .foregroundColor(Color.accentAction)
+                            .foregroundColor(Color.textPrimary)
                     }
 
                     if let intensity = rg.intensity {
@@ -200,7 +200,7 @@ private struct RepGroupRowView: View {
                     // "this set prescribes a zone" at a glance. Renders
                     // only when the parser emitted a zone term.
                     if let zoneTerm = rg.zoneTerm {
-                        MetadataBadge(text: zoneTerm.capitalized, color: Color.accentAction)
+                        MetadataBadge(text: zoneTerm.capitalized, color: Color.textMuted)
                     }
 
                     if let interval = rg.interval {
@@ -224,7 +224,7 @@ private struct RepGroupRowView: View {
                         MetadataBadge(text: "DIVE", color: Color.accentAmber)
                     }
                     if rg.suit == true {
-                        MetadataBadge(text: "SUIT", color: Color.accentAction)
+                        MetadataBadge(text: "SUIT", color: Color.textMuted)
                     }
 
                     // RPE flywheel: if the parser detected an ambiguous intensity term,
@@ -456,7 +456,7 @@ private struct DetailBadge: View {
     var body: some View {
         Text(String(text.prefix(1)).uppercased() + String(text.dropFirst()))
             .font(.numericSmall)
-            .foregroundColor(Color.accentAction)
+            .foregroundColor(Color.textMuted)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(Color.bgInset)
@@ -1029,7 +1029,7 @@ private struct FragmentCTARow: View {
     var body: some View {
         let content = HStack(spacing: 8) {
             Rectangle()
-                .fill(Color.accentAction)
+                .fill(Color.textMuted)
                 .frame(width: 2)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -1046,7 +1046,7 @@ private struct FragmentCTARow: View {
                     if let stroke = fragment.stroke, !stroke.isEmpty {
                         Text(stroke)
                             .font(.body)
-                            .foregroundColor(Color.accentAction)
+                            .foregroundColor(Color.textPrimary)
                     }
                     if let label = fragment.intensity?.label, !label.isEmpty {
                         Text("@ \(label)")
@@ -1072,13 +1072,12 @@ private struct FragmentCTARow: View {
                     }
                     if let pace = paceTargetText, !pace.isEmpty {
                         // Pace target = the rep group's interval
-                        // (send-off or "1:30"). Surfaced as a
-                        // cyan badge so it reads as a target, not
-                        // a constraint.
-                        MetadataBadge(text: "@ \(pace)", color: Color.accentAction)
+                        // (send-off or "1:30"). Fog text on inset
+                        // chip — data, not a CTA.
+                        MetadataBadge(text: "@ \(pace)", color: Color.textMuted)
                     }
                     if fragment.suit == true {
-                        MetadataBadge(text: "SUIT", color: Color.accentAction)
+                        MetadataBadge(text: "SUIT", color: Color.textMuted)
                     }
                     ForEach(fragment.gear ?? [], id: \.self) { gear in
                         GearBadge(gear: gear, optional: false)
@@ -1110,7 +1109,7 @@ private struct FragmentCTARow: View {
             // check above carries the affirmative state.
             if onTap != nil {
                 Image(systemName: recordedMs != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
-                    .foregroundColor(recordedMs != nil ? Color.textMuted : Color.accentAction)
+                    .foregroundColor(recordedMs != nil ? Color.textMuted : Color.textPrimary)
             }
         }
         .padding(.vertical, 4)

@@ -37,7 +37,7 @@ struct ProgressionChart: View {
         if i.contains("easy") || i.contains("recovery") || i.contains("warm") {
             return Color.statusSuccess
         } else if i.contains("moderate") || i.contains("tempo") || i.contains("steady") {
-            return Color.accentAction
+            return Color.textMuted
         } else if i.contains("threshold") || i.contains("race") {
             return Color.accentAmber
         } else if i.contains("sprint") || i.contains("max") {
@@ -89,7 +89,7 @@ struct ProgressionChart: View {
                     x: .value("Date", entry.date),
                     y: .value("Time (ms)", entry.timeMs)
                 )
-                .foregroundStyle(Color.accentAction)
+                .foregroundStyle(Color.textMuted)
                 .interpolationMethod(.monotone)
             }
 

@@ -143,7 +143,7 @@ struct WorkoutDetailView: View {
 
             if viewModel.isLoading && viewModel.workout == nil {
                 ProgressView()
-                    .tint(Color.accentAction)
+                    .tint(Color.textMuted)
             }
         }
         .navigationTitle(viewModel.workout?.title ?? "Workout")
@@ -318,7 +318,7 @@ struct WorkoutDetailView: View {
                             if let gear = set.gear, !gear.isEmpty {
                                 Text(gear.joined(separator: ", "))
                                     .font(.captionStrong)
-                                    .foregroundColor(Color.accentAction)
+                                    .foregroundColor(Color.textMuted)
                             }
                             // Intensity label
                             if let intensity = set.intensityLabel {
@@ -340,10 +340,10 @@ struct WorkoutDetailView: View {
                             if set.suit == true {
                                 Text("SUIT")
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(Color.accentAction)
+                                    .foregroundColor(Color.textMuted)
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1)
-                                    .background(Color.accentAction.opacity(0.12))
+                                    .background(Color.bgInset)
                                     .cornerRadius(4)
                             }
                         }
@@ -354,7 +354,7 @@ struct WorkoutDetailView: View {
                     if isTimeable {
                         Image(systemName: "play.fill")
                             .font(.caption)
-                            .foregroundColor(Color.accentAction)
+                            .foregroundColor(Color.textMuted)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -676,9 +676,9 @@ struct WorkoutDetailView: View {
 
     private func statusColor(_ status: WorkoutStatus) -> Color {
         switch status {
-        case .draft: return Color.accentAmber
-        case .scheduled: return Color.accentAction
-        case .inProgress: return Color.accentAction
+        case .draft: return Color.textFaint
+        case .scheduled: return Color.textMuted
+        case .inProgress: return Color.accentAmber
         case .complete: return Color.statusSuccess
         }
     }

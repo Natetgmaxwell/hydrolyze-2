@@ -6,9 +6,9 @@ import SwiftUI
 /// AttendancePopover for inline editing.
 ///
 /// ponytail:
-///   - The badge is a single horizontal pill. Cyan when swimmers
-///     are marked, amber when none have marked yet. Same color
-///     vocabulary as the rest of the app.
+///   - The badge is a single horizontal pill. Green (success)
+///     when swimmers are marked, amber when none have marked yet.
+///     Same color vocabulary as the rest of the app.
 ///   - No haptic on count change. Visual only — the badge is
 ///     ambient info, not an action surface.
 struct AttendanceBadge: View {
@@ -26,15 +26,15 @@ struct AttendanceBadge: View {
     private var accent: Color {
         if totalCount == 0 { return Color.textFaint }
         if attendingCount == 0 { return Color.accentAmber }
-        return Color.accentActionDim
+        return Color.statusSuccess
     }
 
     var body: some View {
         HStack(spacing: 8) {
             // ponytail: breathing when swimmers have responded.
-            // 1.0 -> 1.15 -> 1.0 on 2s cycle. The dot literally
-            // responds to the squad. Same phaseAnimator pattern as
-            // SwimmersListView.emptyState.
+            // 1.0 -> 1.15 -> 1.0 on 2s CTA-breath cycle (spec:
+            // idle CTAs breathe; this dot carries the
+            // "responses in" state).
             Image(systemName: attendingCount > 0 ? "checkmark.circle.fill" : "person.2")
                 .font(.caption)
                 .foregroundStyle(accent)
@@ -150,7 +150,7 @@ private struct AttendanceRow: View {
                 MiniPill(
                     label: "In",
                     isSelected: entry.intent == "in",
-                    color: Color.accentActionDim,
+                    color: Color.statusSuccess,
                     action: { Task { await onSetIntent(entry.swimmerId, "in") } }
                 )
                 MiniPill(
@@ -176,8 +176,8 @@ private struct AttendanceRow: View {
     /// session" — the coach hasn't overridden anything.
     private var dotColor: Color {
         switch entry.reason {
-        case .explicitIn:   return Color.accentActionDim
-        case .standingSlot: return Color.accentActionDim.opacity(0.55)
+        case .explicitIn:   return Color.statusSuccess
+        case .standingSlot: return Color.statusSuccess.opacity(0.55)
         case .explicitOut:  return Color.textFaint
         case .noSignal:     return Color.textFaint
         }

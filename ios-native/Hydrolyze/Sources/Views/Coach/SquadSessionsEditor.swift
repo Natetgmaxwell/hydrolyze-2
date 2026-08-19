@@ -42,7 +42,7 @@ struct SquadSessionsEditor: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundStyle(Color.accentAction)
+                        .foregroundStyle(Color.textPrimary)
                 }
             }
             .task { await load() }
@@ -61,7 +61,7 @@ struct SquadSessionsEditor: View {
     private var content: some View {
         if !hasLoaded && loadingError == nil {
             ProgressView()
-                .tint(Color.accentAction)
+                .tint(Color.textMuted)
         } else if let loadingError {
             VStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -74,7 +74,7 @@ struct SquadSessionsEditor: View {
                     .padding(.horizontal, 32)
                 Button("Retry") { Task { await load() } }
                     .font(.caption)
-                    .foregroundStyle(Color.accentAction)
+                    .foregroundStyle(Color.textMuted)
             }
             .padding(.top, 60)
         } else {
@@ -139,8 +139,8 @@ struct SquadSessionsEditor: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .foregroundStyle(slot.active ? Color.textOnAccent : Color.textMuted)
-            .background(slot.active ? Color.accentAction : Color.bgRaised)
+            .foregroundStyle(slot.active ? Color.textPrimary : Color.textMuted)
+            .background(slot.active ? Color.bgSelected : Color.bgRaised)
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)

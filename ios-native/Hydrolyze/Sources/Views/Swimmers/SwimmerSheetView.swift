@@ -48,7 +48,7 @@ struct SwimmerSheetView: View {
                             dismiss()
                         }
                     }
-                    .foregroundColor(Color.accentAction)
+                    .foregroundColor(Color.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
@@ -143,10 +143,10 @@ struct SwimmerSheetView: View {
                     } label: {
                         Text(g == "X" ? "—" : g)
                             .font(.bodyEmphasis)
-                            .foregroundColor(viewModel.gender == g ? Color.textOnAccent : Color.textMuted)
+                            .foregroundColor(viewModel.gender == g ? Color.textPrimary : Color.textMuted)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(viewModel.gender == g ? Color.accentAction : Color.bgInset)
+                            .background(viewModel.gender == g ? Color.bgSelected : Color.bgInset)
                             .cornerRadius(8)
                     }
                 }
@@ -230,10 +230,10 @@ struct SwimmerSheetView: View {
                     } label: {
                         Text(group.name)
                             .font(.captionStrong)
-                            .foregroundColor(viewModel.selectedGroupIds.contains(group.id) ? Color.textOnAccent : Color.textMuted)
+                            .foregroundColor(viewModel.selectedGroupIds.contains(group.id) ? Color.textPrimary : Color.textMuted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(viewModel.selectedGroupIds.contains(group.id) ? Color.accentAction : Color.bgInset)
+                            .background(viewModel.selectedGroupIds.contains(group.id) ? Color.bgSelected : Color.bgInset)
                             .cornerRadius(16)
                     }
                 }
@@ -288,7 +288,7 @@ struct DatePickerSheet: View {
                 if useDate {
                     DatePicker("Birthdate", selection: $selectedDate, displayedComponents: .date)
                         .datePickerStyle(.graphical)
-                        .tint(Color.accentAction)
+                        .tint(Color.textMuted)
                         .padding(.horizontal)
                 }
                 Spacer()
@@ -299,7 +299,7 @@ struct DatePickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color.accentAction)
+                        .foregroundColor(Color.textPrimary)
                 }
             }
         }
