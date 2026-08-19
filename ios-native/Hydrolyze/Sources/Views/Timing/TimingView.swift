@@ -402,6 +402,31 @@ struct TimingView: View {
                 // analyzer-on-stop path in save().
                 viewModel.is3MTSession = viewModel.deriveIs3MTSession()
             }
+            #if DEBUG
+            // V0.46 Slice 3: screenshot harness. No deep link or demo
+            // account exists for the timing surface, so headless capture
+            // drives the REAL state machine: `-v46-demo-timing` skips the
+            // swimmer picker and runs setup → ready → running, banking two
+            // laps ~1.6s apart so simctl can catch run + mid-run states.
+            // DEBUG-only; never ships.
+            if ProcessInfo.processInfo.arguments.contains("-v46-demo-timing") {
+                viewModel.confirmSetup(
+                    swimmerId: "demo-swimmer",
+                    swimmerName: "Demo Swimmer",
+                    stroke: viewModel.stroke,
+                    distance: viewModel.distance
+                )
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.8))
+                    guard viewModel.state == .ready else { return }
+                    viewModel.start()
+                    try? await Task.sleep(for: .seconds(1.6))
+                    viewModel.lap()
+                    try? await Task.sleep(for: .seconds(1.2))
+                    viewModel.lap()
+                }
+            }
+            #endif
         }
     }
 

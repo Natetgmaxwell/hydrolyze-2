@@ -51,6 +51,16 @@ struct ContentView: View {
 
     var body: some View {
         Group {
+            #if DEBUG
+            // V0.46 Slice 3: screenshot harness route. `-v46-demo-timing`
+            // replaces the whole shell with the timing surface — headless
+            // simctl capture can't sign in or tap through SessionStart.
+            // The state-machine drive lives in TimingView.setupView.
+            // DEBUG-only; stripped build is byte-identical to before.
+            if ProcessInfo.processInfo.arguments.contains("-v46-demo-timing") {
+                v46DemoTimingRoot
+            } else
+            #endif
             if authManager.isLoading {
                 loadingView
             } else if authManager.currentUser == nil {
@@ -113,6 +123,29 @@ struct ContentView: View {
     /// Workouts / Profile. Tighter navigation rhythm + one less
     /// "Coming in v2" surface competing for the coach's
     /// attention.
+    #if DEBUG
+    /// V0.46 Slice 3: root for the `-v46-demo-timing` screenshot
+    /// harness. Wraps the real TimingView with a 4-rep 50m Free
+    /// prefill (single-swimmer + known reps = the rep-dot path).
+    private var v46DemoTimingRoot: some View {
+        NavigationStack {
+            TimingView(
+                prefill: SetPrefill(
+                    stroke: "Free",
+                    distance: 50,
+                    reps: 4,
+                    interval: nil,
+                    intensityLabel: nil,
+                    workoutSetId: nil,
+                    intensityType: nil,
+                    fragmentContexts: nil,
+                    gear: nil
+                )
+            )
+        }
+    }
+    #endif
+
     private var coachTabView: some View {
         TabView {
             TodayView()
