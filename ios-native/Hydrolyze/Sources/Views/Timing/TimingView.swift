@@ -683,15 +683,34 @@ struct TimingView: View {
                 // Milestone haptics (halfway / final) fire in
                 // TimingViewModel.lap(); the dots only report.
                 if viewModel.showRepDots, let reps = viewModel.reps {
-                    HStack(spacing: 8) {
-                        ForEach(0..<reps, id: \.self) { rep in
-                            Circle()
-                                .fill(rep < viewModel.laps.count ? Color.textPrimary : Color.textPrimary.opacity(0.25))
-                                .frame(width: 8, height: 8)
+                    VStack(spacing: 8) {
+                        // "LAP N" counter stays alongside the dots — the
+                        // dots carry at-a-glance progress, the counter
+                        // carries the exact rep number.
+                        Text("LAP \(viewModel.laps.count + 1)")
+                            .font(.numericSmall)
+                            .foregroundColor(Color.textMuted)
+                            .tracking(2)
+                            .numericRollTransition()
+                            .animation(reduceMotion ? nil : Animations.numericRoll, value: viewModel.laps.count)
+
+                        // V0.46 Slice 3 contract: Capsule dots on the
+                        // bgSelected → accentActionDim → accentAction ramp
+                        // (pending → banked → current). The current dot
+                        // widens so the where-am-I read survives a
+                        // peripheral glance. Discrete dots, never a bar —
+                        // a bar must accelerate through its final 20% and
+                        // feels rushed; dots are honest.
+                        HStack(spacing: 6) {
+                            ForEach(0..<reps, id: \.self) { rep in
+                                Capsule()
+                                    .fill(repDotFill(rep: rep))
+                                    .frame(width: rep == viewModel.laps.count ? 20 : 8, height: 8)
+                            }
                         }
+                        .animation(reduceMotion ? nil : Animations.springSnappy, value: viewModel.laps.count)
                     }
                     .padding(.bottom, 16)
-                    .animation(reduceMotion ? nil : Animations.gentle, value: viewModel.laps.count)
                 } else {
                     // "LAP N" counter — subtle (V0.46: mist, not white)
                     Text("LAP \(viewModel.laps.count + 1)")
@@ -795,6 +814,14 @@ struct TimingView: View {
                 lapFlashOpacity = 0
             }
         }
+    }
+
+    // V0.46 Slice 3 contract: rep-dot fill ramp — pending bgSelected,
+    // banked accentActionDim, current accentAction (widened).
+    private func repDotFill(rep: Int) -> Color {
+        if rep < viewModel.laps.count { return .accentActionDim }
+        if rep == viewModel.laps.count { return .accentAction }
+        return .bgSelected
     }
 
     // V0.46 Slice 2 pilot: weight-step on the hundredths — the 1:23.45
