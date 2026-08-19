@@ -96,7 +96,7 @@ final class WorkoutService {
             enum CodingKeys: String, CodingKey {
                 case coachId = "coach_id"
                 case title
-                case description
+                case description = "workout_text"
                 case scheduledAt = "scheduled_at"
                 case status
                 case workoutText = "workout_text"

@@ -189,7 +189,13 @@ struct WorkoutsListView: View {
             let created = try await service.createWorkout(
                 coachId: coachId,
                 title: "3MT — 3-minute all-out test",
-                description: "All-out from the first push-off. Tap LAP at every wall. Two learning trials before the numbers are usable. Don't mix battery values across test types — watch the trend.",
+                // FIX (2026-08-19): description maps to workout_text
+                // (same column as workoutText) — passing both would
+                // emit duplicate keys and the notes would clobber the
+                // canonical parse text in the builder. The canonical
+                // text is what must be parsed; the coach edits in the
+                // builder. Notes have no column of their own.
+                description: nil,
                 workoutText: "3MT: 3 min all-out, 25m splits, Free",
                 sessionType: "3mt"
             )
@@ -275,9 +281,10 @@ struct WorkoutsListView: View {
                         // tapped a thing" tap that filter pills already
                         // use via Haptics.selection(). Light tap, no
                         // reduceMotion gate — haptics aren't motion.
-                        .simultaneousGesture(
-                            TapGesture().onEnded { Haptics.tap() }
-                        )
+                        // FIX (2026-08-19): the simultaneous TapGesture
+                        // swallowed the link's activation — haptic fired,
+                        // navigation didn't. The tap is the contract;
+                        // the haptic is decoration. Removed.
                         .listRowBackground(Color.bgBase)
                         // V0.44 Slice 2 (2026-08-18): tell 5 — uniform
                         // spacing, no rhythm. Bumped the vertical
