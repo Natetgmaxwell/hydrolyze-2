@@ -22,7 +22,7 @@ import Charts
 ///
 /// Chart approach mirrors `SwimmerAnalyticsView` /
 /// `SpeedCurveChart` / `ProgressionChart`: Apple's `Charts`
-/// framework, accentCyan stroke, minimal axes (no legend, no axis
+/// framework, accentAction stroke, minimal axes (no legend, no axis
 /// labels at this small scale). Sized to ~80pt tall so the panel
 /// fits inside the row rhythm without dominating the screen.
 struct ThreeMTPanelView: View {
@@ -100,7 +100,7 @@ struct ThreeMTPanelView: View {
     /// V0.38 Slice 5: inline speed-vs-time chart from the profile's
     /// per-split speeds. Mirrors the chart approach used in
     /// `SpeedCurveChart` / `ProgressionChart` (Apple Charts
-    /// framework, accentCyan stroke, no axes labels beyond minimal).
+    /// framework, accentAction stroke, no axes labels beyond minimal).
     /// Sized to ~80pt tall so it reads as a sparkline, not a
     /// full-screen analytics chart.
     private var curveSection: some View {
@@ -111,7 +111,7 @@ struct ThreeMTPanelView: View {
                     x: .value("Split", p.splitIndex),
                     y: .value("Speed", p.speedMps)
                 )
-                .foregroundStyle(Color.accentCyan)
+                .foregroundStyle(Color.accentAction)
                 .interpolationMethod(.monotone)
             }
             ForEach(points) { p in
@@ -119,7 +119,7 @@ struct ThreeMTPanelView: View {
                     x: .value("Split", p.splitIndex),
                     y: .value("Speed", p.speedMps)
                 )
-                .foregroundStyle(Color.accentCyan)
+                .foregroundStyle(Color.accentAction)
                 .symbolSize(20)
             }
         }

@@ -79,7 +79,7 @@ struct PhasedProgressView: View {
             if let label = currentPhaseLabel {
                 Text(label)
                     .font(.jetBrainsMono(size: 13, weight: .bold))
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                     .tracking(2)
                     .id("phase-label-\(currentPhase)")
                     .transition(.opacity)
@@ -119,13 +119,13 @@ struct PhasedProgressView: View {
     private func dotState(for index: Int) -> (color: Color, scale: CGFloat, isActive: Bool) {
         if currentPhase >= phaseCount {
             // All complete — all dots filled cyan at normal scale.
-            return (Color.accentCyan, 1.0, false)
+            return (Color.accentAction, 1.0, false)
         }
         if index < currentPhase {
-            return (Color.accentCyan, 1.0, false)  // Completed
+            return (Color.accentAction, 1.0, false)  // Completed
         }
         if index == currentPhase {
-            return (Color.accentCyan.opacity(0.7), 1.15, true)  // Active (pulses)
+            return (Color.accentAction.opacity(0.7), 1.15, true)  // Active (pulses)
         }
         return (Color.textFaint.opacity(0.3), 1.0, false)  // Future
     }

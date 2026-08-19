@@ -60,7 +60,7 @@ struct MyScheduleView: View {
                     Button(isSaving ? "Saving…" : "Done") {
                         Task { await save() }
                     }
-                    .foregroundStyle(Color.accentCyan)
+                    .foregroundStyle(Color.accentAction)
                     .disabled(isSaving || isLoading)
                 }
             }
@@ -160,7 +160,7 @@ struct MyScheduleView: View {
                 .foregroundStyle(isOn ? Color.textOnAccent : Color.textMuted)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(isOn ? Color.accentCyan : Color.bgRaised)
+                .background(isOn ? Color.accentAction : Color.bgRaised)
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)

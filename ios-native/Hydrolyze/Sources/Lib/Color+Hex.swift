@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Color hex initializer — lets us write Color(hex: "09d4ee") everywhere.
+/// Color hex initializer — lets us write Color(hex: "FF6B4A") everywhere.
 /// Mirrors the same pattern from ContentView.swift.
 extension Color {
     init(hex: String) {

@@ -47,7 +47,7 @@ struct AnalyticsTabView: View {
                         if isLoading {
                             HStack {
                                 Spacer()
-                                ProgressView().tint(Color.accentCyan)
+                                ProgressView().tint(Color.accentAction)
                                 Spacer()
                             }
                             .padding(.vertical, 40)
@@ -123,7 +123,7 @@ struct AnalyticsTabView: View {
 
     private func bandBar(_ band: AnalyticsService.TrainingBandStats, totalReps: Int) -> some View {
         let fraction = totalReps > 0 ? Double(band.repCount) / Double(totalReps) : 0
-        let bandColor = Color(uiColor: UIColor(hex: band.color) ?? .systemGray)
+        let bandColor = Color(uiColor: UIColor(hex: band.color) ?? UIColor(Color.textFaint))
 
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -164,7 +164,7 @@ struct AnalyticsTabView: View {
                         label: "Gear",
                         count: gb.repsWithGear,
                         total: gb.totalReps,
-                        color: Color.accentCyan
+                        color: Color.accentAction
                     )
                     breakdownTile(
                         label: "Suit",

@@ -119,7 +119,7 @@ struct TodayView: View {
                 // change. The pull-to-refresh indicator picks up the
                 // cyan tint automatically — small detail that makes
                 // the surface feel brand-consistent.
-                .tint(Color.accentCyan)
+                .tint(Color.accentAction)
             }
             .navigationTitle("TODAY")
             .navigationBarTitleDisplayMode(.inline)
@@ -188,7 +188,7 @@ struct TodayView: View {
                             quickActionRow(
                                 label: "Start Session",
                                 icon: "play.fill",
-                                color: Color.accentCyan
+                                color: Color.accentAction
                             ) {
                                 showSessionStart = true
                             }
@@ -196,7 +196,7 @@ struct TodayView: View {
                             quickActionRow(
                                 label: "Plan a session",
                                 icon: "calendar.badge.plus",
-                                color: Color.accentCyan
+                                color: Color.accentAction
                             ) {
                                 // TODO: present SetScheduleView (WorkoutsListView) — stub
                             }
@@ -219,7 +219,7 @@ struct TodayView: View {
         }
         .redacted(reason: viewModel.isLoading && viewModel.todayWorkout == nil ? .placeholder : [])
         .refreshable { await reloadAll(coachId: authManager.coachId) }
-        .tint(Color.accentCyan)
+        .tint(Color.accentAction)
     }
 
     @ViewBuilder

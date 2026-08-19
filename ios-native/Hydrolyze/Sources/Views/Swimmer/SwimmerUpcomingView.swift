@@ -62,7 +62,7 @@ struct SwimmerUpcomingView: View {
                     } label: {
                         Image(systemName: "calendar.badge.clock")
                     }
-                    .foregroundStyle(Color.accentCyan)
+                    .foregroundStyle(Color.accentAction)
                     .accessibilityLabel("My schedule")
                 }
             }
@@ -221,7 +221,7 @@ private struct UpcomingWorkoutRow: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(workout.title)
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                 Spacer()
                 HStack(spacing: 6) {
@@ -264,14 +264,14 @@ private struct UpcomingWorkoutRow: View {
                     label: "I'm in",
                     isSelected: workout.isAttending,
                     isDisabled: isToggling,
-                    accent: Color.accentCyanDim,
+                    accent: Color.accentActionDim,
                     action: onMarkIn
                 )
                 IntentPill(
                     label: "Can't make it",
                     isSelected: !workout.isAttending && workout.hasMarked,
                     isDisabled: isToggling,
-                    accent: Color.accentSlate,
+                    accent: Color.textFaint,
                     action: onMarkOut
                 )
             }
@@ -279,11 +279,11 @@ private struct UpcomingWorkoutRow: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+                .fill(Color.textPrimary.opacity(0.04))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(Color.textPrimary.opacity(0.06), lineWidth: 1)
         )
     }
 
@@ -368,12 +368,12 @@ private struct IntentPill: View {
         Button(action: action) {
             Text(label)
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(isSelected ? Color.bgBase : .white)
+                .foregroundStyle(isSelected ? Color.textOnAccent : Color.textPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isSelected ? accent : Color.white.opacity(0.08))
+                        .fill(isSelected ? accent : Color.textPrimary.opacity(0.08))
                 )
         }
         .buttonStyle(PressFeedbackStyle())

@@ -24,9 +24,9 @@ struct AttendanceBadge: View {
     }
 
     private var accent: Color {
-        if totalCount == 0 { return Color.accentSlate }
+        if totalCount == 0 { return Color.textFaint }
         if attendingCount == 0 { return Color.accentAmber }
-        return Color.accentCyanDim
+        return Color.accentActionDim
     }
 
     var body: some View {
@@ -49,13 +49,13 @@ struct AttendanceBadge: View {
             Spacer()
             Image(systemName: "chevron.right")
                 .font(.eyebrow)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.textMuted)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+                .fill(Color.textPrimary.opacity(0.04))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -89,10 +89,10 @@ struct AttendancePopoverContent: View {
                 Spacer()
                 Text("\(inCount) / \(entries.count) attending")
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.textMuted)
             }
 
-            Divider().background(Color.white.opacity(0.08))
+            Divider().background(Color.textPrimary.opacity(0.08))
 
             ScrollView {
                 LazyVStack(spacing: 8) {
@@ -150,13 +150,13 @@ private struct AttendanceRow: View {
                 MiniPill(
                     label: "In",
                     isSelected: entry.intent == "in",
-                    color: Color.accentCyanDim,
+                    color: Color.accentActionDim,
                     action: { Task { await onSetIntent(entry.swimmerId, "in") } }
                 )
                 MiniPill(
                     label: "Out",
                     isSelected: entry.intent == "out",
-                    color: Color.accentSlate,
+                    color: Color.textFaint,
                     action: { Task { await onSetIntent(entry.swimmerId, "out") } }
                 )
             }
@@ -176,10 +176,10 @@ private struct AttendanceRow: View {
     /// session" — the coach hasn't overridden anything.
     private var dotColor: Color {
         switch entry.reason {
-        case .explicitIn:   return Color.accentCyanDim
-        case .standingSlot: return Color.accentCyanDim.opacity(0.55)
-        case .explicitOut:  return Color.accentSlate
-        case .noSignal:     return Color.white.opacity(0.2)
+        case .explicitIn:   return Color.accentActionDim
+        case .standingSlot: return Color.accentActionDim.opacity(0.55)
+        case .explicitOut:  return Color.textFaint
+        case .noSignal:     return Color.textFaint
         }
     }
 }
@@ -196,12 +196,12 @@ private struct MiniPill: View {
         Button(action: action) {
             Text(label)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(isSelected ? Color.bgBase : .white)
+                .foregroundStyle(isSelected ? Color.textOnAccent : Color.textPrimary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(
                     Capsule()
-                        .fill(isSelected ? color : Color.white.opacity(0.06))
+                        .fill(isSelected ? color : Color.textPrimary.opacity(0.06))
                 )
         }
         .buttonStyle(PressFeedbackStyle())

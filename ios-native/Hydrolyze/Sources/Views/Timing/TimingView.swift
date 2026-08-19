@@ -149,7 +149,7 @@ struct TimingView: View {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(Color.textPrimary)
                 }
             }
         }
@@ -311,12 +311,12 @@ struct TimingView: View {
             } label: {
                 Text("CONTINUE")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(Color.bgBase)
+                    .foregroundColor(Color.textOnAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
                     .background(
                         viewModel.selectedSwimmerId != nil
-                        ? Color.accentCyan
+                        ? Color.accentAction
                         : Color.bgInset
                     )
                     .cornerRadius(12)
@@ -403,10 +403,10 @@ struct TimingView: View {
         } label: {
             Text(label)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(selected ? Color.bgBase : Color.textMuted)
+                .foregroundColor(selected ? Color.textOnAccent : Color.textMuted)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(selected ? Color.accentCyan : Color.bgRaised)
+                .background(selected ? Color.accentAction : Color.bgRaised)
                 .cornerRadius(20)
         }
         // Subtle scale on press for the chip — these are tappable
@@ -427,19 +427,19 @@ struct TimingView: View {
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
                 .padding(.horizontal, 16)
-                .foregroundColor(.white)
+                .foregroundColor(Color.textPrimary)
                 .padding(.bottom, 16)
 
             // READY label
             Text("READY")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(Color.textMuted)
                 .tracking(4)
 
             // Set context (white 0.4 = subtle)
             Text("\(viewModel.stroke) · \(viewModel.distance)m")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(Color.textFaint)
                 .padding(.top, 12)
 
             // V0.41 Slice 2 (2026-08-18): zone target line — the
@@ -450,13 +450,13 @@ struct TimingView: View {
             if let zoneTarget = viewModel.zoneTargetText {
                 Text(zoneTarget)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                     .padding(.top, 4)
             }
 
             Text("Press volume up or tap to start")
                 .font(.caption)
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(Color.textFaint)
                 .padding(.top, 4)
 
             Spacer()
@@ -481,15 +481,15 @@ struct TimingView: View {
             } label: {
                 Text("START")
                     .font(.system(size: 26, weight: .heavy, design: .monospaced))
-                    .foregroundColor(.black)
+                    .foregroundColor(Color.textOnAccent)
                     .frame(width: 200, height: 200)
-                    .background(Color.accentCyan)
+                    .background(Color.accentAction)
                     .clipShape(Circle())
                     // Soft outer glow that intensifies with the
                     // breathing pulse — the button radiates
                     // energy when it wants to be tapped.
                     .shadow(
-                        color: Color.accentCyan.opacity(0.35),
+                        color: Color.accentAction.opacity(0.35),
                         radius: 24, x: 0, y: 0
                     )
             }
@@ -498,7 +498,7 @@ struct TimingView: View {
                 content
                     .scaleEffect(scale)
                     .shadow(
-                        color: Color.accentCyan.opacity(scale == 1.0 ? 0.35 : 0.55),
+                        color: Color.accentAction.opacity(scale == 1.0 ? 0.35 : 0.55),
                         radius: scale == 1.0 ? 24 : 32, x: 0, y: 0
                     )
             } animation: { _ in
@@ -527,7 +527,7 @@ struct TimingView: View {
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                     .padding(.horizontal, 16)
-                    .foregroundColor(.white)
+                    .foregroundColor(Color.textPrimary)
                     .padding(.top, 60)
                     .padding(.bottom, 4)
 
@@ -556,7 +556,7 @@ struct TimingView: View {
                         .foregroundColor(
                             viewModel.threeMinuteTestRemainingMs < 30_000
                                 ? Color.accentAmber
-                                : .white.opacity(0.85)
+                                : Color.textPrimary.opacity(0.85)
                         )
                         .padding(.bottom, 8)
                 }
@@ -583,7 +583,7 @@ struct TimingView: View {
                         .foregroundColor(
                             viewModel.restCountdownIsAmber
                                 ? Color.accentAmber
-                                : .white.opacity(0.85)
+                                : Color.textPrimary.opacity(0.85)
                         )
                         .padding(.bottom, 8)
                 }
@@ -637,7 +637,7 @@ struct TimingView: View {
                 // "LAP N" counter — subtle, white 0.7
                 Text("LAP \(viewModel.laps.count + 1)")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(Color.textMuted)
                     .tracking(2)
                     .padding(.bottom, 16)
 
@@ -669,9 +669,9 @@ struct TimingView: View {
                 } label: {
                     Text("LAP")
                         .font(.system(size: 26, weight: .heavy, design: .monospaced))
-                        .foregroundColor(.black)
+                        .foregroundColor(Color.textOnAccent)
                         .frame(width: 160, height: 160)
-                        .background(Color.accentCyan)
+                        .background(Color.accentAction)
                         .clipShape(Circle())
                 }
                 .buttonStyle(StrongPressFeedbackStyle(scale: 0.90))
@@ -690,7 +690,7 @@ struct TimingView: View {
                 } label: {
                     Text("STOP")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(Color.textFaint)
                         .tracking(3)
                         .padding(.bottom, 32)
                 }
@@ -701,7 +701,7 @@ struct TimingView: View {
             // haptic-visual confirmation. Spring-animated (not
             // easeOut) for a more "punchy" feel that matches the
             // medium LAP haptic.
-            Color.accentCyan
+            Color.accentAction
                 .opacity(lapFlashOpacity)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -744,14 +744,14 @@ struct TimingView: View {
                     HStack {
                         Text("LAP \(lap.number)")
                             .font(.jetBrainsMono(size: 14))
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(Color.textMuted)
                         Spacer()
                         Text(lap.elapsed)
                             .font(.jetBrainsMono(size: 16, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(Color.textPrimary)
                         Text(lap.split)
                             .font(.jetBrainsMono(size: 12))
-                            .foregroundColor(.white.opacity(0.4))
+                            .foregroundColor(Color.textFaint)
                             .frame(width: 70, alignment: .trailing)
                     }
                     .padding(.vertical, 4)
@@ -810,7 +810,7 @@ struct TimingView: View {
                     ForEach(Array(viewModel.saveLog.suffix(6).enumerated()), id: \.offset) { _, line in
                         Text(line)
                             .font(.system(size: 9, weight: .regular, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.35))
+                            .foregroundColor(Color.textFaint)
                             .lineLimit(1)
                     }
                 }
@@ -824,7 +824,7 @@ struct TimingView: View {
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.system(size: 12))
-                    .foregroundColor(Color.red)
+                    .foregroundColor(Color.statusError)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
                     .padding(.top, 4)
@@ -843,12 +843,12 @@ struct TimingView: View {
                     Text("SKIP PAIRING — JUST RECORD TIMES")
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(1.5)
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
-                                .stroke(Color.accentCyan, lineWidth: 1)
+                                .stroke(Color.accentAction, lineWidth: 1)
                         )
                 }
 
@@ -860,7 +860,7 @@ struct TimingView: View {
                     Text("CANCEL")
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(2)
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(Color.textMuted)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
                 }
@@ -900,12 +900,12 @@ struct TimingView: View {
                     Text("COPY DEBUG INFO")
                         .font(.eyebrow)
                         .tracking(1.5)
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(Color.textMuted)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                .stroke(Color.textPrimary.opacity(0.2), lineWidth: 1)
                         )
                 }
                 .padding(.top, 4)
@@ -939,7 +939,7 @@ struct TimingView: View {
         VStack(spacing: 0) {
             Text("SESSION COMPLETE")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(Color.textMuted)
                 .tracking(3)
                 .padding(.top, 40)
                 .padding(.bottom, 16)
@@ -949,7 +949,7 @@ struct TimingView: View {
                 .font(.jetBrainsMono(size: 56, weight: .bold))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-                .foregroundColor(.white)
+                .foregroundColor(Color.textPrimary)
                 .padding(.bottom, 24)
 
             // Lap review (kept as-is)
@@ -961,7 +961,7 @@ struct TimingView: View {
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(Color.statusError)
                     .padding(.bottom, 8)
             }
 
@@ -976,10 +976,10 @@ struct TimingView: View {
                 } label: {
                     Text("DISCARD")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(Color.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(Color.white.opacity(0.1))
+                        .background(Color.textPrimary.opacity(0.1))
                         .cornerRadius(12)
                 }
                 .buttonStyle(PressFeedbackStyle(scale: 0.97, dim: 0.85))
@@ -1003,18 +1003,18 @@ struct TimingView: View {
                     }
                 } label: {
                     if viewModel.isSaving {
-                        ProgressView().tint(.black)
+                        ProgressView().tint(Color.textOnAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color.accentCyan)
+                            .background(Color.accentAction)
                             .cornerRadius(12)
                     } else {
                         Text("SAVE")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textOnAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color.accentCyan)
+                            .background(Color.accentAction)
                             .cornerRadius(12)
                     }
                 }
@@ -1044,7 +1044,7 @@ struct SwimmerPickerSheet: View {
                 Color.bgBase.ignoresSafeArea()
 
                 if viewModel.isLoading {
-                    ProgressView().tint(Color.accentCyan)
+                    ProgressView().tint(Color.accentAction)
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 2) {
@@ -1062,7 +1062,7 @@ struct SwimmerPickerSheet: View {
                                         Spacer()
                                         if selectedId == swimmer.id {
                                             Image(systemName: "checkmark")
-                                                .foregroundColor(Color.accentCyan)
+                                                .foregroundColor(Color.accentAction)
                                         }
                                     }
                                     .padding(.horizontal, 16)
@@ -1081,7 +1081,7 @@ struct SwimmerPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 }
             }
             .task {

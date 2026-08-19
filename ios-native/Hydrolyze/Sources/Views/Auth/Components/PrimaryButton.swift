@@ -26,19 +26,19 @@ struct PrimaryButton: View {
             ZStack {
                 if isLoading {
                     ProgressView()
-                        .tint(.black)
+                        .tint(Color.textOnAccent)
                 } else {
                     Text(title)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.black)
+                        .foregroundColor(Color.textOnAccent)
                 }
             }
             .frame(maxWidth: .infinity)
             .frame(height: 56)
-            .background(Color.accentCyan)
+            .background(Color.accentAction)
             .cornerRadius(12)
             .shadow(
-                color: Color.accentCyan.opacity(isLoading ? 0.3 : 0.3),
+                color: Color.accentAction.opacity(isLoading ? 0.3 : 0.3),
                 radius: 20, x: 0, y: 0
             )
         }
@@ -48,7 +48,7 @@ struct PrimaryButton: View {
         // "breathes" gently to invite tap. Pauses while loading.
         .phaseAnimator([0.3, 0.5], trigger: isLoading == false && !reduceMotion) { content, opacity in
             content.shadow(
-                color: Color.accentCyan.opacity(opacity),
+                color: Color.accentAction.opacity(opacity),
                 radius: 20, x: 0, y: 0
             )
         } animation: { _ in

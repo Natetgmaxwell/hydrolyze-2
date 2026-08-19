@@ -88,11 +88,11 @@ final class AnalyticsService {
 
         // Build results with colors
         let bandColors: [String: String] = [
-            "Easy": "#4CAF50",       // green
-            "Moderate": "#2196F3",   // blue
-            "Threshold": "#FF9800",  // amber
-            "Sprint": "#F44336",     // red
-            "Unknown": "#9E9E9E",    // grey
+            "Easy": "#4ADE80",       // green
+            "Moderate": "#86AEB0",   // mist
+            "Threshold": "#F5B34B",  // amber
+            "Sprint": "#F87171",     // red
+            "Unknown": "#5F8789",    // faint
         ]
 
         let totalReps = bandMap.values.reduce(0) { $0 + $1.reps }
@@ -102,7 +102,7 @@ final class AnalyticsService {
                 band: band,
                 repCount: counts.reps,
                 distanceMeters: counts.distance,
-                color: bandColors[band] ?? "#9E9E9E"
+                color: bandColors[band] ?? "#5F8789"
             )
         }
         .sorted { bandOrder($0.band) < bandOrder($1.band) }

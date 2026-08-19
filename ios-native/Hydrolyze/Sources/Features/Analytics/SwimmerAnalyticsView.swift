@@ -36,7 +36,7 @@ struct SwimmerAnalyticsView: View {
 
             if viewModel.isLoading && viewModel.swimmer == nil {
                 ProgressView()
-                    .tint(Color.accentCyan)
+                    .tint(Color.accentAction)
             } else if let swimmer = viewModel.swimmer {
                 ScrollView {
                     VStack(spacing: 16) {
@@ -214,7 +214,7 @@ struct SwimmerAnalyticsView: View {
                 .foregroundColor(Color.textMuted)
             Text(value)
                 .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(Color.accentCyan)
+                .foregroundColor(Color.accentAction)
             Text(hint)
                 .font(.system(size: 9))
                 .foregroundColor(Color.textFaint)
@@ -262,7 +262,7 @@ private struct SwimmerAnalyticsHeader: View {
                 .overlay(
                     Text(initials)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 )
             Text(swimmer.fullName)
                 .font(.system(size: 22, weight: .semibold))
@@ -288,7 +288,7 @@ private struct SwimmerAnalyticsHeader: View {
         VStack(spacing: 2) {
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(Color.accentCyan)
+                .foregroundColor(Color.accentAction)
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
@@ -333,7 +333,7 @@ private struct TrainingBandView: View {
                 Spacer()
                 Text(formatMs(mean))
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                 Spacer()
                 Text(formatMs(maxMs))
                     .font(.system(size: 11, design: .monospaced))
@@ -343,11 +343,11 @@ private struct TrainingBandView: View {
                 ZStack(alignment: .leading) {
                     // Bar
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(hex: "1a3050"))
+                        .fill(Color.bgInset)
                         .frame(height: 16)
                     // ±1σ range
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.accentCyan.opacity(0.3))
+                        .fill(Color.accentAction.opacity(0.3))
                         .frame(width: geo.size.width, height: 16)
                     // PB marker (if it's within the visible range)
                     if let pb = personalBestMs, pb >= minMs, pb <= maxMs {

@@ -34,7 +34,7 @@ struct PBAddSheet: View {
                     distancePills
                     timeInput
                     if let err = errorMessage {
-                        Text(err).font(.caption).foregroundColor(.red)
+                        Text(err).font(.caption).foregroundColor(Color.statusError)
                     }
                     saveButton
                     Spacer()
@@ -46,7 +46,7 @@ struct PBAddSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 }
             }
         }
@@ -64,10 +64,10 @@ struct PBAddSheet: View {
                     } label: {
                         Text(stroke)
                             .font(.captionStrong)
-                            .foregroundColor(selectedStroke == stroke ? Color.bgBase : Color.textMuted)
+                            .foregroundColor(selectedStroke == stroke ? Color.textOnAccent : Color.textMuted)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(selectedStroke == stroke ? Color.accentCyan : Color.bgInset)
+                            .background(selectedStroke == stroke ? Color.accentAction : Color.bgInset)
                             .cornerRadius(20)
                     }
                 }
@@ -87,10 +87,10 @@ struct PBAddSheet: View {
                     } label: {
                         Text("\(d)")
                             .font(.captionStrong)
-                            .foregroundColor(selectedDistance == d ? Color.bgBase : Color.textMuted)
+                            .foregroundColor(selectedDistance == d ? Color.textOnAccent : Color.textMuted)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(selectedDistance == d ? Color.accentCyan : Color.bgInset)
+                            .background(selectedDistance == d ? Color.accentAction : Color.bgInset)
                             .cornerRadius(20)
                     }
                 }
@@ -131,10 +131,10 @@ struct PBAddSheet: View {
         } label: {
             Text("Save PB")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(canSave ? Color.bgBase : Color.textFaint)
+                .foregroundColor(canSave ? Color.textOnAccent : Color.textFaint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(canSave ? Color.accentCyan : Color.bgInset)
+                .background(canSave ? Color.accentAction : Color.bgInset)
                 .cornerRadius(12)
         }
         .disabled(!canSave || isSaving)

@@ -53,7 +53,7 @@ struct SetScheduleView: View {
                                 .datePickerStyle(.graphical)
                                 .background(Color.bgSunken)
                                 .cornerRadius(12)
-                                .tint(Color.accentCyan)
+                                .tint(Color.accentAction)
                                 .onChange(of: viewModel.selectedDate) { _, _ in
                                     viewModel.updateAvailableSlots()
                                 }
@@ -80,8 +80,8 @@ struct SetScheduleView: View {
                                                 }
                                                 .frame(maxWidth: .infinity)
                                                 .frame(height: 52)
-                                                .background(viewModel.amPm == slotOption ? Color.accentCyan : Color.bgSunken)
-                                                .foregroundColor(viewModel.amPm == slotOption ? .black : Color.textMuted)
+                                                .background(viewModel.amPm == slotOption ? Color.accentAction : Color.bgSunken)
+                                                .foregroundColor(viewModel.amPm == slotOption ? Color.textOnAccent : Color.textMuted)
                                                 .cornerRadius(8)
                                                 .overlay(
                                                     RoundedRectangle(cornerRadius: 8)
@@ -155,7 +155,7 @@ struct SetScheduleView: View {
         VStack(spacing: 0) {
             if viewModel.isLoadingSquads {
                 ProgressView()
-                    .tint(Color.accentCyan)
+                    .tint(Color.accentAction)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 16)
             } else if viewModel.squads.isEmpty {
@@ -181,21 +181,21 @@ struct SetScheduleView: View {
                             Spacer()
                             if viewModel.selectedSquad?.id == squad.id {
                                 Image(systemName: "checkmark")
-                                    .foregroundColor(Color.accentCyan)
+                                    .foregroundColor(Color.accentAction)
                             }
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 12)
                         .background(
                             viewModel.selectedSquad?.id == squad.id
-                                ? Color.accentCyan.opacity(0.1)
+                                ? Color.accentAction.opacity(0.1)
                                 : Color.bgRaised
                         )
                         .cornerRadius(10)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
                                 .stroke(
-                                    viewModel.selectedSquad?.id == squad.id ? Color.accentCyan : Color.divider,
+                                    viewModel.selectedSquad?.id == squad.id ? Color.accentAction : Color.divider,
                                     lineWidth: 1
                                 )
                         )

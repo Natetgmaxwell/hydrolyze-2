@@ -149,9 +149,9 @@ final class SessionReviewViewModel: ObservableObject {
 
             var color: Color {
                 switch self {
-                case .green: return Color.green
-                case .amber: return Color.orange
-                case .red: return Color.red
+                case .green: return Color.statusSuccess
+                case .amber: return Color.accentAmber
+                case .red: return Color.statusError
                 }
             }
 

@@ -143,7 +143,7 @@ struct WorkoutDetailView: View {
 
             if viewModel.isLoading && viewModel.workout == nil {
                 ProgressView()
-                    .tint(Color.accentCyan)
+                    .tint(Color.accentAction)
             }
         }
         .navigationTitle(viewModel.workout?.title ?? "Workout")
@@ -254,12 +254,12 @@ struct WorkoutDetailView: View {
                     VStack(spacing: 8) {
                         Image(systemName: "list.bullet.rectangle.portrait")
                             .font(.largeTitle)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.textMuted)
                         Text("No sets in this workout")
                             .font(.headline)
                         Text("Open in the workout builder to add sets.")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.textMuted)
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
@@ -318,7 +318,7 @@ struct WorkoutDetailView: View {
                             if let gear = set.gear, !gear.isEmpty {
                                 Text(gear.joined(separator: ", "))
                                     .font(.captionStrong)
-                                    .foregroundColor(Color.accentCyan)
+                                    .foregroundColor(Color.accentAction)
                             }
                             // Intensity label
                             if let intensity = set.intensityLabel {
@@ -340,10 +340,10 @@ struct WorkoutDetailView: View {
                             if set.suit == true {
                                 Text("SUIT")
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(Color.accentCyan)
+                                    .foregroundColor(Color.accentAction)
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1)
-                                    .background(Color.accentCyan.opacity(0.12))
+                                    .background(Color.accentAction.opacity(0.12))
                                     .cornerRadius(4)
                             }
                         }
@@ -354,7 +354,7 @@ struct WorkoutDetailView: View {
                     if isTimeable {
                         Image(systemName: "play.fill")
                             .font(.caption)
-                            .foregroundColor(Color.accentCyan)
+                            .foregroundColor(Color.accentAction)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -677,8 +677,8 @@ struct WorkoutDetailView: View {
     private func statusColor(_ status: WorkoutStatus) -> Color {
         switch status {
         case .draft: return Color.accentAmber
-        case .scheduled: return Color.accentCyan
-        case .inProgress: return Color.accentCyan
+        case .scheduled: return Color.accentAction
+        case .inProgress: return Color.accentAction
         case .complete: return Color.statusSuccess
         }
     }

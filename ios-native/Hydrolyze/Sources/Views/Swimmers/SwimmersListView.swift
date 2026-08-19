@@ -56,7 +56,7 @@ struct SwimmersListView: View {
                     } label: {
                         Image(systemName: "person.2.crop.square.stack")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color.accentCyan)
+                            .foregroundColor(Color.accentAction)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -66,7 +66,7 @@ struct SwimmersListView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color.accentCyan)
+                            .foregroundColor(Color.accentAction)
                     }
                 }
             }
@@ -127,7 +127,7 @@ struct SwimmersListView: View {
             }
             // PHASE 2.6 v1.17.0: emotional-design Slice 1 motion
             // change. Cyan-tinted pull-to-refresh indicator.
-            .tint(Color.accentCyan)
+            .tint(Color.accentAction)
         }
         .sheet(item: $swimmerToMove) { swimmer in
             MoveSwimmerSheet(swimmer: swimmer, viewModel: viewModel)
@@ -151,21 +151,21 @@ struct SwimmersListView: View {
                         .font(.captionStrong)
                         .foregroundColor(
                             viewModel.selectedFilter == filter
-                            ? Color.accentCyan
+                            ? Color.accentAction
                             : Color.textMuted
                         )
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
                             viewModel.selectedFilter == filter
-                            ? Color.accentCyan.opacity(0.15)
+                            ? Color.accentAction.opacity(0.15)
                             : Color.bgInset
                         )
                         .cornerRadius(8)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(
-                                    viewModel.selectedFilter == filter ? Color.accentCyan : Color.divider,
+                                    viewModel.selectedFilter == filter ? Color.accentAction : Color.divider,
                                     lineWidth: 1
                                 )
                         )
@@ -199,7 +199,7 @@ struct SwimmersListView: View {
             LazyVStack(spacing: 0) {
                 if viewModel.isLoading && viewModel.allSwimmers.isEmpty {
                     ProgressView()
-                        .tint(Color.accentCyan)
+                        .tint(Color.accentAction)
                         .padding(.top, 40)
                 } else if viewModel.allSwimmers.isEmpty, let errorMessage = viewModel.errorMessage {
                     errorState(errorMessage)
@@ -354,7 +354,7 @@ struct SwimmersListView: View {
                 Task { await viewModel.loadSwimmers(coachId: coachId) }
             }
             .font(.caption)
-            .foregroundColor(Color.accentCyan)
+            .foregroundColor(Color.accentAction)
             .padding(.top, 8)
         }
         .padding(.top, 80)
@@ -386,7 +386,7 @@ private struct MoveSwimmerSheet: View {
                                 Spacer()
                                 if selectedGroupId == nil {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color.accentCyan)
+                                        .foregroundColor(Color.accentAction)
                                 }
                             }
                         }
@@ -401,7 +401,7 @@ private struct MoveSwimmerSheet: View {
                                     Spacer()
                                     if selectedGroupId == group.id {
                                         Image(systemName: "checkmark")
-                                            .foregroundColor(Color.accentCyan)
+                                            .foregroundColor(Color.accentAction)
                                     }
                                 }
                             }
@@ -417,7 +417,7 @@ private struct MoveSwimmerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Move") {
@@ -426,7 +426,7 @@ private struct MoveSwimmerSheet: View {
                             dismiss()
                         }
                     }
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                 }
             }
             .task {

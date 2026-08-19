@@ -86,7 +86,7 @@ struct SessionStartView: View {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                 }
             }
         }
@@ -310,7 +310,7 @@ struct RosterPickerView: View {
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(Color.statusError)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                     .multilineTextAlignment(.center)
@@ -328,7 +328,7 @@ struct RosterPickerView: View {
                 HStack {
                     if viewModel.isLoading {
                         ProgressView()
-                            .tint(.white)
+                            .tint(Color.textOnAccent)
                             .padding(.trailing, 8)
                     }
                     Text("Lock Roster")
@@ -338,7 +338,7 @@ struct RosterPickerView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(viewModel.selectedSwimmerIds.isEmpty ? Color(hex: "1a3050") : Color.accentCyan)
+                .background(viewModel.selectedSwimmerIds.isEmpty ? Color.bgInset : Color.accentAction)
                 .foregroundColor(viewModel.selectedSwimmerIds.isEmpty ? Color.textFaint : Color.bgBase)
                 .cornerRadius(12)
             }
@@ -368,7 +368,7 @@ struct SwimmerRowView: View {
             HStack(spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.titleSmall)
-                    .foregroundColor(isSelected ? Color.accentCyan : Color.textFaint)
+                    .foregroundColor(isSelected ? Color.accentAction : Color.textFaint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(swimmer.fullName)
                         .font(.bodyEmphasis)
@@ -421,9 +421,9 @@ struct SwimmerRowView: View {
     /// without reading the words.
     private var captionColor: Color {
         switch attendanceReason {
-        case .explicitIn?:   return Color.accentCyanDim
+        case .explicitIn?:   return Color.accentActionDim
         case .standingSlot?: return Color.textMuted
-        case .explicitOut?:  return Color.accentSlate
+        case .explicitOut?:  return Color.textFaint
         default:             return Color.textFaint
         }
     }
@@ -562,7 +562,7 @@ struct WavePreviewView: View {
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(Color.statusError)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                     .multilineTextAlignment(.center)
@@ -607,7 +607,7 @@ struct WavePreviewView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.accentAmberOn)
+        .background(Color.accentAmber.opacity(0.15))
         .cornerRadius(8)
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -638,7 +638,7 @@ struct WavePreviewView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.captionStrong)
-                    .foregroundColor(viewModel.previewSetIndex == 0 ? Color.textFaint : Color.accentCyan)
+                    .foregroundColor(viewModel.previewSetIndex == 0 ? Color.textFaint : Color.accentAction)
             }
             .disabled(viewModel.previewSetIndex == 0)
 
@@ -660,7 +660,7 @@ struct WavePreviewView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.captionStrong)
-                    .foregroundColor(viewModel.previewSetIndex >= workoutSets.count - 1 ? Color.textFaint : Color.accentCyan)
+                    .foregroundColor(viewModel.previewSetIndex >= workoutSets.count - 1 ? Color.textFaint : Color.accentAction)
             }
             .disabled(viewModel.previewSetIndex >= workoutSets.count - 1)
         }
@@ -681,7 +681,7 @@ struct WavePreviewView: View {
                 Spacer()
                 Text("\(viewModel.poolConfig.laneCount)")
                     .font(.eyebrow)
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                     .frame(minWidth: 28)
             }
             Slider(
@@ -692,7 +692,7 @@ struct WavePreviewView: View {
                 in: 1...10,
                 step: 1
             )
-            .tint(Color.accentCyan)
+            .tint(Color.accentAction)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -719,7 +719,7 @@ struct WavePreviewView: View {
         } label: {
             Text("Reset to Suggested")
                 .font(.caption)
-                .foregroundColor(Color.accentCyan)
+                .foregroundColor(Color.accentAction)
         }
         .padding(.bottom, 8)
     }
@@ -731,7 +731,7 @@ struct WavePreviewView: View {
             HStack {
                 if viewModel.isLoading {
                     ProgressView()
-                        .tint(.black)
+                        .tint(Color.textOnAccent)
                         .padding(.trailing, 8)
                 }
                 Text("Start Session")
@@ -739,8 +739,8 @@ struct WavePreviewView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(Color.accentCyan)
-            .foregroundColor(Color.bgBase)
+            .background(Color.accentAction)
+            .foregroundColor(Color.textOnAccent)
             .cornerRadius(12)
         }
         .disabled(viewModel.isLoading)
@@ -780,7 +780,7 @@ struct LaneColumn: View {
                         .foregroundColor(Color.accentAmber)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.accentAmberOn)
+                        .background(Color.accentAmber.opacity(0.15))
                         .cornerRadius(4)
                 }
             }
@@ -974,7 +974,7 @@ struct SwimmerChip: View {
 
             Text(formattedTouch)
                 .font(.captionStrong)
-                .foregroundColor(Color.accentCyan)
+                .foregroundColor(Color.accentAction)
 
             // Maturity badge — Phase 2.6 maturity tiers. Shows the coach
             // where the prediction came from: "PB" (curve), "N swims"

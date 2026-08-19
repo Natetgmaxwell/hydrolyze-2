@@ -45,14 +45,14 @@ struct AuthTextField: View {
                 // Slight label color shift on focus so the user
                 // knows which field is the active one without
                 // having to look at the border.
-                .foregroundColor(isFocused ? Color.accentCyan : Color.textFaint)
+                .foregroundColor(isFocused ? Color.accentAction : Color.textFaint)
                 .animation(Animations.snap, value: isFocused)
 
             HStack(spacing: 12) {
                 if let icon = icon {
                     Image(systemName: icon)
                         .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(isFocused ? Color.accentCyan : Color.textFaint)
+                        .foregroundColor(isFocused ? Color.accentAction : Color.textFaint)
                         .frame(width: 18)
                 }
                 Group {
@@ -74,7 +74,7 @@ struct AuthTextField: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(
-                        isFocused ? Color.accentCyan : Color.divider,
+                        isFocused ? Color.accentAction : Color.divider,
                         lineWidth: isFocused ? 1.5 : 1.0
                     )
                     .animation(Animations.snap, value: isFocused)

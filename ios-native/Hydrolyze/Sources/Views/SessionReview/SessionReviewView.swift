@@ -112,11 +112,11 @@ struct SessionReviewView: View {
                             .font(.system(size: 12, weight: .regular))
                             .foregroundColor(
                                 viewModel.filter == f
-                                ? Color.accentCyan.opacity(0.75)
+                                ? Color.accentAction.opacity(0.75)
                                 : Color.textFaint.opacity(0.75)
                             )
                     }
-                    .foregroundColor(viewModel.filter == f ? Color.accentCyan : Color.textFaint)
+                    .foregroundColor(viewModel.filter == f ? Color.accentAction : Color.textFaint)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(
@@ -163,7 +163,7 @@ struct SessionReviewView: View {
             } else if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.body)
-                    .foregroundColor(Color.red)
+                    .foregroundColor(Color.statusError)
                     .padding()
             } else if viewModel.filteredRows.isEmpty {
                 // PHASE 2.6 v1.14: empty-state copy now lives on the
@@ -337,8 +337,8 @@ struct SessionReviewView: View {
                         .font(.titleSmall)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(Color.accentCyan)
-                        .foregroundColor(Color.bgBase)
+                        .background(Color.accentAction)
+                        .foregroundColor(Color.textOnAccent)
                         .cornerRadius(12)
                         // Animate the label change — when the
                         // row mix changes (e.g., a row moves
@@ -463,7 +463,7 @@ struct ReviewRowView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     // PHASE 2.6 v1.14: LOUD variance hint for likelyWrong,
                     // rendered as the FIRST child of the row content.
-                    // Amber (#f59e0b) 13pt semibold with warning-triangle
+                    // Amber (#F5B34B) 13pt semibold with warning-triangle
                     // icon — the coach understands WHY the row is flagged
                     // in <1s.
                     if row.band == .likelyWrong, let h = row.varianceHint {
@@ -521,7 +521,7 @@ struct ReviewRowView: View {
                                     // .contentShape(Rectangle()).
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 18))
-                                        .foregroundColor(Color.accentCyan)
+                                        .foregroundColor(Color.accentAction)
                                         .frame(width: 44, height: 44)
                                         .contentShape(Rectangle())
                                 }
@@ -571,7 +571,7 @@ struct ReviewRowView: View {
                     // auto-paired high-confidence green.
                     Image(systemName: "hand.thumbsup.fill")
                         .font(.system(size: 12))
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12))
@@ -676,7 +676,7 @@ struct ReassignSheet: View {
                                 }
                                 if candidate.id == row.id {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color.accentCyan)
+                                        .foregroundColor(Color.accentAction)
                                 }
                             }
                         }
@@ -693,7 +693,7 @@ struct ReassignSheet: View {
                         Haptics.tap()
                         dismiss()
                     }
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                 }
             }
         }

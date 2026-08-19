@@ -151,7 +151,7 @@ struct WorkoutBuilderView: View {
                 .cornerRadius(8)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(viewModel.isFocused ? Color.accentCyan : Color.divider, lineWidth: viewModel.isFocused ? 2 : 1)
+                        .stroke(viewModel.isFocused ? Color.accentAction : Color.divider, lineWidth: viewModel.isFocused ? 2 : 1)
                 )
                 .overlay(alignment: .topLeading) {
                     if viewModel.workoutText.isEmpty {
@@ -186,7 +186,7 @@ struct WorkoutBuilderView: View {
                 HStack {
                     Spacer()
                     ProgressView()
-                        .tint(Color.accentCyan)
+                        .tint(Color.accentAction)
                     Spacer()
                 }
                 .padding(.vertical, 20)
@@ -346,7 +346,7 @@ struct WorkoutBuilderView: View {
                     .foregroundColor(Color.textOnAccent)
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
-                    .background(Color.accentCyan)
+                    .background(Color.accentAction)
                     .cornerRadius(12)
             }
             .disabled(!viewModel.canSave || viewModel.isSaving)

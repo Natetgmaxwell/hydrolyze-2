@@ -466,11 +466,15 @@ function cleanFragmentIntensity(
 ): { type: string; label: string } | null {
   if (intensity) {
     // FIX (2026-08-19): "75 @ 100 pace DIVE" — the LLM emits the
-    // pace-target as the fragment's intensity label ("@ 100 pace").
-    // That's a target, not an intensity word. Map it to race_pace
-    // with a tidy label so pairing keys on the effort tier and the
-    // preview doesn't show "@ 100 pace" as an intensity.
-    const paceMatch = intensity.label.match(/^@?\s*(\d+)\s*(?:m|mtr)?\s*pace$/i);
+    // pace-target as the fragment's intensity label ("@ 100 pace",
+    // "100 pace dive", "100m pace"). That's a target, not an
+    // intensity word. Map it to race_pace with a tidy label so
+    // pairing keys on the effort tier and the preview doesn't show
+    // the raw target. The \b allows trailing start/gear words — the
+    // start type is carried separately (start_type), so the label
+    // doesn't need them. (LLM labels are non-deterministic: verified
+    // "100 pace" AND "100 pace dive" from the same input.)
+    const paceMatch = intensity.label.match(/^@?\s*(\d+)\s*(?:m|mtr)?\s*pace\b/i);
     if (paceMatch) {
       return { type: "race_pace", label: `${paceMatch[1]} pace` };
     }

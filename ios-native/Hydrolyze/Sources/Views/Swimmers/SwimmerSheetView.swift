@@ -48,7 +48,7 @@ struct SwimmerSheetView: View {
                             dismiss()
                         }
                     }
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
@@ -58,7 +58,7 @@ struct SwimmerSheetView: View {
                             }
                         }
                     }
-                    .foregroundColor(viewModel.canSave ? Color.accentCyan : Color.textFaint)
+                    .foregroundColor(viewModel.canSave ? Color.accentAction : Color.textFaint)
                     .disabled(!viewModel.canSave)
                 }
             }
@@ -143,10 +143,10 @@ struct SwimmerSheetView: View {
                     } label: {
                         Text(g == "X" ? "—" : g)
                             .font(.bodyEmphasis)
-                            .foregroundColor(viewModel.gender == g ? Color.bgBase : Color.textMuted)
+                            .foregroundColor(viewModel.gender == g ? Color.textOnAccent : Color.textMuted)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(viewModel.gender == g ? Color.accentCyan : Color.bgInset)
+                            .background(viewModel.gender == g ? Color.accentAction : Color.bgInset)
                             .cornerRadius(8)
                     }
                 }
@@ -230,10 +230,10 @@ struct SwimmerSheetView: View {
                     } label: {
                         Text(group.name)
                             .font(.captionStrong)
-                            .foregroundColor(viewModel.selectedGroupIds.contains(group.id) ? Color.bgBase : Color.textMuted)
+                            .foregroundColor(viewModel.selectedGroupIds.contains(group.id) ? Color.textOnAccent : Color.textMuted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(viewModel.selectedGroupIds.contains(group.id) ? Color.accentCyan : Color.bgInset)
+                            .background(viewModel.selectedGroupIds.contains(group.id) ? Color.accentAction : Color.bgInset)
                             .cornerRadius(16)
                     }
                 }
@@ -288,7 +288,7 @@ struct DatePickerSheet: View {
                 if useDate {
                     DatePicker("Birthdate", selection: $selectedDate, displayedComponents: .date)
                         .datePickerStyle(.graphical)
-                        .tint(Color.accentCyan)
+                        .tint(Color.accentAction)
                         .padding(.horizontal)
                 }
                 Spacer()
@@ -299,7 +299,7 @@ struct DatePickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 }
             }
         }

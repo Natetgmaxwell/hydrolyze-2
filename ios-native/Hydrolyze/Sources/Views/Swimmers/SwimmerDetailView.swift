@@ -36,7 +36,7 @@ struct SwimmerDetailView: View {
 
             if viewModel.isLoading {
                 ProgressView()
-                    .tint(Color.accentCyan)
+                    .tint(Color.accentAction)
             } else if let swimmer = viewModel.swimmer {
                 ScrollView {
                     VStack(spacing: 0) {
@@ -83,12 +83,12 @@ struct SwimmerDetailView: View {
                 } label: {
                     Image(systemName: "person.crop.circle.badge.plus")
                 }
-                .foregroundColor(Color.accentCyan)
+                .foregroundColor(Color.accentAction)
                 .accessibilityLabel("Invite to Hydrolyze")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Edit") { showEditSheet = true }
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
             }
         }
         .sheet(isPresented: $showEditSheet) {
@@ -156,7 +156,7 @@ struct SwimmerDetailView: View {
         VStack(spacing: 12) {
             Text(viewModel.initials)
                 .font(.titleLarge)
-                .foregroundColor(Color.accentCyan)
+                .foregroundColor(Color.accentAction)
                 .frame(width: 56, height: 56)
                 .background(Color.bgInset)
                 .clipShape(Circle())
@@ -289,10 +289,10 @@ struct SwimmerDetailView: View {
                             Text(group.name)
                                 .font(.captionStrong)
                         }
-                        .foregroundColor(isMember ? Color.bgBase : Color.textMuted)
+                        .foregroundColor(isMember ? Color.textOnAccent : Color.textMuted)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(isMember ? Color.accentCyan : Color.bgInset)
+                        .background(isMember ? Color.accentAction : Color.bgInset)
                         .cornerRadius(16)
                     }
                 }
@@ -316,7 +316,7 @@ struct SwimmerDetailView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.captionStrong)
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 }
             }
             .padding(.horizontal, 16)
@@ -513,7 +513,7 @@ private var recoverySection: some View {
             if viewModel.hasEightWeeksOfData {
                 // Sparkline: small, ~48pt tall. LineMark over the
                 // week-start x-axis vs strikes-per-100-reps y-axis.
-                // Colors reuse the existing palette (`accentCyan`
+                // Colors reuse the existing palette (`accentAction`
                 // matches ProgressionChart/TrendChart). The x-axis
                 // labels would be unreadable at this height, so we
                 // hide them — the eyebrow + signature line above
@@ -523,7 +523,7 @@ private var recoverySection: some View {
                         x: .value("Week", point.weekStartISO),
                         y: .value("Strain", point.strikesPer100Reps)
                     )
-                    .foregroundStyle(Color.accentCyan)
+                    .foregroundStyle(Color.accentAction)
                     .interpolationMethod(.monotone)
                 }
                 .chartXAxis(.hidden)
@@ -562,14 +562,14 @@ private var recoverySection: some View {
             } label: {
                 Text("Transfer to Coach")
                     .font(.body)
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(Color.bgInset)
                     .cornerRadius(12)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.accentCyan, lineWidth: 1)
+                            .stroke(Color.accentAction, lineWidth: 1)
                     )
             }
 
@@ -623,10 +623,10 @@ private var recoverySection: some View {
     private func gearBadge(_ gear: String) -> some View {
         Text(gear)
             .font(.monoChip)
-            .foregroundColor(Color.accentCyan)
+            .foregroundColor(Color.accentAction)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color.accentCyan.opacity(0.18))
+            .background(Color.accentAction.opacity(0.18))
             .cornerRadius(4)
     }
 
@@ -637,15 +637,15 @@ private var recoverySection: some View {
     private func intensityColor(_ intensity: String) -> Color {
         switch intensity.lowercased() {
         case "max", "t5", "sprint", "all-out":
-            return Color(hex: "ff4d6d")  // red — race effort
+            return Color.statusError  // red — race effort
         case "threshold", "hard", "t4":
-            return Color(hex: "ff8c42")  // orange — comfortably hard
+            return Color.accentActionDim  // orange — comfortably hard
         case "tempo", "t3":
-            return Color(hex: "ffd166")  // yellow — tempo
+            return Color.accentAmber  // yellow — tempo
         case "moderate", "cruise", "t2":
-            return Color.accentCyan  // cyan — aerobic
+            return Color.accentAction  // cyan — aerobic
         case "easy", "recovery", "t1":
-            return Color(hex: "06d6a0")  // green — easy
+            return Color.statusSuccess  // green — easy
         default:
             return Color.textFaint  // grey — unknown
         }
@@ -691,7 +691,7 @@ Text(stroke)
                                 Spacer()
                                 if selectedStroke == stroke {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(Color.accentCyan)
+                                        .foregroundColor(Color.accentAction)
                                 }
                             }
                         }
@@ -705,7 +705,7 @@ Text(stroke)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 }
             }
         }
@@ -747,7 +747,7 @@ private struct TransferSwimmerSheet: View {
 
                             if isLoading {
                                 ProgressView()
-                                    .tint(Color.accentCyan)
+                                    .tint(Color.accentAction)
                                     .padding(.top, 40)
                             } else {
                                 ForEach(coaches) { coach in
@@ -764,21 +764,21 @@ private struct TransferSwimmerSheet: View {
                                             Spacer()
                                             if selectedCoach?.id == coach.id {
                                                 Image(systemName: "checkmark")
-                                                    .foregroundColor(Color.accentCyan)
+                                                    .foregroundColor(Color.accentAction)
                                             }
                                         }
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 12)
                                         .background(
                                             selectedCoach?.id == coach.id
-                                                ? Color.accentCyan.opacity(0.1)
+                                                ? Color.accentAction.opacity(0.1)
                                                 : Color.bgRaised
                                         )
                                         .cornerRadius(10)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 10)
                                                 .stroke(
-                                                    selectedCoach?.id == coach.id ? Color.accentCyan : Color.divider,
+                                                    selectedCoach?.id == coach.id ? Color.accentAction : Color.divider,
                                                     lineWidth: 1
                                                 )
                                         )
@@ -804,7 +804,7 @@ private struct TransferSwimmerSheet: View {
                                 .foregroundColor(Color.textOnAccent)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
-                                .background(selectedCoach != nil ? Color.accentCyan : Color.bgInset)
+                                .background(selectedCoach != nil ? Color.accentAction : Color.bgInset)
                                 .cornerRadius(10)
                         }
                         .disabled(selectedCoach == nil || isTransferring)
@@ -820,7 +820,7 @@ private struct TransferSwimmerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 }
             }
         }

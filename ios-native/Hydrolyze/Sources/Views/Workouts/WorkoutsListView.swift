@@ -120,7 +120,7 @@ struct WorkoutsListView: View {
                     // session_type="3mt" and opens the builder on it
                     // so the coach edits before saving). The pill
                     // styling stays identical to the previous version:
-                    // accentCyan background, black captionStrong text,
+                    // accentAction background, black captionStrong text,
                     // 8pt corner radius.
                     Menu {
                         // Plain new builder — NavigationLink inside
@@ -138,10 +138,10 @@ struct WorkoutsListView: View {
                     } label: {
                         Text("+ New")
                             .font(.captionStrong)
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textOnAccent)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Color.accentCyan)
+                            .background(Color.accentAction)
                             .cornerRadius(8)
                     }
                 }
@@ -221,19 +221,19 @@ struct WorkoutsListView: View {
                     } label: {
                         Text(filter.rawValue)
                             .font(.captionStrong)
-                            .foregroundColor(viewModel.selectedFilter == filter ? Color.accentCyan : Color.textMuted)
+                            .foregroundColor(viewModel.selectedFilter == filter ? Color.accentAction : Color.textMuted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(
                                 viewModel.selectedFilter == filter
-                                    ? Color.accentCyan.opacity(0.15)
+                                    ? Color.accentAction.opacity(0.15)
                                     : Color.bgInset
                             )
                             .cornerRadius(8)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(
-                                        viewModel.selectedFilter == filter ? Color.accentCyan : Color.divider,
+                                        viewModel.selectedFilter == filter ? Color.accentAction : Color.divider,
                                         lineWidth: 1
                                     )
                             )
@@ -421,16 +421,16 @@ struct WorkoutRowView: View {
             // "3MT" badge next to the title when the workout was
             // created from the template entry point (session_type =
             // "3mt" in the DB). Mono-styled to read as a label, not
-            // body text; accentCyan on a 15% accentCyan tint keeps it
+            // body text; accentAction on a 15% accentAction tint keeps it
             // in the brand active state without competing with the
             // status dot/label.
             if workout.sessionType == "3mt" {
                 Text("3MT")
                     .font(.jetBrainsMono(size: 11, weight: .bold))
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.accentCyan.opacity(0.15))
+                    .background(Color.accentAction.opacity(0.15))
                     .cornerRadius(4)
             }
 
@@ -481,14 +481,14 @@ struct WorkoutRowView: View {
         // `.foregroundColor(statusColor)` on the Text above, so the
         // dot and the label stay in sync (a textFaint dot + amber
         // label would have been incoherent). inProgress is kept on
-        // accentCyan — it's an active state and cyan is the brand
+        // accentAction — it's an active state and cyan is the brand
         // active color, even though inProgress isn't in the spec's
         // dot list (the spec only enumerates draft / scheduled /
         // complete).
         switch workout.status {
         case .draft: return Color.textFaint
-        case .scheduled: return Color.accentCyan
-        case .inProgress: return Color.accentCyan
+        case .scheduled: return Color.accentAction
+        case .inProgress: return Color.accentAction
         case .complete: return Color.statusSuccess
         }
     }

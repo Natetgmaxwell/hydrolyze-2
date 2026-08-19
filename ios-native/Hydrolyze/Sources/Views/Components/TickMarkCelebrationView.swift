@@ -36,7 +36,7 @@ struct TickMarkCelebrationView: View {
             Circle()
                 .trim(from: 0, to: circleProgress)
                 .stroke(
-                    Color.accentCyan,
+                    Color.accentAction,
                     style: StrokeStyle(lineWidth: 3, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
@@ -45,7 +45,7 @@ struct TickMarkCelebrationView: View {
             TickShape()
                 .trim(from: 0, to: tickProgress)
                 .stroke(
-                    Color.accentCyan,
+                    Color.accentAction,
                     style: StrokeStyle(
                         lineWidth: 3,
                         lineCap: .round,

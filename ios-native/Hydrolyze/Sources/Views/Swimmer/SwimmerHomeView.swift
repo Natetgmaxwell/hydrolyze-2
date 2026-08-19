@@ -47,10 +47,10 @@ struct SwimmerHomeView: View {
                             Label("Profile", systemImage: "gearshape.fill")
                         }
                 }
-                .tint(Color.accentCyan)
+                .tint(Color.accentAction)
             } else {
                 ProgressView()
-                    .tint(Color.accentCyan)
+                    .tint(Color.accentAction)
             }
         }
         .task {
@@ -78,7 +78,7 @@ struct MySwimsTab: View {
                 VStack(spacing: 12) {
                     if viewModel.isLoading && viewModel.recentSessions.isEmpty {
                         ProgressView()
-                            .tint(Color.accentCyan)
+                            .tint(Color.accentAction)
                             .padding(.top, 40)
                     } else if viewModel.recentSessions.isEmpty {
                         emptyState
@@ -213,7 +213,7 @@ struct MyPBsTab: View {
                 VStack(spacing: 12) {
                     if viewModel.isLoading && viewModel.pbs.isEmpty {
                         ProgressView()
-                            .tint(Color.accentCyan)
+                            .tint(Color.accentAction)
                             .padding(.top, 40)
                     } else if viewModel.pbs.isEmpty {
                         Text("No personal bests yet")
@@ -225,7 +225,7 @@ struct MyPBsTab: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(stroke)
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(Color.accentCyan)
+                                    .foregroundColor(Color.accentAction)
                                     .padding(.top, 8)
                                 ForEach(pbs) { pb in
                                     PBRow(pb: pb, isPersonalBest: pb.timeMs == fastestTimeMs(for: stroke))
@@ -329,7 +329,7 @@ struct MyCoachTab: View {
                 .overlay(
                     Text(initials)
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(Color.accentCyan)
+                        .foregroundColor(Color.accentAction)
                 )
 
             VStack(alignment: .leading, spacing: 4) {

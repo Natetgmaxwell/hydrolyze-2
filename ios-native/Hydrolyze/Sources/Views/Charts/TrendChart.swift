@@ -29,13 +29,13 @@ struct TrendChart: View {
 
     private var swimmerColorMap: [String: Color] {
         let palette: [Color] = [
-            Color.accentCyan,
+            Color.accentAction,
             Color.statusSuccess,
             Color.accentAmber,
             Color.statusError,
-            Color(hex: "8b5cf6"),
-            Color(hex: "ec4899"),
-            Color(hex: "14b8a6")
+            Color.textPrimary,
+            Color.accentActionDim,
+            Color.accentAmber
         ]
         let uniqueIds = Array(Set(buckets.map { $0.swimmerId })).sorted()
         return Dictionary(uniqueKeysWithValues: uniqueIds.enumerated().map { idx, id in

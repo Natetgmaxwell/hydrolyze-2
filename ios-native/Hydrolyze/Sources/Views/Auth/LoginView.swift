@@ -70,7 +70,7 @@ struct LoginView: View {
         VStack(spacing: 8) {
             Text("HYDROLYZE")
                 .font(.displayLarge)
-                .foregroundColor(Color.accentCyan)
+                .foregroundColor(Color.accentAction)
                 .opacity(animateIn ? 1.0 : 0.0)
                 .scaleEffect(animateIn ? 1.0 : 0.95)
                 .animation(Animations.springSoft, value: animateIn)
@@ -93,10 +93,10 @@ struct LoginView: View {
                 } label: {
                     Text(tab.rawValue)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(role == tab ? Color.bgBase : Color.textMuted)
+                        .foregroundColor(role == tab ? Color.textOnAccent : Color.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(role == tab ? Color.accentCyan : Color.clear)
+                        .background(role == tab ? Color.accentAction : Color.clear)
                 }
                 .buttonStyle(.plain)
             }
@@ -164,16 +164,16 @@ struct CoachLoginFlow: View {
         } label: {
             HStack {
                 if isLoading {
-                    ProgressView().tint(Color.bgBase)
+                    ProgressView().tint(Color.textOnAccent)
                 } else {
                     Text(submitButtonText)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color.bgBase)
+                        .foregroundColor(Color.textOnAccent)
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color.accentCyan)
+            .background(Color.accentAction)
             .cornerRadius(10)
         }
         .buttonStyle(.plain)
@@ -190,7 +190,7 @@ struct CoachLoginFlow: View {
             } label: {
                 Text(mode == .signIn ? "Don't have an account? Sign Up" : "Have an account? Sign In")
                     .font(.caption)
-                    .foregroundColor(Color.accentCyan)
+                    .foregroundColor(Color.accentAction)
             }
             .buttonStyle(.plain)
 
@@ -327,10 +327,10 @@ struct SwimmerLoginFlow: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 13, weight: isActive ? .semibold : .regular))
-                .foregroundColor(isActive ? Color.bgBase : Color.textMuted)
+                .foregroundColor(isActive ? Color.textOnAccent : Color.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(isActive ? Color.accentCyan : Color.clear)
+                .background(isActive ? Color.accentAction : Color.clear)
                 .cornerRadius(8)
         }
         .buttonStyle(.plain)
@@ -406,16 +406,16 @@ struct SwimmerLoginFlow: View {
         } label: {
             HStack {
                 if isLoading {
-                    ProgressView().tint(Color.bgBase)
+                    ProgressView().tint(Color.textOnAccent)
                 } else {
                     Text(mode == .signIn ? "Sign In" : "Create Account")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color.bgBase)
+                        .foregroundColor(Color.textOnAccent)
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color.accentCyan)
+            .background(Color.accentAction)
             .cornerRadius(10)
         }
         .buttonStyle(.plain)

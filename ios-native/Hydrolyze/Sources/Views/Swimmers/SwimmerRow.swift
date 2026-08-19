@@ -19,7 +19,7 @@ struct SwimmerRow: View {
             // 44pt initials circle — elevated surface with cyan text
             Text(initials)
                 .font(.bodyEmphasis)
-                .foregroundColor(Color.accentCyan)
+                .foregroundColor(Color.accentAction)
                 .frame(width: 44, height: 44)
                 .background(Color.bgInset)
                 .clipShape(Circle())

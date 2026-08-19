@@ -71,7 +71,7 @@ struct SpeedCurveChart: View {
                         x: .value("Session", p.xIndex),
                         y: .value("Time (ms)", p.timeMs)
                     )
-                    .foregroundStyle(Color.accentCyan)
+                    .foregroundStyle(Color.accentAction)
                     .symbolSize(40)
                 }
 
