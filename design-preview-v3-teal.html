@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hydrolyze V3 — Teal direction preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --abyss: #083133;   /* bgBase */
+    --deep:  #1B484A;   /* bgElevated panels */
+    --raised: #1A4345;  /* bgRaised — cards (mist@10% over abyss) */
+    --inset: #254D4F;   /* bgInset — chips, pills */
+    --selected: #31595B;
+    --divider: #2E5355;
+    --mist:   #C0E2E4;  /* textPrimary — 10.2:1 */
+    --fog:    #86AEB0;  /* textMuted — 5.8:1 */
+    --faint:  #5F8789;  /* textFaint — eyebrows */
+    --teal:   #467A7D;  /* structural mid — surfaces only, never text */
+    --coral:  #FF6B4A;  /* THE CTA — ≤20% of any screen */
+    --coral-dim: #D9583C;
+    --on-coral: #081A2B;
+    --success: #4ADE80;
+    --error:   #F87171;
+    --amber:   #F5B34B;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--abyss);
+    color: var(--mist);
+    font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 24px 80px;
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+  .mono { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
+
+  /* ---------- header ---------- */
+  .page-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
+  .wordmark { font-family: "JetBrains Mono", monospace; font-weight: 800; font-size: 28px; letter-spacing: -0.02em; }
+  .wordmark .tide { color: var(--coral); }
+  .sub { color: var(--fog); font-size: 14px; }
+  .lede { color: var(--fog); font-size: 15px; max-width: 640px; line-height: 1.55; margin: 10px 0 36px; }
+  .lede strong { color: var(--mist); font-weight: 600; }
+
+  h2.stage {
+    font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 600;
+    color: var(--faint); text-transform: none; letter-spacing: 0.08em;
+    margin: 48px 0 18px;
+  }
+
+  /* ---------- phone frames ---------- */
+  .stage-row { display: flex; gap: 36px; flex-wrap: wrap; align-items: flex-start; }
+  .phone {
+    width: 330px; border-radius: 44px; border: 1px solid var(--divider);
+    background: var(--abyss); overflow: hidden; position: relative;
+    box-shadow: 0 24px 60px rgba(0,0,0,.45), inset 0 1px 0 rgba(192,226,228,.06);
+    flex-shrink: 0;
+  }
+  .notch { width: 110px; height: 26px; background: #04262a; border-radius: 0 0 16px 16px; margin: 0 auto; }
+  .screen { padding: 14px 18px 24px; }
+
+  /* ---------- Today screen ---------- */
+  .date-row { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 18px; }
+  .date-row h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+  .date-row .when { color: var(--fog); font-size: 13px; }
+
+  .card {
+    background: var(--raised); border-radius: 18px; padding: 16px;
+    border: 1px solid rgba(192,226,228,.05);
+  }
+  .card + .card { margin-top: 10px; }
+  .wk-title { display: flex; justify-content: space-between; align-items: center; }
+  .wk-title .name { font-size: 16px; font-weight: 650; }
+  .pill {
+    font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 600;
+    background: var(--inset); color: var(--fog); padding: 3px 8px; border-radius: 6px;
+  }
+  .pill.coral { background: rgba(255,107,74,.14); color: var(--coral); }
+
+  .set-list { margin-top: 14px; display: flex; flex-direction: column; }
+  .set-row {
+    display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center;
+    padding: 9px 0; border-bottom: 1px solid var(--divider);
+  }
+  .set-row:last-child { border-bottom: none; }
+  .set-rep { font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 600; color: var(--fog); }
+  .set-desc { font-size: 13.5px; color: var(--mist); }
+  .set-desc span { color: var(--fog); }
+  .set-data { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--fog); text-align: right; }
+
+  .attend {
+    margin-top: 12px; display: flex; align-items: center; gap: 8px;
+    color: var(--fog); font-size: 12.5px; cursor: pointer; user-select: none;
+    padding: 6px 4px; border-radius: 8px; transition: background .15s;
+  }
+  .attend:hover { background: rgba(192,226,228,.05); }
+  .attend .count { font-family: "JetBrains Mono", monospace; color: var(--mist); font-weight: 600; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+
+  .cta {
+    margin-top: 18px; width: 100%; padding: 15px 0; border: none; border-radius: 14px;
+    background: var(--coral); color: var(--on-coral);
+    font-family: "JetBrains Mono", monospace; font-size: 14px; font-weight: 700;
+    letter-spacing: 0.04em; cursor: pointer;
+    transition: transform .1s ease, background .15s;
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+  .cta:active { transform: scale(.965); background: var(--coral-dim); animation: none; }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,74,0); }
+    50% { box-shadow: 0 0 0 7px rgba(255,107,74,.13); }
+  }
+  @media (prefers-reduced-motion: reduce) { .cta { animation: none; } }
+
+  .quick-row { display: flex; gap: 10px; margin-top: 12px; }
+  .quick {
+    flex: 1; padding: 11px 0; border-radius: 11px; text-align: center;
+    background: var(--raised); color: var(--fog); font-size: 12.5px; cursor: pointer;
+    border: 1px solid rgba(192,226,228,.05); transition: transform .1s, color .15s;
+  }
+  .quick:active { transform: scale(.96); color: var(--mist); }
+
+  /* ---------- Timing screen ---------- */
+  .timing-state { text-align: center; margin-top: 10px; color: var(--faint); }
+  .timing-state .label {
+    font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .14em;
+  }
+  .stopwatch {
+    text-align: center; font-family: "JetBrains Mono", monospace; font-weight: 800;
+    font-size: 54px; letter-spacing: -0.03em; margin: 22px 0 4px;
+    font-variant-numeric: tabular-nums; color: var(--mist);
+    transition: color .12s;
+  }
+  .stopwatch.flash { color: var(--coral); }
+  .stopwatch .ms { font-size: 30px; color: var(--fog); font-weight: 600; }
+  .splits { min-height: 148px; margin: 8px 2px 0; }
+  .split-row {
+    display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center;
+    padding: 8px 6px; border-bottom: 1px solid var(--divider);
+    animation: splitIn .32s cubic-bezier(.2,.9,.3,1.2) both;
+  }
+  @keyframes splitIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+  .split-row .lapno { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--faint); font-weight: 600; }
+  .split-row .swimmer { font-size: 13px; color: var(--mist); }
+  .split-row .time { font-family: "JetBrains Mono", monospace; font-size: 14px; font-weight: 600; color: var(--mist); }
+  .split-row .time.best { color: var(--success); }
+
+  .lap-row { display: flex; gap: 12px; margin-top: 14px; }
+  .lap-btn {
+    flex: 1; padding: 17px 0; border-radius: 15px; border: none; cursor: pointer;
+    font-family: "JetBrains Mono", monospace; font-size: 14px; font-weight: 800; letter-spacing: .06em;
+    transition: transform .09s;
+  }
+  .lap-btn:active { transform: scale(.95); }
+  .lap-btn.main { background: var(--coral); color: var(--on-coral); }
+  .lap-btn.main.running { background: transparent; color: var(--coral); border: 2px solid var(--coral); }
+  .lap-btn.ghost { background: var(--raised); color: var(--fog); }
+
+  /* ---------- token board ---------- */
+  .token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+  .tok {
+    border-radius: 13px; padding: 13px 14px; background: var(--raised);
+    border: 1px solid rgba(192,226,228,.05);
+  }
+  .tok .swatch { height: 44px; border-radius: 9px; margin-bottom: 10px; border: 1px solid rgba(192,226,228,.08); }
+  .tok .tname { font-size: 12.5px; font-weight: 650; }
+  .tok .thex { font-family: "JetBrains Mono", monospace; font-size: 10.5px; color: var(--fog); margin-top: 2px; }
+  .tok .trole { font-size: 11px; color: var(--faint); margin-top: 6px; line-height: 1.4; }
+
+  /* ---------- type specimen ---------- */
+  .specimen { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .spec {
+    background: var(--raised); border-radius: 13px; padding: 16px;
+    border: 1px solid rgba(192,226,228,.05);
+  }
+  .spec .tag { font-size: 11px; color: var(--faint); margin-bottom: 8px; }
+  .spec .samp-time { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+  .spec table.mini { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  .spec table.mini td { padding: 5px 0; border-bottom: 1px solid var(--divider); font-size: 13px; }
+  .spec table.mini tr:last-child td { border-bottom: none; }
+  .spec .num { font-weight: 600; }
+  .note { color: var(--faint); font-size: 12.5px; line-height: 1.5; margin-top: 10px; max-width: 720px; }
+  .note b { color: var(--fog); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="wordmark">HYDRO<span class="tide">LYZE</span></div>
+  <div class="sub">V3 direction — deep teal · JetBrains Mono data · coral CTA ≤20%</div>
+</div>
+<p class="lede">
+  Same processes, new skin. <strong>Teal monochrome</strong> carries every surface —
+  the pool-water palette reads calm at 5am and the single <strong>coral accent</strong> is
+  reserved for the one action that matters on each screen. All numbers roll in
+  <strong>JetBrains Mono</strong> so digits never shift width mid-tap. Try the stopwatch —
+  it runs, splits, and celebrates.
+</p>
+
+<!-- ================= STAGE 1: SCREENS ================= -->
+<h2 class="stage">01 · Core screens</h2>
+<div class="stage-row">
+
+  <!-- TODAY -->
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="date-row">
+        <h1>Today</h1>
+        <div class="when">Tuesday, 19 Aug</div>
+      </div>
+
+      <div class="card">
+        <div class="wk-title">
+          <div class="name">Squad AM</div>
+          <div class="pill">4 SETS · 3,200M</div>
+        </div>
+        <div class="set-list">
+          <div class="set-row">
+            <div class="set-rep">4×</div>
+            <div class="set-desc">50 Free <span>· build</span></div>
+            <div class="set-data">0:45</div>
+          </div>
+          <div class="set-row">
+            <div class="set-rep">8×</div>
+            <div class="set-desc">100 Free <span>· threshold</span></div>
+            <div class="set-data">1:20</div>
+          </div>
+          <div class="set-row">
+            <div class="set-rep">6×</div>
+            <div class="set-desc">50 Pull <span>· paddles</span></div>
+            <div class="set-data">0:50</div>
+          </div>
+          <div class="set-row">
+            <div class="set-rep">4×</div>
+            <div class="set-desc">25 Sprint <span>· dive</span></div>
+            <div class="set-data">FULL</div>
+          </div>
+        </div>
+        <div class="attend" onclick="this.querySelector('.count').textContent='11 / 12'">
+          <span class="dot"></span>
+          <span class="count">10 / 12</span> marked in — tap for the roster
+        </div>
+      </div>
+
+      <button class="cta" onclick="alert('→ SessionStart flow (unchanged process)')">START SESSION</button>
+
+      <div class="quick-row">
+        <div class="quick">Plan a session</div>
+        <div class="quick">Who's in today</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TIMING -->
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="timing-state">
+        <div class="label" id="stateLabel">READY — 8× 100 FREE · THRESHOLD</div>
+      </div>
+      <div class="stopwatch mono" id="clock">00:00<span class="ms">.00</span></div>
+
+      <div class="splits" id="splits">
+        <div class="split-row">
+          <div class="lapno">LAP 3</div>
+          <div class="swimmer">Mia K.</div>
+          <div class="time best">1:18.42</div>
+        </div>
+        <div class="split-row">
+          <div class="lapno">LAP 2</div>
+          <div class="swimmer">Jack R.</div>
+          <div class="time">1:21.07</div>
+        </div>
+        <div class="split-row">
+          <div class="lapno">LAP 1</div>
+          <div class="swimmer">Alice T.</div>
+          <div class="time">1:19.88</div>
+        </div>
+      </div>
+
+      <div class="lap-row">
+        <button class="lap-btn ghost" id="stopBtn" onclick="stopClock()">STOP</button>
+        <button class="lap-btn main" id="lapBtn" onclick="lapClock()">LAP</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SWIMMER DETAIL (data-density showcase) -->
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="date-row">
+        <h1>Mia K.</h1>
+        <div class="when">Gold squad</div>
+      </div>
+      <div class="card">
+        <div class="wk-title">
+          <div class="name">100 Free</div>
+          <div class="pill coral">PB −0.84</div>
+        </div>
+        <div class="set-list">
+          <div class="set-row">
+            <div class="set-rep">PB</div>
+            <div class="set-desc">personal best</div>
+            <div class="set-data">1:19.30</div>
+          </div>
+          <div class="set-row">
+            <div class="set-rep">EST</div>
+            <div class="set-desc">training range</div>
+            <div class="set-data">1:21–1:26</div>
+          </div>
+          <div class="set-row">
+            <div class="set-rep">LAST</div>
+            <div class="set-desc">this morning</div>
+            <div class="set-data">1:18.42</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="wk-title">
+          <div class="name">Recent times</div>
+          <div class="pill">8 REPS</div>
+        </div>
+        <div class="set-list">
+          <div class="set-row"><div class="set-rep">1</div><div class="set-desc">100 Free</div><div class="set-data">1:22.10</div></div>
+          <div class="set-row"><div class="set-rep">2</div><div class="set-desc">100 Free</div><div class="set-data">1:21.55</div></div>
+          <div class="set-row"><div class="set-rep">3</div><div class="set-desc">100 Free</div><div class="set-data">1:20.90</div></div>
+          <div class="set-row"><div class="set-rep">4</div><div class="set-desc">100 Free</div><div class="set-data">1:18.42</div></div>
+        </div>
+      </div>
+      <div class="attend"><span class="dot" style="background:var(--coral)"></span> trend: <span class="count mono">−3.68s</span> over 4 reps</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= STAGE 2: TOKENS ================= -->
+<h2 class="stage">02 · Palette — five teals, one fire</h2>
+<div class="token-grid">
+  <div class="tok"><div class="swatch" style="background:#C0E2E4"></div><div class="tname">Mist</div><div class="thex mono">#C0E2E4 · 10.2:1</div><div class="trole">Primary text, stopwatch digits, key numbers</div></div>
+  <div class="tok"><div class="swatch" style="background:#86AEB0"></div><div class="tname">Fog</div><div class="thex mono">#86AEB0 · 5.8:1</div><div class="trole">Secondary text, captions, unit labels</div></div>
+  <div class="tok"><div class="swatch" style="background:#467A7D"></div><div class="tname">Teal</div><div class="thex mono">#467A7D</div><div class="trole">Structure only — never text. Fills, strokes, chart series</div></div>
+  <div class="tok"><div class="swatch" style="background:#1B484A"></div><div class="tname">Deep</div><div class="thex mono">#1B484A</div><div class="trole">Elevated panels, timing screen backdrop</div></div>
+  <div class="tok"><div class="swatch" style="background:#083133"></div><div class="tname">Abyss</div><div class="thex mono">#083133</div><div class="trole">Window background. The water at 5am</div></div>
+  <div class="tok" style="border-color:rgba(255,107,74,.35)"><div class="swatch" style="background:#FF6B4A"></div><div class="tname">Coral</div><div class="thex mono">#FF6B4A · 5.0:1</div><div class="trole">The only CTA. START · LAP · Save. ≤20% of any screen</div></div>
+</div>
+<p class="note">
+  <b>Complement math:</b> the ramp's hue centers on ~183° (teal-cyan); coral sits near 14° — a
+  near-perfect complement, warm against cool, unmistakably "action" against a field of "water."
+  Amber (#F5B34B) stays for warnings, green (#4ADE80) for PB/success, light red (#F87171) for errors —
+  recoloured slightly brighter so all four pass contrast on abyss.
+</p>
+
+<!-- ================= STAGE 3: TYPE ================= -->
+<h2 class="stage">03 · Numbers live in JetBrains Mono — everything else breathes</h2>
+<div class="specimen">
+  <div class="spec">
+    <div class="tag">PROPORTIONAL (SF Pro) — digits shift width, columns wobble</div>
+    <div class="samp-time" style="font-family:-apple-system,system-ui">1:18.42 → 1:21.7</div>
+    <table class="mini" style="font-family:-apple-system,system-ui">
+      <tr><td>LAP 1</td><td style="text-align:right">1:21.07</td></tr>
+      <tr><td>LAP 2</td><td style="text-align:right">1:19.88</td></tr>
+      <tr><td>LAP 3</td><td style="text-align:right">1:18.42</td></tr>
+    </table>
+  </div>
+  <div class="spec">
+    <div class="tag">JETBRAINS MONO — tabular, still, confident</div>
+    <div class="samp-time mono">1:18.42 → 1:21.7</div>
+    <table class="mini mono">
+      <tr><td>LAP 1</td><td class="num" style="text-align:right">1:21.07</td></tr>
+      <tr><td>LAP 2</td><td class="num" style="text-align:right">1:19.88</td></tr>
+      <tr><td>LAP 3</td><td class="num" style="text-align:right">1:18.42</td></tr>
+    </table>
+  </div>
+</div>
+<p class="note">
+  <b>Rule:</b> if it's a measurement — time, distance, pace, stroke rate, count, percentage — it's mono,
+  tabular-nums, medium-to-bold weight. Names, sentences, buttons: SF Pro. Mono is the instrument panel;
+  SF is the human voice. The two never swap.
+</p>
+
+<script>
+  // ---------- live stopwatch demo ----------
+  let running = false, startTs = 0, elapsed = 0, lapCount = 3;
+  const clock = document.getElementById('clock');
+  const lapBtn = document.getElementById('lapBtn');
+  const stateLabel = document.getElementById('stateLabel');
+  const swimmers = ['Alice T.', 'Jack R.', 'Mia K.', 'Noah P.', 'Sophie L.'];
+
+  function fmt(ms) {
+    const m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60, cs = Math.floor(ms / 10) % 100;
+    return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + '<span class="ms">.' + String(cs).padStart(2,'0') + '</span>';
+  }
+  function tick() {
+    if (!running) return;
+    elapsed = performance.now() - startTs;
+    clock.innerHTML = fmt(elapsed);
+    requestAnimationFrame(tick);
+  }
+  lapBtn.addEventListener('click', () => {
+    if (!running) {
+      running = true; startTs = performance.now() - elapsed;
+      lapBtn.textContent = 'LAP'; lapBtn.classList.add('running');
+      stateLabel.textContent = 'RUNNING — 8× 100 FREE · THRESHOLD';
+      navigator.vibrate && navigator.vibrate(12);
+      tick();
+    } else {
+      // LAP: flash + split row springs in
+      clock.classList.add('flash');
+      setTimeout(() => clock.classList.remove('flash'), 140);
+      navigator.vibrate && navigator.vibrate([18, 30, 12]);
+      lapCount++;
+      const row = document.createElement('div');
+      row.className = 'split-row';
+      const t = fmt(elapsed).replace(/<[^>]+>/g,'');
+      const best = t < '1:19.00';
+      row.innerHTML = '<div class="lapno">LAP ' + lapCount + '</div>' +
+        '<div class="swimmer">' + swimmers[lapCount % swimmers.length] + '</div>' +
+        '<div class="time' + (best ? ' best' : '') + '">' + t.replace(/^00:/,'').replace(/^0(\d:)/,'$1') + '</div>';
+      const splits = document.getElementById('splits');
+      splits.prepend(row);
+    }
+  });
+  function stopClock() {
+    running = false;
+    lapBtn.textContent = 'START'; lapBtn.classList.remove('running');
+    stateLabel.textContent = 'READY — 8× 100 FREE · THRESHOLD';
+  }
+</script>
+</body>
+</html>
