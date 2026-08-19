@@ -438,7 +438,7 @@ struct TimingView: View {
 
             // Set context (white 0.4 = subtle)
             Text("\(viewModel.stroke) · \(viewModel.distance)m")
-                .font(.system(size: 14, weight: .medium))
+                .font(.numeric)
                 .foregroundColor(Color.textFaint)
                 .padding(.top, 12)
 
@@ -449,7 +449,7 @@ struct TimingView: View {
             // nil -> nothing renders (unprofiled swimmer times normally).
             if let zoneTarget = viewModel.zoneTargetText {
                 Text(zoneTarget)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.numeric)
                     .foregroundColor(Color.accentAction)
                     .padding(.top, 4)
             }
@@ -522,8 +522,7 @@ struct TimingView: View {
                 // devices like iPhone SE). .lineLimit(1) prevents
                 // truncation-with-"..." if a longer time format appears
                 // (e.g., a 10-minute set).
-                Text(viewModel.formattedTime)
-                    .font(.jetBrainsMono(size: 86, weight: .bold))
+                stopwatchDigits(viewModel.formattedTime)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                     .padding(.horizontal, 16)
@@ -636,7 +635,7 @@ struct TimingView: View {
 
                 // "LAP N" counter — subtle, white 0.7
                 Text("LAP \(viewModel.laps.count + 1)")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.numericSmall)
                     .foregroundColor(Color.textMuted)
                     .tracking(2)
                     .padding(.bottom, 16)
@@ -733,6 +732,17 @@ struct TimingView: View {
                 lapFlashOpacity = 0
             }
         }
+    }
+
+    // V0.46 Slice 2 pilot: weight-step on the hundredths — the 1:23.45
+    // misread hotspot. Bold carries m:ss, medium steps the final .SS down.
+    private func stopwatchDigits(_ time: String) -> Text {
+        guard time.count >= 3 else { return Text(time).font(.displayHuge) }
+        var head = AttributedString(String(time.dropLast(3)))
+        head.font = Font.displayHuge
+        var tail = AttributedString(String(time.suffix(3)))
+        tail.font = Font.jetBrainsMono(size: 86, weight: .medium)
+        return Text(head + tail)
     }
 
     // MARK: - Lap list (Phase 2.5-c: B&W, no card backgrounds, JetBrains Mono)

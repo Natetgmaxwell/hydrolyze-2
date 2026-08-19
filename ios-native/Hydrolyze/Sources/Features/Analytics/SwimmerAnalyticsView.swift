@@ -147,11 +147,11 @@ struct SwimmerAnalyticsView: View {
                     ForEach(viewModel.lastFive) { entry in
                         HStack {
                             Text(formatMs(entry.timeMs))
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .font(.numeric)
                                 .foregroundColor(Color.textPrimary)
                             Spacer()
                             Text(entry.label)
-                                .font(.system(size: 11))
+                                .font(.numericSmall)
                                 .foregroundColor(Color.textMuted)
                         }
                         .padding(.vertical, 4)
@@ -213,7 +213,7 @@ struct SwimmerAnalyticsView: View {
                 .tracking(0.8)
                 .foregroundColor(Color.textMuted)
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.numericLarge)
                 .foregroundColor(Color.accentAction)
             Text(hint)
                 .font(.system(size: 9))
@@ -287,7 +287,7 @@ private struct SwimmerAnalyticsHeader: View {
     private func statPair(_ label: String, value: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.numeric)
                 .foregroundColor(Color.accentAction)
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
@@ -328,15 +328,15 @@ private struct TrainingBandView: View {
         VStack(spacing: 8) {
             HStack {
                 Text(formatMs(minMs))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.numericSmall)
                     .foregroundColor(Color.textMuted)
                 Spacer()
                 Text(formatMs(mean))
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .font(.numeric)
                     .foregroundColor(Color.accentAction)
                 Spacer()
                 Text(formatMs(maxMs))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.numericSmall)
                     .foregroundColor(Color.textMuted)
             }
             GeometryReader { geo in

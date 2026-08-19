@@ -222,14 +222,14 @@ struct AnalyticsTabView: View {
         let pct = total > 0 ? Int(Double(count) / Double(total) * 100) : 0
         return VStack(spacing: 6) {
             Text("\(pct)%")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.numericLarge)
                 .foregroundColor(color)
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(Color.textFaint)
                 .tracking(0.5)
             Text("\(count)/\(total)")
-                .font(.system(size: 9))
+                .font(.numericSmall)
                 .foregroundColor(Color.textFaint)
         }
         .frame(maxWidth: .infinity)

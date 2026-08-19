@@ -108,7 +108,7 @@ struct ProgressionChart: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     .annotation(position: .top, alignment: .trailing) {
                         Text("PB \(formatMs(pbMs))")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.numericSmall)
                             .foregroundColor(Color.statusSuccess)
                     }
             }
@@ -117,6 +117,7 @@ struct ProgressionChart: View {
             AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                 AxisGridLine().foregroundStyle(Color.bgInset)
                 AxisValueLabel()
+                    .font(.numericSmall)
                     .foregroundStyle(Color.textMuted)
             }
         }
@@ -126,6 +127,7 @@ struct ProgressionChart: View {
                 AxisValueLabel {
                     if let ms = value.as(Int.self) {
                         Text(formatMs(ms))
+                            .font(.numericSmall)
                             .foregroundColor(Color.textMuted)
                     }
                 }

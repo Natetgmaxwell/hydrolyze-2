@@ -70,6 +70,7 @@ struct TrendChart: View {
                 AxisMarks(values: .automatic(desiredCount: buckets.map { $0.repIndex }.max() ?? 4)) { _ in
                     AxisGridLine().foregroundStyle(Color.bgInset)
                     AxisValueLabel()
+                        .font(.numericSmall)
                         .foregroundStyle(Color.textMuted)
                 }
             }
@@ -79,6 +80,7 @@ struct TrendChart: View {
                     AxisValueLabel {
                         if let ms = value.as(Int.self) {
                             Text(formatMs(ms))
+                                .font(.numericSmall)
                                 .foregroundColor(Color.textMuted)
                         }
                     }

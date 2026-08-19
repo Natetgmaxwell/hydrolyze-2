@@ -88,7 +88,7 @@ struct AttendancePopoverContent: View {
                     .foregroundStyle(Color.textPrimary)
                 Spacer()
                 Text("\(inCount) / \(entries.count) attending")
-                    .font(.system(size: 12))
+                    .font(.numericSmall)
                     .foregroundStyle(Color.textMuted)
             }
 

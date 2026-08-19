@@ -168,7 +168,7 @@ struct SwimTimeRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(formatMs(entry.timeMs))
-                .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                .font(.numeric)
                 .foregroundColor(Color.textPrimary)
                 .frame(width: 80, alignment: .leading)
 
@@ -264,12 +264,12 @@ struct PBRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text("\(pb.distance)m")
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .font(.numeric)
                 .foregroundColor(Color.textPrimary)
                 .frame(width: 50, alignment: .leading)
 
             Text(formatMs(pb.timeMs))
-                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                .font(.numeric)
                 .foregroundColor(isPersonalBest ? Color.statusSuccess : Color.textPrimary)
 
             Spacer()

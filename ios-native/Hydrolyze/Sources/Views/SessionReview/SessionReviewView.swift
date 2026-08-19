@@ -296,7 +296,7 @@ struct SessionReviewView: View {
         VStack(spacing: 8) {
             if viewModel.effectiveUnconfirmedCount > 0 {
                 Text("\(viewModel.effectiveUnconfirmedCount) row(s) need review")
-                    .font(.system(size: 12))
+                    .font(.numericSmall)
                     .foregroundColor(Color.textFaint)
             }
 
@@ -494,7 +494,7 @@ struct ReviewRowView: View {
                                 .foregroundColor(Color.textFaint)
                         }
                         Text("\(row.confidence)%")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.numericSmall)
                             .foregroundColor(row.confidenceLevel.color)
                     }
 
@@ -508,7 +508,7 @@ struct ReviewRowView: View {
                             Image(systemName: "info.circle")
                                 .font(.system(size: 10))
                             Text("Pred \(String(format: "%.1f", h.predSec))s vs \(String(format: "%.1f", h.actualSec))s (\(String(format: "%.1f", h.zScore))σ)")
-                                .font(.system(size: 11))
+                                .font(.numericSmall)
                             Spacer(minLength: 8)
                             if let onAccept = onAccept {
                                 Button {
@@ -544,14 +544,14 @@ struct ReviewRowView: View {
                                 .font(.system(size: 10))
                             if c.suitPct != 0 {
                                 Text(String(format: "%.1f%% off due to suit calibration", abs(c.suitPct)))
-                                    .font(.system(size: 11))
+                                    .font(.numericSmall)
                             }
                             if c.suitPct != 0 && c.startPct != 0 {
-                                Text("·").font(.system(size: 11)).foregroundColor(Color.textFaint)
+                                Text("·").font(.numericSmall).foregroundColor(Color.textFaint)
                             }
                             if c.startPct != 0 {
                                 Text(String(format: "%.1f%% off due to start calibration", abs(c.startPct)))
-                                    .font(.system(size: 11))
+                                    .font(.numericSmall)
                             }
                         }
                         .foregroundColor(Color.textFaint)
@@ -671,7 +671,7 @@ struct ReassignSheet: View {
                                 // where it is in the sort order.
                                 if let pred = candidate.predictedTimeMs {
                                     Text("Pred: \(String(format: "%.1f", Double(pred) / 1000))s")
-                                        .font(.system(size: 12))
+                                        .font(.numericSmall)
                                         .foregroundColor(Color.textFaint)
                                 }
                                 if candidate.id == row.id {

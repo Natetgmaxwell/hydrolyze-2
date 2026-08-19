@@ -97,6 +97,7 @@ struct SpeedCurveChart: View {
                 AxisMarks(values: .automatic(desiredCount: 5)) { _ in
                     AxisGridLine().foregroundStyle(Color.bgInset)
                     AxisValueLabel()
+                        .font(.numericSmall)
                         .foregroundStyle(Color.textMuted)
                 }
             }
@@ -106,6 +107,7 @@ struct SpeedCurveChart: View {
                     AxisValueLabel {
                         if let ms = value.as(Int.self) {
                             Text(formatMs(ms))
+                                .font(.numericSmall)
                                 .foregroundColor(Color.textMuted)
                         }
                     }

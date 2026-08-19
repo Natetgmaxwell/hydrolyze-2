@@ -1241,7 +1241,7 @@ private struct ConfidenceBadge: View {
     var body: some View {
         let pct = Int((confidence * 100).rounded())
         Text("AI \(pct)%")
-            .font(.system(size: 10, weight: .bold))
+            .font(.monoChipBold)
             .foregroundColor(Color.accentAmber)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
