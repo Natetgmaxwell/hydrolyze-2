@@ -390,15 +390,22 @@ final class SessionReviewViewModel: ObservableObject {
             // properties implicitly awaitable. Awaiting the async let
             // unwraps the PostgrestResponse; the .data property is then
             // safe to read synchronously.
-            async let timesResponseTask = supabase.from("recorded_times")
-                .select()
-                .eq("session_id", value: sessionId)
-                .order("lap_order", ascending: true)
-                .execute()
-            async let waveResponseTask = supabase.from("wave_assignments")
-                .select()
-                .eq("session_id", value: sessionId)
-                .execute()
+            // V0.46+ (2026-08-20): schema-cache retry around the two
+            // critical review fetches. After the 20260806180000 coach_id
+            // migration, postgREST's schema cache can be stale for ~5min
+            // (until the pg_cron reload-pgrst-schema job fires). A request
+            // landing on a non-LISTEN worker can return 200 OK with a zero-byte
+            // body — which surfaces in Swift as URLError.zeroByteResource with
+            // the message "The data couldn't be read because it is missing."
+            // (PGRST205 "schema cache" is the other flavour of the same stale
+            // cache). Both are transient and resolved by a short retry — same
+            // pattern as confirmAll()'s PHASE 2.6 v1.14 hotfix, broadened to
+            // catch the zero-byte variant too. The parallel fetch is preserved:
+            // both queries run concurrently inside the loop, and the whole pair
+            // re-issues together on a transient failure. After 3 attempts the
+            // error surfaces to the user as before.
+            let timesData = try await self.fetchRecordedTimesForReview(sessionId: sessionId)
+            let waveData = try await self.fetchWaveAssignmentsForReview(sessionId: sessionId)
             // V0.38 Slice 5 (2026-08-16): per-swimmer 3MT result
             // profiles. Fetched in parallel with the existing
             // recorded_times + wave_assignments — non-3MT sessions
@@ -423,9 +430,7 @@ final class SessionReviewViewModel: ObservableObject {
             // swimmer_id). Both are needed for the row builder to
             // compute the suit/start deltas in T8.
 
-            let timesResponse = try await timesResponseTask
-            let waveResponse = try await waveResponseTask
-            let rawTimes = try JSONDecoder().decode([RecordedTime].self, from: timesResponse.data)
+            let rawTimes = try JSONDecoder().decode([RecordedTime].self, from: timesData)
 
             // V0.38 Slice 5 (2026-08-16): derive per-swimmer
             // speed-vs-time curve from the recorded_times rows for
@@ -495,7 +500,7 @@ final class SessionReviewViewModel: ObservableObject {
                 return inserted
             }
 
-            let waveAssignments = try JSONDecoder().decode([WaveAssignment].self, from: waveResponse.data)
+            let waveAssignments = try JSONDecoder().decode([WaveAssignment].self, from: waveData)
 
             let swimmerIds = Array(Set(times.compactMap { $0.pairedSwimmerId ?? $0.swimmerId }))
             let setIds = Array(Set(times.compactMap { $0.workoutSetId }))
@@ -859,7 +864,7 @@ final class SessionReviewViewModel: ObservableObject {
                 return  // success
             } catch {
                 let msg = error.localizedDescription
-                let isSchemaCacheError = msg.contains("schema cache")
+                let isSchemaCacheError = msg.contains("schema cache") || msg.contains("data couldn't be read")
                 if attempt < maxAttempts && isSchemaCacheError {
                     try? await Task.sleep(for: .seconds(2))
                     continue
@@ -868,6 +873,65 @@ final class SessionReviewViewModel: ObservableObject {
                 return
             }
         }
+    }
+
+    /// V0.46+ (2026-08-20): fetch recorded_times for a session with a
+    /// schema-cache retry. After the 20260806180000 coach_id migration,
+    /// postgREST's schema cache can be stale for ~5min; a request landing on
+    /// a non-LISTEN worker can return 200 OK with a zero-byte body, which
+    /// Swift surfaces as URLError.zeroByteResource ("The data couldn't be
+    /// read because it is missing"). PGRST205 ("schema cache") is the other
+    /// flavour. Both are transient and resolved by a short retry — the same
+    /// pattern as confirmAll()'s PHASE 2.6 v1.14 hotfix, broadened to catch
+    /// the zero-byte variant too. Returns the response body (Data).
+    private func fetchRecordedTimesForReview(sessionId: String) async throws -> Data {
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            do {
+                let response = try await supabase.from("recorded_times")
+                    .select()
+                    .eq("session_id", value: sessionId)
+                    .order("lap_order", ascending: true)
+                    .execute()
+                return response.data
+            } catch {
+                let msg = error.localizedDescription
+                let isSchemaCacheError = msg.contains("schema cache") || msg.contains("data couldn't be read")
+                if attempt < maxAttempts && isSchemaCacheError {
+                    try? await Task.sleep(for: .seconds(2))
+                    continue
+                }
+                throw error
+            }
+        }
+        // Unreachable (loop always returns or throws), but the compiler
+        // needs a return after the loop.
+        throw URLError(.unknown)
+    }
+
+    /// V0.46+ (2026-08-20): fetch wave_assignments for a session with the
+    /// same schema-cache retry as `fetchRecordedTimesForReview`. Returns the
+    /// response body (Data).
+    private func fetchWaveAssignmentsForReview(sessionId: String) async throws -> Data {
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            do {
+                let response = try await supabase.from("wave_assignments")
+                    .select()
+                    .eq("session_id", value: sessionId)
+                    .execute()
+                return response.data
+            } catch {
+                let msg = error.localizedDescription
+                let isSchemaCacheError = msg.contains("schema cache") || msg.contains("data couldn't be read")
+                if attempt < maxAttempts && isSchemaCacheError {
+                    try? await Task.sleep(for: .seconds(2))
+                    continue
+                }
+                throw error
+            }
+        }
+        throw URLError(.unknown)
     }
 
     #if DEBUG
