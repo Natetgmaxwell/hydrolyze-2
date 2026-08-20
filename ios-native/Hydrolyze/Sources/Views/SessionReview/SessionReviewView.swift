@@ -17,6 +17,8 @@ struct SessionReviewView: View {
     // animation completes. See
     // [[concepts/tick-mark-celebration-pattern]] for the design.
     @State private var showCelebration = false
+    /// Testing utility (V0.46): confirm dialog for the Discard button.
+    @State private var showDiscardConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -31,6 +33,34 @@ struct SessionReviewView: View {
             }
             .navigationTitle("Review")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    // Testing utility (V0.46): discard the session's
+                    // recorded times and pop back to Today. Destructive
+                    // — confirmed first. The label is the "trash" icon
+                    // so it reads as delete without an extra word.
+                    Button {
+                        Haptics.warning()
+                        showDiscardConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Color.statusError)
+                    }
+                    .accessibilityLabel("Discard times")
+                }
+            }
+            .alert("Discard times?", isPresented: $showDiscardConfirm) {
+                Button("Cancel", role: .cancel) {
+                    Haptics.selection()
+                }
+                Button("Discard", role: .destructive) {
+                    Haptics.success()
+                    Task { await viewModel.discardSession() }
+                }
+            } message: {
+                Text("This permanently deletes all recorded times for this session. This cannot be undone.")
+            }
             .sheet(isPresented: $viewModel.showReassignSheet) {
                 if let row = viewModel.selectedRow {
                     ReassignSheet(
@@ -91,6 +121,11 @@ struct SessionReviewView: View {
             }
             #endif
             await viewModel.load(sessionId: sessionId)
+        }
+        .onChange(of: viewModel.didDiscard) { discarded in
+            if discarded {
+                dismiss()
+            }
         }
     }
 

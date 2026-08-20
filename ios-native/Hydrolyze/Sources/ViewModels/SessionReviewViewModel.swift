@@ -190,6 +190,9 @@ final class SessionReviewViewModel: ObservableObject {
 
     private let supabase = SupabaseService.shared.client
     private var sessionId: String?
+    /// Testing utility: set true when the coach discards the session's
+    /// recorded times. The view observes this to dismiss back to Today.
+    @Published var didDiscard = false
     /// PHASE 1 (T8.5, 2026-06-20): the per-(swimmer, X, distance, stroke)
     /// calibration factors. Populated in `load()` from a parallel
     /// fetch against `swimmer_suits` and `swimmer_starts`. Used by
@@ -899,6 +902,48 @@ final class SessionReviewViewModel: ObservableObject {
             }
         }
         throw URLError(.unknown)
+    }
+
+    /// Testing utility (V0.46): discard the current session's recorded
+    /// data entirely. Deletes the session's rows across the times tables
+    /// the review surface reads — recorded_times, wave_assignments,
+    /// swimmer_test_profiles — which have RLS disabled and delete cleanly.
+    /// The `sessions` row itself is RLS-protected (no DELETE policy), so
+    /// its removal is best-effort: a failure there must not abort the
+    /// times-discard, and is logged rather than surfaced (a lingering
+    /// session row on a test DB is harmless). After success the view
+    /// dismisses back to Today. Destructive — no un-delete.
+    func discardSession() async {
+        guard let sessionId = sessionId else {
+            didDiscard = true
+            return
+        }
+        do {
+            try await supabase.from("recorded_times")
+                .delete()
+                .eq("session_id", value: sessionId)
+                .execute()
+            try await supabase.from("wave_assignments")
+                .delete()
+                .eq("session_id", value: sessionId)
+                .execute()
+            try await supabase.from("swimmer_test_profiles")
+                .delete()
+                .eq("session_id", value: sessionId)
+                .execute()
+            // Best-effort: sessions is RLS-gated with no DELETE policy.
+            do {
+                try await supabase.from("sessions")
+                    .delete()
+                    .eq("id", value: sessionId)
+                    .execute()
+            } catch {
+                print("[Review] discard: session row delete skipped (RLS/no policy): \(error.localizedDescription)")
+            }
+            didDiscard = true
+        } catch {
+            errorMessage = "Couldn't discard times: \(error.localizedDescription)"
+        }
     }
 
     /// V0.46+ (2026-08-20): is this a transient PostgREST schema-cache
