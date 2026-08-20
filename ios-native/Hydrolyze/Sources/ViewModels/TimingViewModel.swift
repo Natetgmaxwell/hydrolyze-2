@@ -250,6 +250,15 @@ final class TimingViewModel: ObservableObject {
     /// drop rule then falls back to the predicted/rep1 standard.
     private(set) var zoneStandardMsBySwimmer: [String: Int] = [:]
     var workoutSetId: String?
+    /// V0.46 fix (2026-08-20): the owning coach's `coaches.id`. Set by
+    /// TimingView.onAppear from `authManager.coachId`. Threaded into
+    /// every recorded_times insert so the row satisfies the
+    /// `coach_own_recorded_times` RLS policy (migration
+    /// 20260806180000_recorded_times_coach_id.sql), which requires
+    /// `coach_id IN (SELECT coaches.id WHERE coaches.auth_id = auth.uid())`.
+    /// Before this, all three insert paths (saveSession / savePairedLaps /
+    /// skipPairing) omitted coach_id → NULL → RLS WITH CHECK violation.
+    var coachId: String?
     /// t_c74dffbc (2026-08-04): per-fragment metadata the save flow
     /// reads to key the prediction per (swimmer, fragment). Set by the
     /// caller (WorkoutDetailView.launchFragmentTiming, or a future
@@ -950,6 +959,9 @@ final class TimingViewModel: ObservableObject {
                 let source: String
                 let lap_order: Int
                 let paired_swimmer_id: String?  // nil
+                /// V0.46 fix (2026-08-20): owning coach's coaches.id.
+                /// Required by the coach_own_recorded_times RLS policy.
+                let coach_id: String?
                 /// V0.43a (2026-08-18): gear stamp on the raw
                 /// (unpaired) insert path so SKIP PAIRING also
                 /// persists gear. Same resolution rule as
@@ -977,6 +989,7 @@ final class TimingViewModel: ObservableObject {
                     source: "unpaired",
                     lap_order: lap.lapNumber,
                     paired_swimmer_id: nil,
+                    coach_id: coachId,
                     gear: resolvedGear,
                     created_at: timestamp
                 )
@@ -1047,6 +1060,7 @@ final class TimingViewModel: ObservableObject {
                     intensityLabel: intensityLabel,
                     workoutSetId: workoutSetId,
                     gear: nil,
+                    coachId: coachId,
                     laps: laps,
                     startedAt: isoFormatter.string(from: sessionStartDate ?? Date()),
                     endedAt: isoFormatter.string(from: Date())
@@ -1460,6 +1474,7 @@ final class TimingViewModel: ObservableObject {
                         // nil → the JSON omits the key → the DB stores
                         // NULL for bare sets.
                         gear: self.resolvedSaveGear,
+                        coachId: self.coachId,
                         assignments: result.assignments
                     )
                 }

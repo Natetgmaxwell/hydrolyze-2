@@ -344,6 +344,13 @@ struct TimingView: View {
             // that case so the coach can review before saving.
             viewModel.sessionId = sessionId
 
+            // V0.46 fix (2026-08-20): carry the owning coach's coaches.id
+            // into the VM so every recorded_times insert stamps coach_id
+            // and passes the coach_own_recorded_times RLS policy. Without
+            // this, all three insert paths wrote coach_id = NULL and the
+            // save failed with "new row violates row-level security policy".
+            viewModel.coachId = authManager.coachId
+
             if let sid = sessionId {
                 viewModel.confirmSessionSetup()
                 // Phase 2.6 v1.6.1 fix: prefer the explicit

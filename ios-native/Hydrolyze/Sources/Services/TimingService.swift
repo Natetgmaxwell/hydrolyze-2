@@ -19,6 +19,10 @@ final class TimingService {
             let pace_distance: Int?
             let workout_set_id: String?
             let confidence: Int?
+            /// V0.46 fix (2026-08-20): owning coach's coaches.id. Required
+            /// by the coach_own_recorded_times RLS policy (migration
+            /// 20260806180000). nil → NULL → RLS WITH CHECK violation.
+            let coach_id: String?
             /// PHASE 2.6 v1.17.0 (S5): write the engine's raw
             /// pairing probability alongside the bucketed
             /// confidence. The single-swimmer path hardcodes
@@ -44,6 +48,7 @@ final class TimingService {
             pace_distance: session.distance,
             workout_set_id: session.workoutSetId,
             confidence: 100,
+            coach_id: session.coachId,
             assignment_confidence: 1.0
         )
         }
@@ -121,6 +126,7 @@ final class TimingService {
         distance: Int,
         intensity: String,
         gear: String?,
+        coachId: String?,
         assignments: [LapAssignment]
     ) async throws {
         struct PairedLapRow: Encodable {
@@ -134,6 +140,9 @@ final class TimingService {
             let intensity: String
             let stroke: String
             let pace_distance: Int?
+            /// V0.46 fix (2026-08-20): owning coach's coaches.id. Required
+            /// by the coach_own_recorded_times RLS policy.
+            let coach_id: String?
             /// V0.43a (2026-08-18): the fragment or set gear
             /// (single text — `WorkoutSet.gear` is `[String]?` but
             /// `recorded_times.gear` is a single text column).
@@ -167,6 +176,7 @@ final class TimingService {
                 intensity: intensity,
                 stroke: stroke,
                 pace_distance: distance,
+                coach_id: coachId,
                 gear: gear,
                 created_at: timestamp,
                 confidence: assignment.confidence,

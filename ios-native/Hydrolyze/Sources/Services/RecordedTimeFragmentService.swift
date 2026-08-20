@@ -492,6 +492,7 @@ public final class RecordedTimeFragmentService {
         input: PairingHandoffInput,
         sessionId: String?,
         workoutSetId: String?,
+        coachId: String? = nil,
         candidates: [HandoffSwimmerCandidate] = []
     ) async throws -> RecordedTime {
         // Build the row from the input. swimmer_id is left NULL
@@ -512,6 +513,7 @@ public final class RecordedTimeFragmentService {
             paceTargetSec: input.paceTargetSec,
             rawText: input.rawText,
             timeMs: input.recordedMs,
+            coachId: coachId,
             confidence: nil,                   // not yet paired
             assignmentConfidence: nil          // not yet paired
         )
@@ -673,6 +675,7 @@ public final class RecordedTimeFragmentService {
     public func saveAndPair(
         sessionId: String?,
         workoutSetId: String?,
+        coachId: String? = nil,
         input: PairingHandoffInput,
         candidates: [HandoffSwimmerCandidate]
     ) async throws -> PairingHandoffResult {
@@ -696,6 +699,7 @@ public final class RecordedTimeFragmentService {
             paceTargetSec: input.paceTargetSec,
             rawText: input.rawText,
             timeMs: input.recordedMs,
+            coachId: coachId,
             confidence: matchedConfidence(from: result),
             assignmentConfidence: matchedGaussian(from: result)
         )
@@ -713,6 +717,7 @@ public final class RecordedTimeFragmentService {
     public func saveOnly(
         sessionId: String?,
         workoutSetId: String?,
+        coachId: String? = nil,
         input: PairingHandoffInput,
         swimmerId: String? = nil,
         confidence: Int? = nil,
@@ -730,6 +735,7 @@ public final class RecordedTimeFragmentService {
             paceTargetSec: input.paceTargetSec,
             rawText: input.rawText,
             timeMs: input.recordedMs,
+            coachId: coachId,
             confidence: confidence,
             assignmentConfidence: assignmentConfidence
         )
@@ -833,6 +839,10 @@ private struct FragmentRow: Encodable {
     let assignment_confidence: Double?
     let lap_order: Int
     let created_at: String
+    /// V0.46 fix (2026-08-20): owning coach's coaches.id. Required by
+    /// the coach_own_recorded_times RLS policy. nil → NULL → RLS
+    /// WITH CHECK violation on INSERT.
+    let coach_id: String?
 
     init(
         id: String,
@@ -846,6 +856,7 @@ private struct FragmentRow: Encodable {
         paceTargetSec: Int?,
         rawText: String?,
         timeMs: Int,
+        coachId: String? = nil,
         confidence: Int? = nil,
         assignmentConfidence: Double? = nil
     ) {
@@ -867,5 +878,6 @@ private struct FragmentRow: Encodable {
         self.assignment_confidence = assignmentConfidence
         self.lap_order = 0
         self.created_at = timestamp
+        self.coach_id = coachId
     }
 }

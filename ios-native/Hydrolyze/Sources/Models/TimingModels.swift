@@ -21,6 +21,10 @@ struct TimingSession: Sendable {
     let intensityLabel: String?
     let workoutSetId: String?
     let gear: String?
+    /// V0.46 fix (2026-08-20): owning coach's `coaches.id`, written to
+    /// recorded_times.coach_id so the row passes the coach_own_recorded_times
+    /// RLS policy. nil only for legacy callers that predate the column.
+    let coachId: String?
     let laps: [Lap]
     let startedAt: String    // ISO8601
     var endedAt: String?     // ISO8601

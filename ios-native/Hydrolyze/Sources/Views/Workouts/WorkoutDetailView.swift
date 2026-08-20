@@ -437,7 +437,8 @@ struct WorkoutDetailView: View {
                 let inserted = try await service.persistRecordedTime(
                     input: handoffInput,
                     sessionId: payload.context.sessionId,
-                    workoutSetId: payload.context.workoutSetId
+                    workoutSetId: payload.context.workoutSetId,
+                    coachId: payload.context.coachId
                 )
                 // Success path: flip the indicator AFTER the row
                 // is on disk (spec: "show a small 'Saved'
