@@ -516,10 +516,12 @@ final class SessionReviewViewModel: ObservableObject {
 
             var swimmerNames: [String: String] = [:]
             if !swimmerIds.isEmpty {
-                let swimmersResponse = try await supabase.from("swimmers")
-                    .select("id, first_name, last_name")
-                    .in("id", values: swimmerIds)
-                    .execute()
+                let swimmersResponse = try await self.executeWithRetry {
+                    try await supabase.from("swimmers")
+                        .select("id, first_name, last_name")
+                        .in("id", values: swimmerIds)
+                        .execute()
+                }
 
                 struct RawSwimmer: Codable {
                     let id: String
@@ -545,10 +547,12 @@ final class SessionReviewViewModel: ObservableObject {
             // `.in(...)` with an empty values array generates an
             // invalid SQL `IN ()` query.
             if !setIds.isEmpty {
-                let setsResponse = try await supabase.from("workout_sets")
-                    .select()
-                    .in("id", values: setIds)
-                    .execute()
+                let setsResponse = try await self.executeWithRetry {
+                    try await supabase.from("workout_sets")
+                        .select()
+                        .in("id", values: setIds)
+                        .execute()
+                }
                 let setsList = try JSONDecoder().decode([WorkoutSet].self, from: setsResponse.data)
                 for s in setsList {
                     workoutSetsById[s.id] = s
@@ -864,7 +868,7 @@ final class SessionReviewViewModel: ObservableObject {
                 return  // success
             } catch {
                 let msg = error.localizedDescription
-                let isSchemaCacheError = msg.contains("schema cache") || msg.contains("data couldn't be read")
+                let isSchemaCacheError = isTransientSchemaCacheError(error)
                 if attempt < maxAttempts && isSchemaCacheError {
                     try? await Task.sleep(for: .seconds(2))
                     continue
@@ -873,6 +877,57 @@ final class SessionReviewViewModel: ObservableObject {
                 return
             }
         }
+    }
+
+    /// V0.46+ (2026-08-20): generic retry wrapper for the review-load
+    /// fetches that aren't covered by the dedicated recorded_times /
+    /// wave_assignments helpers. Retries up to 3 times with a 2s pause
+    /// only when `isTransientSchemaCacheError` matches; all other errors
+    /// fail fast. Keeps the whole load() from becoming a single point of
+    /// failure on a transient PostgREST schema-cache miss.
+    private func executeWithRetry<T>(_ op: () async throws -> T) async throws -> T {
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            do {
+                return try await op()
+            } catch {
+                if attempt < maxAttempts && isTransientSchemaCacheError(error) {
+                    try? await Task.sleep(for: .seconds(2))
+                    continue
+                }
+                throw error
+            }
+        }
+        throw URLError(.unknown)
+    }
+
+    /// V0.46+ (2026-08-20): is this a transient PostgREST schema-cache
+    /// failure we should retry? A 200-with-empty-body from a non-LISTEN
+    /// worker surfaces as URLError.zeroByteResource (code -1014). The
+    /// previous check matched on localizedDescription text
+    /// ("data couldn't be read"), but Foundation renders that error as
+    /// "The operation couldn't be completed. (NSURLErrorDomain error
+    /// -1014.)" with a U+2019 curly apostrophe — so the string match
+    /// NEVER fired and the retry was dead code for the exact case it was
+    /// written to fix. Match the typed error + domain/code instead; keep
+    /// the PGRST205 "schema cache" text fallback (that one genuinely
+    /// arrives as a message from PostgREST).
+    private func isTransientSchemaCacheError(_ error: Error) -> Bool {
+        // Typed match: the zero-byte case is a URLError with code -1014.
+        if let urlErr = error as? URLError, urlErr.code == .zeroByteResource {
+            return true
+        }
+        // NSError-bridged (supabase may rethrow/wrap).
+        let nsErr = error as NSError
+        if nsErr.domain == NSURLErrorDomain && nsErr.code == URLError.zeroByteResource.rawValue {
+            return true
+        }
+        if let underlying = nsErr.userInfo[NSUnderlyingErrorKey] as? URLError,
+           underlying.code == .zeroByteResource {
+            return true
+        }
+        // PGRST205 flavour genuinely arrives as a text message.
+        return nsErr.localizedDescription.contains("schema cache")
     }
 
     /// V0.46+ (2026-08-20): fetch recorded_times for a session with a
@@ -895,8 +950,7 @@ final class SessionReviewViewModel: ObservableObject {
                     .execute()
                 return response.data
             } catch {
-                let msg = error.localizedDescription
-                let isSchemaCacheError = msg.contains("schema cache") || msg.contains("data couldn't be read")
+                let isSchemaCacheError = isTransientSchemaCacheError(error)
                 if attempt < maxAttempts && isSchemaCacheError {
                     try? await Task.sleep(for: .seconds(2))
                     continue
@@ -922,8 +976,7 @@ final class SessionReviewViewModel: ObservableObject {
                     .execute()
                 return response.data
             } catch {
-                let msg = error.localizedDescription
-                let isSchemaCacheError = msg.contains("schema cache") || msg.contains("data couldn't be read")
+                let isSchemaCacheError = isTransientSchemaCacheError(error)
                 if attempt < maxAttempts && isSchemaCacheError {
                     try? await Task.sleep(for: .seconds(2))
                     continue
