@@ -170,15 +170,22 @@ struct WorkoutDetailView: View {
             Text("This action cannot be undone.")
         }
         .fullScreenCover(item: $activeSession) { session in
-            // Phase 2.6 v1.6.1 fix: pull the workoutSetId from
-            // the timing prefill (built from the picked set) and
-            // pass it explicitly to TimingView. The prefill path
-            // still works (TimingView.onAppear reads it), but
-            // the explicit param is the cleaner source of truth.
+            // Phase 2.6 v1.6.1 fix: pull the workoutSetId from the
+            // active session envelope (the set the coach picked in the
+            // wave preview via previewSetIndex), NOT from timingPrefill.
+            // timingPrefill.workoutSetId is resolved in
+            // launchFragmentTiming via viewModel.sets[safe: repGroupIndex],
+            // but repGroupIndex is the index WITHIN a named set's
+            // repGroups — not the index into the flat viewModel.sets
+            // array. For composite workouts that lookup returns nil, so
+            // timingPrefill.workoutSetId is nil and save() throws
+            // "Session is missing its workout set". The onComplete
+            // callback already computed the correct set id and stored it
+            // in activeSession.workoutSetId — use that.
             TimingView(
                 prefill: timingPrefill,
                 sessionId: session.id,
-                workoutSetId: timingPrefill?.workoutSetId,
+                workoutSetId: session.workoutSetId.isEmpty ? timingPrefill?.workoutSetId : session.workoutSetId,
                 // t_d59998d9 (2026-08-05) + t_be09a643 (2026-08-05)
                 // + t_bec2b88b (2026-08-06): recorded-time callback.
                 // Fires once when the stopwatch transitions out of
