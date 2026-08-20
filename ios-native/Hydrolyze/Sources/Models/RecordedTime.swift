@@ -12,7 +12,7 @@ struct RecordedTime: Codable, Identifiable, Sendable, Hashable {
     let repIndex: Int
     let intensity: String
     let gear: String?
-    let waveNumber: Int
+    let waveNumber: Int?
     let paceDistance: Int?
     var createdAt: String
     var lapOrder: Int?
