@@ -244,6 +244,18 @@ struct WorkoutsListView: View {
                 workoutText: "3MT: 3 min all-out, 25m splits, Free",
                 sessionType: "3mt"
             )
+            // FIX (2026-08-20): persist the 3MT set immediately so the
+            // draft is not empty. The template previously created only the
+            // workouts row — no workout_sets row — so opening the draft from
+            // the list showed "No sets in this workout" until the coach
+            // manually Saved in the builder. Parse the canonical text and
+            // write the set(s) now, exactly as the builder's save path does.
+            // The coach can still edit in the builder; the set just exists
+            // from the start.
+            let parsed = WorkoutParser.parse("3MT: 3 min all-out, 25m splits, Free")
+            if !parsed.sections.isEmpty {
+                try await service.createSetsForWorkout(workoutId: created.id, from: parsed)
+            }
             templateWorkoutId = created.id
             showTemplateBuilder = true
         } catch {
