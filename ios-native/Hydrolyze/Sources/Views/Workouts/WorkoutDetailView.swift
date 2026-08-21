@@ -203,23 +203,20 @@ struct WorkoutDetailView: View {
                 // the handoff is its own typed result, never a throw.
                 onRecord: { payload in
                     recordedTimesByFragmentId[payload.fragment.fragmentId] = payload.recordedTimeMs
-                    // V0.46 fix (2026-08-20): only persist the
-                    // per-fragment row when this timing run is the
-                    // per-fragment CTA flow (fragmentContexts present).
-                    // The squad flow (fragmentContexts == nil) reaches
-                    // here via the same stopwatch stop, but the batch
-                    // save (savePairedLaps) is the single writer for all
-                    // squad reps — persisting a fragment row here TOO
-                    // double-writes rep 1 (one raw null-swimmer row + one
-                    // paired row with the same rep_index), surfacing as
-                    // an extra row on the review page. The fragment
-                    // writer is the correct path ONLY for the single-
-                    // fragment CTA, where it is the sole writer.
-                    if (timingPrefill?.fragmentContexts?.isEmpty == false) {
-                        persistRecordedTime(payload: payload)
-                    } else {
-                        print("[WorkoutDetail] onRecord: squad flow (no fragmentContexts) — skipping fragment persist, batch save writes recorded_times")
-                    }
+                    // V0.46 fix (2026-08-20): do NOT persist a fragment
+                    // row here. onRecord only fires for sessioned runs
+                    // (assembleCapturePayload returns nil when sessionId
+                    // is nil), and every sessioned run's save() writes
+                    // ALL laps to recorded_times via the batch save
+                    // (single-swimmer saveSession / multi-swimmer
+                    // savePairedLaps). Persisting a fragment row here too
+                    // double-writes the final lap (one raw null-swimmer +
+                    // wave_number NULL row using the stopwatch total
+                    // elapsed, plus the paired row for the same rep) —
+                    // surfacing as an extra row on the review page. The
+                    // batch save is the single writer. The map update
+                    // above is kept so the fragment row still shows
+                    // "Saved 0:42.31" in the workout list.
                 }
             )
         }
@@ -390,106 +387,6 @@ struct WorkoutDetailView: View {
             Divider()
                 .background(Color.bgInset)
                 .padding(.leading, 16)
-        }
-    }
-
-    // t_be09a643 (2026-08-05) + t_6163b2f2 (2026-08-05) + t_ea9a65ca
-    // (2026-08-05) + t_bec2b88b (2026-08-06): persist a
-    // per-fragment recorded time to Supabase. Takes the full
-    // `StopwatchCapturePayload` (the canonical handoff shape) and
-    // projects it to a `PairingHandoffInput` via the payload's
-    // `toPersistInput()` method (1:1 with the TS schema's
-    // `toPersistInput`). The persistence layer (task 3,
-    // t_1789d5c7) consumes the projected input.
-    //
-    // Why project in the view: keeps the persistence layer
-    // (RecordedTimeFragmentService) decoupled from the payload
-    // type. The view is the only place that holds both the
-    // payload (from the stopwatch) and the candidate roster (the
-    // future per-fragment PB prediction). For now `candidates: []`
-    // — the deferred `pairExistingRow` path resolves swimmer_id
-    // once the SessionReview fetches the roster.
-    //
-    // Why fire-and-await + typed error (PersistRecordedTimeError):
-    // the spec's "fire-and-await is fine, but show a 'Saved'
-    // indicator once the insert succeeds" rule depends on the
-    // caller being able to distinguish success from failure.
-    // Catching the typed error and not flipping the indicator is
-    // the UI contract. The pairing handoff runs after the insert
-    // — it never throws (the service wraps it in try/catch), so
-    // the UI never sees a propagated error from the handoff.
-    //
-    // Re-entry handling: each payload carries a fresh `eventId`
-    // + `idempotencyKey`. The persistence layer inserts a new
-    // row per payload (no upsert collapse on the same fragment).
-    // This is the spec's "re-entering a fragment produces an
-    // independent timing run" acceptance gate, satisfied at the
-    // iOS + persistence layer.
-    private func persistRecordedTime(payload: StopwatchCapturePayload) {
-        // Project the payload to the persist-input shape the
-        // RecordedTimeFragmentService.persistRecordedTime(...) call
-        // site accepts. The projection is the iOS mirror of the
-        // TS `toPersistInput()` function — every spec field is
-        // mapped field-for-field.
-        let input = payload.toPersistInput()
-
-        Task {
-            do {
-                let service = RecordedTimeFragmentService()
-                // Project the persist input to the handoff input the
-                // service consumes (fields map 1:1; the handoff input
-                // carries the fragment context the pairing engine keys on).
-                let handoffInput = PairingHandoffInput(
-                    rowId: input.rowId,
-                    recordedMs: input.recordedMs,
-                    fragmentId: input.fragmentId,
-                    setId: input.setId,
-                    distanceMeters: input.distanceMeters,
-                    intensity: input.intensity,
-                    startType: input.startType,
-                    paceTargetSec: input.paceTargetSec,
-                    rawText: input.rawText
-                )
-                let inserted = try await service.persistRecordedTime(
-                    input: handoffInput,
-                    sessionId: payload.context.sessionId,
-                    workoutSetId: payload.context.workoutSetId,
-                    coachId: payload.context.coachId
-                )
-                // Success path: flip the indicator AFTER the row
-                // is on disk (spec: "show a small 'Saved'
-                // indicator once the insert succeeds"). The Task
-                // body inherits @MainActor from the enclosing
-                // WorkoutDetailView (the struct is annotated), so
-                // the recordedTimesByFragmentId state write is
-                // already main-actor-safe. The returned row
-                // carries the server-side echo — verify
-                // swimmer_id is null immediately (spec acceptance).
-                // If the server returned a non-nil swimmer_id on
-                // the insert, that's a contract bug worth
-                // surfacing.
-                if inserted.swimmerId != nil {
-                    print("[WorkoutDetail] persistRecordedTime WARNING: inserted row has swimmer_id=\(inserted.swimmerId ?? "nil") (expected nil at insert time)")
-                }
-                recordedTimesByFragmentId[payload.fragment.fragmentId] = payload.recordedTimeMs
-            } catch let error as PersistRecordedTimeError {
-                // Typed error path — surface each bucket in the
-                // dev console. The UI stays "not saved" so the
-                // coach sees the truth and can retry.
-                switch error {
-                case .duplicateRow(let id):
-                    print("[WorkoutDetail] persistRecordedTime FAILED (.duplicateRow id=\(id)): row already exists, will not retry-with-same-uuid")
-                case .networkError(let underlying):
-                    print("[WorkoutDetail] persistRecordedTime FAILED (.networkError): \(underlying.localizedDescription) — UI will not show Saved indicator")
-                case .decodingError(let underlying):
-                    print("[WorkoutDetail] persistRecordedTime FAILED (.decodingError): row landed but decode failed: \(underlying.localizedDescription) — possible schema drift, investigate RecordedTime vs recorded_times columns")
-                case .unknown(let underlying):
-                    print("[WorkoutDetail] persistRecordedTime FAILED (.unknown): \(underlying.localizedDescription)")
-                }
-            } catch {
-                // Anything else — log, do not swallow silently.
-                print("[WorkoutDetail] persistRecordedTime FAILED (unclassified): \(error)")
-            }
         }
     }
 
