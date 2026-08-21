@@ -215,7 +215,7 @@ struct WorkoutDetailView: View {
                     // an extra row on the review page. The fragment
                     // writer is the correct path ONLY for the single-
                     // fragment CTA, where it is the sole writer.
-                    if (prefill?.fragmentContexts?.isEmpty == false) {
+                    if (timingPrefill?.fragmentContexts?.isEmpty == false) {
                         persistRecordedTime(payload: payload)
                     } else {
                         print("[WorkoutDetail] onRecord: squad flow (no fragmentContexts) — skipping fragment persist, batch save writes recorded_times")
