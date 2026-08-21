@@ -441,7 +441,19 @@ struct SessionReviewView: View {
         // is the data-integrity milestone (per emotional design plan
         // Slice 2) — the coach has approved all pairing matches, the
         // session is on disk, the work is done.
-        triggerCelebration()
+        //
+        // V0.46 fix (2026-08-20): ONLY celebrate/dismiss on success.
+        // Previously the celebration fired unconditionally after
+        // confirmAll, so a confirm error (e.g. a failed sessions
+        // write) set errorMessage but then the 1.7s celebration
+        // auto-dismissed the screen — carrying the error message
+        // away before the coach could read it. On failure, stay on
+        // the review screen so the error is visible and retryable.
+        if viewModel.errorMessage == nil {
+            triggerCelebration()
+        } else {
+            print("[Review] confirm did not celebrate: \(viewModel.errorMessage ?? "unknown error")")
+        }
     }
 
     /// PHASE 2.6 v1.17.0: centralized celebration trigger. Called
