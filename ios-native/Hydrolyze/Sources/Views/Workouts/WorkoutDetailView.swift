@@ -203,7 +203,23 @@ struct WorkoutDetailView: View {
                 // the handoff is its own typed result, never a throw.
                 onRecord: { payload in
                     recordedTimesByFragmentId[payload.fragment.fragmentId] = payload.recordedTimeMs
-                    persistRecordedTime(payload: payload)
+                    // V0.46 fix (2026-08-20): only persist the
+                    // per-fragment row when this timing run is the
+                    // per-fragment CTA flow (fragmentContexts present).
+                    // The squad flow (fragmentContexts == nil) reaches
+                    // here via the same stopwatch stop, but the batch
+                    // save (savePairedLaps) is the single writer for all
+                    // squad reps — persisting a fragment row here TOO
+                    // double-writes rep 1 (one raw null-swimmer row + one
+                    // paired row with the same rep_index), surfacing as
+                    // an extra row on the review page. The fragment
+                    // writer is the correct path ONLY for the single-
+                    // fragment CTA, where it is the sole writer.
+                    if (prefill?.fragmentContexts?.isEmpty == false) {
+                        persistRecordedTime(payload: payload)
+                    } else {
+                        print("[WorkoutDetail] onRecord: squad flow (no fragmentContexts) — skipping fragment persist, batch save writes recorded_times")
+                    }
                 }
             )
         }
