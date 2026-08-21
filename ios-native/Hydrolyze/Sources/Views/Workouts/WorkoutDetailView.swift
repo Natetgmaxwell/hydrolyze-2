@@ -26,23 +26,32 @@ final class WorkoutDetailViewModel: ObservableObject {
         isLoading = false
     }
 
-    /// V0.47 (2026-08-22): fragment-context stamp on saves (fragment_id,
-    /// distance_meters, start_type via saveSession(fragment:)) + revisit
-    /// load. Keyed by fragment_id → latest time_ms. Rows without a
-    /// fragment_id can't be attributed to a fragment row and are dropped.
-    /// Non-fatal: a fetch failure leaves the chips empty rather than
-    /// blocking the page.
-    @Published var recordedTimesByFragmentId: [String: Int] = [:]
+    /// V0.47 (2026-08-22): multi-pass fragment times. The set is 2×
+    /// through, so a fragment can legitimately hold MULTIPLE recorded
+    /// times — one per pass. The old [String: Int] map silently
+    /// overwrote pass 1 with pass 2. Values are time_ms arrays
+    /// ordered oldest→newest by created_at (fetch order). Rows without
+    /// a fragment_id can't be attributed and are dropped.
+    @Published var recordedTimesByFragmentId: [String: [Int]] = [:]
 
     func loadFragmentTimes() async {
         guard !sets.isEmpty else { return }
-        var map: [String: Int] = [:]
+        var map: [String: [Int]] = [:]
         do {
             for set in sets {
                 let times = try await workoutService.fetchTimesForSet(workoutSetId: set.id)
                 for t in times where t.fragmentId != nil {
                     if let fid = t.fragmentId {
-                        map[fid] = t.timeMs
+                        map[fid, default: []].append(t.timeMs)
+                    }
+                }
+                // Legacy rows from before the fragment stamp: they
+                // carry workout_set_id but NULL fragment_id. If the
+                // set has exactly ONE fragment, attribute them to it
+                // (a single-fragment set is unambiguous).
+                if let frags = set.fragments, frags.count == 1, let only = frags.first {
+                    for t in times where t.fragmentId == nil {
+                        map[only.id, default: []].append(t.timeMs)
                     }
                 }
             }
@@ -92,10 +101,10 @@ struct WorkoutDetailView: View {
     @State private var pendingSessionId = UUID().uuidString
     // t_d59998d9 (2026-08-05): per-fragment recorded times held in
     // local component state until persistence runs (t_be09a643).
-    // Keyed by fragmentId. Survives redraws but not navigation pops;
-    // when persistence lands, the rows are written to recorded_times
-    // and this map can be cleared on save success.
-    @State private var recordedTimesByFragmentId: [String: Int] = [:]
+    // V0.47 (2026-08-22): [Int] per fragment — a 2×-through set holds
+    // one time per pass. Survives redraws; merged with the VM's DB
+    // map in .task and appended to by onRecord on each capture.
+    @State private var recordedTimesByFragmentId: [String: [Int]] = [:]
     // ponytail (warmth-through-motion iter 6): on-appear reveal.
     // Same pattern as login reveal (d46c444), today reveal (0a90257),
     // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
@@ -228,7 +237,7 @@ struct WorkoutDetailView: View {
                 // runs once the row is saved (pairExistingRow) —
                 // the handoff is its own typed result, never a throw.
                 onRecord: { payload in
-                    recordedTimesByFragmentId[payload.fragment.fragmentId] = payload.recordedTimeMs
+                    recordedTimesByFragmentId[payload.fragment.fragmentId, default: []].append(payload.recordedTimeMs)
                     // V0.46 fix (2026-08-20): do NOT persist a fragment
                     // row here. onRecord only fires for sessioned runs
                     // (assembleCapturePayload returns nil when sessionId

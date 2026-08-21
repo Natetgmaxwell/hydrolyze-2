@@ -34,7 +34,9 @@ struct WorkoutPreview: View {
     /// FragmentCTARow reads this to show "Saved 0:42.31" + a green check
     /// after the stopwatch stops. nil = no recorded times yet; the row
     /// just shows the play icon.
-    var recordedTimesByFragmentId: [String: Int]? = nil
+    /// V0.47 (2026-08-22): [Int] per fragment — multi-pass (2×-through)
+    /// sets hold one time per pass; all render on the row.
+    var recordedTimesByFragmentId: [String: [Int]]? = nil
     /// V0.37 (2026-08-13): degraded-parse banner. When the server returns
     /// degraded:true, render an amber banner above the preview with the
     /// reason and a retry button. Defaults keep read-only contexts clean.
@@ -113,7 +115,7 @@ private struct SectionView: View {
     let sectionIndex: Int
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
     let onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)?
-    let recordedTimesByFragmentId: [String: Int]?
+    let recordedTimesByFragmentId: [String: [Int]]?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -167,7 +169,7 @@ private struct RepGroupRowView: View {
     let repGroupIndex: Int
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
     let onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)?
-    let recordedTimesByFragmentId: [String: Int]?
+    let recordedTimesByFragmentId: [String: [Int]]?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -278,7 +280,7 @@ private struct RepGroupRowView: View {
                             fragment: f,
                             reps: rg.reps,
                             paceTargetText: rg.interval,
-                            recordedMs: recordedMsForFragment(f, in: recordedTimesByFragmentId),
+                            recordedTimes: recordedTimesForFragment(f, in: recordedTimesByFragmentId),
                             onTap: onFragmentTap.map { handler in
                                 { handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f) }
                             }
@@ -1020,7 +1022,7 @@ private struct FragmentCTARow: View {
     let fragment: ParsedFragment
     let reps: Int?
     let paceTargetText: String?
-    let recordedMs: Int?
+    let recordedTimes: [Int]?
     // V0.35 (2026-08-12): nil = static row (builder preview). Renders
     // the same fragment metadata but is not tappable and shows no play
     // icon — the detail view owns timing.
@@ -1091,14 +1093,18 @@ private struct FragmentCTARow: View {
                         ConfidenceBadge(confidence: conf)
                     }
                 }
-                if let ms = recordedMs {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption)
-                            .foregroundColor(Color.statusSuccess)
-                        Text("Saved \(formatStopwatchTime(ms))")
-                            .font(.captionStrong)
-                            .foregroundColor(Color.statusSuccess)
+                // V0.47 (2026-08-22): multi-pass — render one chip per
+                // collected time (2×-through sets hold 2 per fragment).
+                if let times = recordedTimes {
+                    ForEach(Array(times.enumerated()), id: \.offset) { _, ms in
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(Color.statusSuccess)
+                            Text("Saved \(formatStopwatchTime(ms))")
+                                .font(.captionStrong)
+                                .foregroundColor(Color.statusSuccess)
+                        }
                     }
                 }
             }
@@ -1108,8 +1114,8 @@ private struct FragmentCTARow: View {
             // reads as actionable ("tap to retime"). The Saved
             // check above carries the affirmative state.
             if onTap != nil {
-                Image(systemName: recordedMs != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
-                    .foregroundColor(recordedMs != nil ? Color.textMuted : Color.textPrimary)
+                Image(systemName: recordedTimes != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
+                    .foregroundColor(recordedTimes != nil ? Color.textMuted : Color.textPrimary)
             }
         }
         .padding(.vertical, 4)
@@ -1153,7 +1159,7 @@ private struct PairRepGroupRow: View {
     let fragments: [ParsedFragment]
     let reps: Int?
     let paceTargetText: String?
-    let recordedTimesByFragmentId: [String: Int]?
+    let recordedTimesByFragmentId: [String: [Int]]?
     // V0.35 (2026-08-12): nil = static rows (builder preview).
     let onFragmentTap: ((Int, ParsedFragment) -> Void)?
 
@@ -1195,7 +1201,7 @@ private struct PairRepGroupRow: View {
                     // owns the reps count.
                     reps: nil,
                     paceTargetText: paceTargetText,
-                    recordedMs: recordedMsForFragment(f, in: recordedTimesByFragmentId),
+                    recordedTimes: recordedTimesForFragment(f, in: recordedTimesByFragmentId),
                     onTap: onFragmentTap.map { handler in
                         { handler(fIdx, f) }
                     }
@@ -1209,12 +1215,12 @@ private struct PairRepGroupRow: View {
 // WorkoutDetailView-held map. Looks up by fragment.id, then falls back
 // to descriptor+distance+intensity as a soft key so a row that lost its
 // id (older builds) still finds its recorded time. nil = no recording.
-private func recordedMsForFragment(_ fragment: ParsedFragment, in map: [String: Int]?) -> Int? {
+private func recordedTimesForFragment(_ fragment: ParsedFragment, in map: [String: [Int]]?) -> [Int]? {
     guard let map = map, !map.isEmpty else { return nil }
-    if let id = fragment.id, let ms = map[id] { return ms }
+    if let id = fragment.id, let times = map[id], !times.isEmpty { return times }
     // Soft-key fallback for rows without an id.
     let softKey = "\(fragment.distance ?? 0)|\(fragment.intensity?.label ?? fragment.descriptor ?? "")|\(fragment.startType ?? "")"
-    if let ms = map[softKey] { return ms }
+    if let times = map[softKey], !times.isEmpty { return times }
     return nil
 }
 

@@ -138,7 +138,8 @@ final class TimingService {
         intensity: String,
         gear: String?,
         coachId: String?,
-        assignments: [LapAssignment]
+        assignments: [LapAssignment],
+        fragment: FragmentContext? = nil
     ) async throws {
         struct PairedLapRow: Encodable {
             let id: String
@@ -173,6 +174,14 @@ final class TimingService {
             let assignment_confidence: Double
             let lap_order: Int
             let wave_number: Int
+            /// V0.47 (2026-08-22): fragment context stamp. When the
+            /// session was launched from a per-fragment CTA the row
+            /// carries the fragment's identity so the workout page
+            /// can attribute the time to the right fragment row.
+            /// nil for bare/set-level timing (columns nullable).
+            let fragment_id: String?
+            let distance_meters: Int?
+            let start_type: String?
         }
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let rows = assignments.map { assignment in
@@ -193,7 +202,10 @@ final class TimingService {
                 confidence: assignment.confidence,
                 assignment_confidence: assignment.assignmentConfidence,
                 lap_order: assignment.lap.lapNumber,
-                wave_number: assignment.waveNumber
+                wave_number: assignment.waveNumber,
+                fragment_id: fragment?.fragmentId,
+                distance_meters: fragment?.distance,
+                start_type: fragment?.startType
             )
         }
 

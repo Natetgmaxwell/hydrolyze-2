@@ -1480,7 +1480,11 @@ final class TimingViewModel: ObservableObject {
                         // NULL for bare sets.
                         gear: self.resolvedSaveGear,
                         coachId: self.coachId,
-                        assignments: result.assignments
+                        assignments: result.assignments,
+                        // V0.47 (2026-08-22): forward the tapped
+                        // fragment context so rows carry fragment_id
+                        // and the workout page can attribute them.
+                        fragment: self.fragmentContexts.first
                     )
                 }
 
