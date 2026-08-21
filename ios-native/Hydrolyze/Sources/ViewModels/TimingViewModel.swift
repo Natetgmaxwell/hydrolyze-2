@@ -1065,7 +1065,12 @@ final class TimingViewModel: ObservableObject {
                     startedAt: isoFormatter.string(from: sessionStartDate ?? Date()),
                     endedAt: isoFormatter.string(from: Date())
                 )
-                try await timingService.saveSession(session)
+                // V0.47 (2026-08-22): stamp the fragment context on the
+                // single-swimmer rows. The VM holds the coach's tapped
+                // fragment (TimingView.onAppear populates fragmentContexts
+                // from the prefill); forwarding it here gives the row its
+                // fragment_id so the workout page can attribute the time.
+                try await timingService.saveSession(session, fragment: fragmentContexts.first)
                 // V0.39 Slice 4 (2026-08-18): persist the drop-rule
                 // event trail. Non-fatal — the recorded times are
                 // the source of truth; a rest-events write failure

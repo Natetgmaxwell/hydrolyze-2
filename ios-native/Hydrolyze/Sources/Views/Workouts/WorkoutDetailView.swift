@@ -26,6 +26,32 @@ final class WorkoutDetailViewModel: ObservableObject {
         isLoading = false
     }
 
+    /// V0.47 (2026-08-22): fragment-context stamp on saves (fragment_id,
+    /// distance_meters, start_type via saveSession(fragment:)) + revisit
+    /// load. Keyed by fragment_id → latest time_ms. Rows without a
+    /// fragment_id can't be attributed to a fragment row and are dropped.
+    /// Non-fatal: a fetch failure leaves the chips empty rather than
+    /// blocking the page.
+    @Published var recordedTimesByFragmentId: [String: Int] = [:]
+
+    func loadFragmentTimes() async {
+        guard !sets.isEmpty else { return }
+        var map: [String: Int] = [:]
+        do {
+            for set in sets {
+                let times = try await workoutService.fetchTimesForSet(workoutSetId: set.id)
+                for t in times where t.fragmentId != nil {
+                    if let fid = t.fragmentId {
+                        map[fid] = t.timeMs
+                    }
+                }
+            }
+        } catch {
+            print("[WorkoutDetail] fragment-times fetch failed: \(error.localizedDescription)")
+        }
+        recordedTimesByFragmentId = map
+    }
+
     func deleteWorkout(workoutId: String) async {
         do {
             try await workoutService.deleteWorkout(workoutId: workoutId)
@@ -242,6 +268,10 @@ struct WorkoutDetailView: View {
         }
         .task {
             await viewModel.loadWorkout(workoutId: workoutId)
+            // V0.47 (2026-08-22): load persisted fragment times so the
+            // chips render on revisit, not just during live capture.
+            await viewModel.loadFragmentTimes()
+            recordedTimesByFragmentId = viewModel.recordedTimesByFragmentId
         }
         // ponytail: workout detail fade-in on push. Gating by
         // reduceMotion is the standard a11y pattern (matches d46c444,

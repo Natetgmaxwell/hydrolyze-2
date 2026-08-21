@@ -6,7 +6,7 @@ import Supabase
 final class TimingService {
     private let supabase = SupabaseService.shared.client
 
-    func saveSession(_ session: TimingSession) async throws {
+    func saveSession(_ session: TimingSession, fragment: FragmentContext? = nil) async throws {
         struct LapRow: Encodable {
             let id: String
             let session_id: String?
@@ -33,6 +33,14 @@ final class TimingService {
             /// the actual lap vs PB z-score, but for v1.17.0
             /// the single-swimmer path stays a clean 1.0.
             let assignment_confidence: Double?
+            /// V0.47 (2026-08-22): fragment context stamp. When the
+            /// session was launched from a per-fragment CTA the row
+            /// carries the fragment's identity so the workout page
+            /// can attribute the time to the right fragment row.
+            /// nil for bare/set-level timing (columns nullable).
+            let fragment_id: String?
+            let distance_meters: Int?
+            let start_type: String?
         }
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let rows = session.laps.map { lap in
@@ -49,7 +57,10 @@ final class TimingService {
             workout_set_id: session.workoutSetId,
             confidence: 100,
             coach_id: session.coachId,
-            assignment_confidence: 1.0
+            assignment_confidence: 1.0,
+            fragment_id: fragment?.fragmentId,
+            distance_meters: fragment?.distance,
+            start_type: fragment?.startType
         )
         }
         try await supabase.from("recorded_times")
