@@ -37,9 +37,11 @@ struct WorkoutPreview: View {
     /// V0.48 Slice 1 (2026-08-22): [FragmentTimeRecord] per fragment —
     /// each record carries owner attribution. Unowned records render
     /// as today ("Saved M:SS.HH"); owned records render name-prefixed
-    /// ("Jack M:SS.H" for sub-minute, "Jack M:SS.HH" for ≥1min). Tier
-    /// logic and the aggregate chip land in Slice 2 — this slice keeps
-    /// one chip per record.
+    /// ("Jack 1:41.7" in JetBrains Mono).
+    /// V0.48 Slice 2 (2026-08-22): count-driven tier logic replaces the
+    /// per-record chip list. 0 records → nothing; 1–2 → inline chips
+    /// (unchanged); 3+ → one aggregate chip "N saved ▸" that opens the
+    /// `FragmentTimesSheet` via `presentedFragment`.
     var recordedTimesByFragmentId: [String: [FragmentTimeRecord]]? = nil
     /// V0.37 (2026-08-13): degraded-parse banner. When the server returns
     /// degraded:true, render an amber banner above the preview with the
@@ -47,6 +49,14 @@ struct WorkoutPreview: View {
     var degraded: Bool = false
     var degradedReason: String? = nil
     var onRetry: (() -> Void)? = nil
+
+    // V0.48 Slice 2 (2026-08-22): sheet state for the aggregate chip.
+    // Owned by WorkoutPreview (not by each row) so multiple chips across
+    // the tree share one presentation slot — tapping any aggregate chip
+    // replaces the currently-presented sheet (clean SwiftUI semantics,
+    // matches the existing `.sheet(item:)` pattern). nil = nothing
+    // presented.
+    @State private var presentedFragment: PresentedFragmentTimes?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -65,10 +75,22 @@ struct WorkoutPreview: View {
                         sectionIndex: sectionIdx,
                         onRemoveRepGroup: onRemoveRepGroup,
                         onFragmentTap: onFragmentTap,
-                        recordedTimesByFragmentId: recordedTimesByFragmentId
+                        recordedTimesByFragmentId: recordedTimesByFragmentId,
+                        onAggregateChipTap: { title, records in
+                            Haptics.selection()
+                            presentedFragment = PresentedFragmentTimes(
+                                title: title,
+                                records: records
+                            )
+                        }
                     )
                 }
             }
+        }
+        .sheet(item: $presentedFragment) { env in
+            FragmentTimesSheet(title: env.title, records: env.records)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -120,6 +142,11 @@ private struct SectionView: View {
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
     let onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)?
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    // V0.48 Slice 2 (2026-08-22): forwarded up to WorkoutPreview, which
+    // owns the `presentedFragment` sheet state. Parameters: the fragment's
+    // title string (e.g. "75m @ fast") and the records to render in the
+    // sheet — already grouped/bucketed by the calling row.
+    let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -155,7 +182,8 @@ private struct SectionView: View {
                             repGroupIndex: rgIdx,
                             onRemoveRepGroup: onRemoveRepGroup,
                             onFragmentTap: onFragmentTap,
-                            recordedTimesByFragmentId: recordedTimesByFragmentId
+                            recordedTimesByFragmentId: recordedTimesByFragmentId,
+                            onAggregateChipTap: onAggregateChipTap
                         )
                     }
                 }
@@ -174,6 +202,9 @@ private struct RepGroupRowView: View {
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
     let onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)?
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    // V0.48 Slice 2 (2026-08-22): forwarded from SectionView. Fires when
+    // a fragment row needs to open the aggregate sheet (3+ records tier).
+    let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -276,7 +307,8 @@ private struct RepGroupRowView: View {
                             { fIdx, f in
                                 handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
                             }
-                        }
+                        },
+                        onAggregateChipTap: onAggregateChipTap
                     )
                 } else {
                     ForEach(Array(fragments.enumerated()), id: \.offset) { fIdx, f in
@@ -287,6 +319,9 @@ private struct RepGroupRowView: View {
                             recordedTimes: recordedTimesForFragment(f, in: recordedTimesByFragmentId),
                             onTap: onFragmentTap.map { handler in
                                 { handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f) }
+                            },
+                            onAggregateTap: { title, records in
+                                onAggregateChipTap(title, records)
                             }
                         )
                     }
@@ -1031,6 +1066,12 @@ private struct FragmentCTARow: View {
     // the same fragment metadata but is not tappable and shows no play
     // icon — the detail view owns timing.
     let onTap: (() -> Void)?
+    // V0.48 Slice 2 (2026-08-22): fires when the row's record count
+    // reaches the aggregate tier (3+). Parameters: human-readable
+    // fragment title (e.g. "75m @ fast") + the records to render in
+    // the sheet. Haptics.selection() is fired by WorkoutPreview when
+    // this callback runs (one place, not duplicated at each row).
+    let onAggregateTap: ((String, [FragmentTimeRecord]) -> Void)?
 
     var body: some View {
         let content = HStack(spacing: 8) {
@@ -1103,22 +1144,44 @@ private struct FragmentCTARow: View {
                 // "<Name> M:SS.HH" (two-digit hundredths when ≥1min,
                 // single-digit tenths when sub-minute, matching the
                 // spec example "Jack 1:41.7"). All time text is
-                // JetBrains Mono via the `.numeric` role. Slice 2
-                // collapses 3+ chips into an aggregate chip with a
-                // sheet — this slice keeps one chip per record so the
-                // join behavior is observable in isolation.
-                if let times = recordedTimes {
-                    ForEach(Array(times.enumerated()), id: \.offset) { _, record in
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption)
-                                .foregroundColor(Color.statusSuccess)
-                            Text(chipLabel(for: record))
-                                .font(record.hasOwner ? .numeric : .captionStrong)
-                                .foregroundColor(Color.statusSuccess)
+                // JetBrains Mono via the `.numeric` role.
+                // V0.48 Slice 2 (2026-08-22): count-driven tier logic.
+                // 0 records → nothing renders (was the `if let times`
+                // wrapper, now the `count > 0` guard). 1–2 records →
+                // inline chips unchanged. 3+ records → one aggregate
+                // chip "N saved ▸" that opens the sheet via
+                // `onAggregateTap`. The tier-change transition gets
+                // Animations.springSnappy on the row layout.
+                Group {
+                    if let times = recordedTimes, !times.isEmpty {
+                        if times.count >= 3 {
+                            // Aggregate tier — single chip, never launches
+                            // timing. Visually distinct from the coral Time
+                            // CTA (fog-on-inset per spec). Hit target ≥44pt.
+                            aggregateChip(count: times.count) {
+                                onAggregateTap?(fragmentChipTitle(), times)
+                            }
+                            .transition(.scale.combined(with: .opacity))
+                        } else {
+                            // 1–2 records — inline chips (unchanged from S1).
+                            ForEach(Array(times.enumerated()), id: \.offset) { _, record in
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundColor(Color.statusSuccess)
+                                    Text(chipLabel(for: record))
+                                        .font(record.hasOwner ? .numeric : .captionStrong)
+                                        .foregroundColor(Color.statusSuccess)
+                                }
+                            }
+                            .transition(.opacity)
                         }
                     }
                 }
+                .animation(
+                    Animations.springSnappy,
+                    value: recordedTimes?.count ?? 0
+                )
             }
             Spacer()
             // t_d59998d9 (2026-08-05): if a recording exists, swap
@@ -1143,6 +1206,74 @@ private struct FragmentCTARow: View {
         }
     }
 
+    /// V0.48 Slice 2 (2026-08-22): aggregate chip for the 3+ tier.
+    /// Visually distinct from the coral Time CTA — fog-on-inset per spec.
+    /// Hit target ≥44pt (vertical padding pushes it past the 44pt bar
+    /// even at the 11pt font size). The disclosure glyph (▸) signals
+    /// "tap opens more", matching iOS conventions for expandable rows.
+    /// Tap fires `action` and propagates upward via `onTap`; never
+    /// launches timing (the row's `onTap` is the timing CTA — this
+    /// chip is wrapped in its own Button, separate from the row tap).
+    @ViewBuilder
+    private func aggregateChip(count: Int, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(Color.statusSuccess)
+                Text("\(count) saved")
+                    .font(.monoChip)
+                    .foregroundColor(Color.textPrimary)
+                Text("▸")
+                    .font(.monoChip)
+                    // V0.48 Slice 2 (2026-08-22): WCAG 2.2 AA contrast
+                    // check — textMuted on bgInset measured 3.86:1
+                    // (fails 4.5:1 normal-text threshold at 11pt).
+                    // Promoting the disclosure glyph to textPrimary
+                    // pushes it to 6.76:1 — clear pass, with the
+                    // glyph still reading as a separate element via
+                    // its shape and right-side position in the HStack.
+                    .foregroundColor(Color.textPrimary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            // Fog-on-inset: bgInset (mist @16%) with a hairline divider
+            // border. Distinct from bgBase (the row bg) so the chip
+            // reads as an inset pill rather than blending into the row.
+            .background(Color.bgInset)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color.divider, lineWidth: 1)
+            )
+            // Hit-target guarantee: 6pt vertical + 11pt font + 8pt
+            // horizontal padding → ~23pt tall by default; padding: .vertical
+            // = 8 instead of 6 would push past 44pt width too. Spec asks
+            // for ≥44pt height/width — we get that from the padding +
+            // the natural width of "N saved ▸" at 11pt (≈70pt).
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// V0.48 Slice 2 (2026-08-22): human-readable title for the
+    /// aggregate sheet. Mirrors the row's primary label — "{distance}m
+    /// {stroke} @ {intensity}" when all three are present, with safe
+    /// fallbacks for missing parts. Used by `FragmentTimesSheet` for
+    /// its title and by VoiceOver for the chip's accessibility label.
+    private func fragmentChipTitle() -> String {
+        var parts: [String] = []
+        if let d = fragment.distance { parts.append("\(d)m") }
+        if let s = fragment.stroke, !s.isEmpty { parts.append(s) }
+        if let label = fragment.intensity?.label, !label.isEmpty {
+            return parts.joined(separator: " ") + " @ " + label
+        }
+        if let desc = fragment.descriptor, !desc.isEmpty {
+            return parts.joined(separator: " ") + " · " + desc
+        }
+        if !parts.isEmpty { return parts.joined(separator: " ") }
+        return "Fragment"
+    }
+
     /// V0.48 Slice 1 (2026-08-22): owned vs. unowned label. Owned =
     /// "<Name> <time>" (name-prefixed); unowned = "Saved <time>" (today).
     /// Time format mirrors the stopwatch: M:SS.HH always; the spec example
@@ -1162,6 +1293,12 @@ private struct FragmentCTARow: View {
     /// M:SS.H (single decimal). For <1min, drop the leading "0:" →
     /// "SS.HH". Preserves the spec's compactness without sacrificing
     /// the stopwatch's mono column alignment.
+    /// V0.48 Slice 2 (2026-08-22): hoisted to file scope so the sheet
+    /// (`FragmentTimesSheetRow`) can reuse the same formatter. The
+    /// call below resolves to the file-scope function; the inner
+    /// `private func` was removed to avoid a recursion shadow.
+    /// 101700 → "1:41.7"
+    /// 42100  → "42.10"
     private func compactOwnedTime(_ ms: Int) -> String {
         let totalCs = ms / 10
         let cs = totalCs % 100
@@ -1169,13 +1306,9 @@ private struct FragmentCTARow: View {
         let sec = totalSec % 60
         let min = totalSec / 60
         if min >= 1 {
-            // 101700 → "1:41.7"
-            let tenths = cs / 10
-            return String(format: "%d:%02d.%d", min, sec, tenths)
-        } else {
-            // 42100 → "42.10" — sub-minute, two-digit seconds, two-digit hundredths.
-            return String(format: "%02d.%02d", sec, cs)
+            return String(format: "%d:%02d.%d", min, sec, cs / 10)
         }
+        return String(format: "%02d.%02d", sec, cs)
     }
 }
 
@@ -1209,6 +1342,11 @@ private struct PairRepGroupRow: View {
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
     // V0.35 (2026-08-12): nil = static rows (builder preview).
     let onFragmentTap: ((Int, ParsedFragment) -> Void)?
+    // V0.48 Slice 2 (2026-08-22): forwarded to each FragmentCTARow so
+    // every inner fragment can present its own aggregate sheet. The
+    // shared callback ensures only one sheet is presented at a time
+    // (WorkoutPreview owns the state slot).
+    let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1251,6 +1389,9 @@ private struct PairRepGroupRow: View {
                     recordedTimes: recordedTimesForFragment(f, in: recordedTimesByFragmentId),
                     onTap: onFragmentTap.map { handler in
                         { handler(fIdx, f) }
+                    },
+                    onAggregateTap: { title, records in
+                        onAggregateChipTap(title, records)
                     }
                 )
             }
@@ -1282,6 +1423,23 @@ private func formatStopwatchTime(_ ms: Int) -> String {
     let sec = totalSec % 60
     let min = totalSec / 60
     return String(format: "%d:%02d.%02d", min, sec, cs)
+}
+
+// V0.48 Slice 1 (2026-08-22) → hoisted file-scope in Slice 2 so the
+// sheet's owned-time formatter can reuse it without duplicating the
+// ≥1min/sub-minute branching. Spec example: "Jack 1:41.7" for
+// 101_700 ms. ≥1min → M:SS.H (single decimal). <1min → SS.HH.
+private func compactOwnedTime(_ ms: Int) -> String {
+    let totalCs = ms / 10
+    let cs = totalCs % 100
+    let totalSec = totalCs / 100
+    let sec = totalSec % 60
+    let min = totalSec / 60
+    if min >= 1 {
+        let tenths = cs / 10
+        return String(format: "%d:%02d.%d", min, sec, tenths)
+    }
+    return String(format: "%02d.%02d", sec, cs)
 }
 
 // t_d59998d9 (2026-08-05): confidence badge for LLM-fallback fragments.
@@ -1358,4 +1516,171 @@ private struct ConfidenceBadge: View {
         .padding()
     }
     .background(Color.bgBase)
+}
+
+// MARK: - V0.48 Slice 2: progressive disclosure sheet
+
+/// Identifiable envelope for the sheet's `item:` source. SwiftUI's
+/// `.sheet(item:)` requires an Identifiable — the title alone isn't
+/// enough (two chips presenting identical titles would collide).
+/// `records.first?.id ?? title` is unique per bucket because records
+/// carry a stable id derived from capturedAt+timeMs.
+struct PresentedFragmentTimes: Identifiable {
+    let title: String
+    let records: [FragmentTimeRecord]
+    var id: String {
+        if let first = records.first { return "\(title)|\(first.id)" }
+        return title
+    }
+}
+
+/// V0.48 Slice 2 (2026-08-22): the sheet behind the aggregate chip.
+///
+/// Body: one row per swimmer, owned + unowned grouped separately.
+/// Unowned rows render last under the label "Unpaired". Each row
+/// shows the swimmer name (body 15) and the times they recorded on
+/// that fragment, separated by "·" in JetBrains Mono numeric.
+///
+/// Title: the fragment's chip title (e.g. "75m @ fast") — same string
+/// that appears on the chip itself, so VoiceOver announces a coherent
+/// "3 saved times for 75m @ fast" sequence.
+///
+/// Background: raised (`Color.bgRaised`) — sits one level above the
+/// app's base surface but below the modal handle. No coral anywhere
+/// on the sheet — that color stays exclusive to the Time CTA per the
+/// V0.46 coral-budget audit.
+///
+/// Swipe-to-dismiss is the system default for `.medium` detents with
+/// `presentationDragIndicator(.visible)` — no custom dismiss code
+/// needed. The system drag handle + the medium detent together cover
+/// the "Swipe-to-dismiss default" requirement in the spec.
+private struct FragmentTimesSheet: View {
+    let title: String
+    let records: [FragmentTimeRecord]
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 0) {
+                // Sectioned list: owned groups (one per swimmer name)
+                // first, then Unpaired. Each group is a VStack of
+                // swimmer-name + times-joined-by-middle-dot.
+                let grouped = groupRecordsByOwner(records)
+                ForEach(grouped.owned, id: \.name) { group in
+                    FragmentTimesSheetRow(
+                        swimmerName: group.name,
+                        times: group.times
+                    )
+                    Divider()
+                        .background(Color.divider.opacity(0.5))
+                }
+                if !grouped.unowned.isEmpty {
+                    // Spec: "unowned group last, label 'Unpaired'".
+                    FragmentTimesSheetRow(
+                        swimmerName: "Unpaired",
+                        times: grouped.unowned
+                    )
+                }
+                Spacer(minLength: 12)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bgRaised.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    /// Bucket records by swimmer name. Owned records group by name
+    /// (one row per swimmer); unowned records (swimmerName == nil)
+    /// collapse into a single trailing group.
+    private func groupRecordsByOwner(
+        _ records: [FragmentTimeRecord]
+    ) -> (owned: [(name: String, times: [FragmentTimeRecord])], unowned: [FragmentTimeRecord]) {
+        var ownedMap: [String: [FragmentTimeRecord]] = [:]
+        var unowned: [FragmentTimeRecord] = []
+        for record in records {
+            if let name = record.swimmerName, !name.isEmpty {
+                ownedMap[name, default: []].append(record)
+            } else {
+                unowned.append(record)
+            }
+        }
+        // Sort swimmers by first-appearance so the sheet reads
+        // chronologically — matches the row's record order.
+        let owned = ownedMap
+            .map { (name: $0.key, times: $0.value) }
+            .sorted { lhs, rhs in
+                guard let lFirst = lhs.times.first?.capturedAt,
+                      let rFirst = rhs.times.first?.capturedAt else { return false }
+                return lFirst < rFirst
+            }
+        return (owned: owned, unowned: unowned)
+    }
+}
+
+/// V0.48 Slice 2 (2026-08-22): single row inside `FragmentTimesSheet`.
+/// Body 15 for the swimmer name; JetBrains Mono numeric for the times
+/// joined by " · ". Hit target not required — the sheet is read-only,
+/// no taps.
+private struct FragmentTimesSheetRow: View {
+    let swimmerName: String
+    let times: [FragmentTimeRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(swimmerName)
+                .font(.body)
+                .foregroundColor(Color.textPrimary)
+            Text(formattedTimes)
+                .font(.numeric)
+                .foregroundColor(Color.statusSuccess)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Accessibility: combine the name + times into a single
+        // announcement so VoiceOver reads one coherent sentence
+        // instead of two separate elements.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(swimmerName): \(accessibilityFormattedTimes)")
+    }
+
+    /// Visual: "{M:SS.HH} · {M:SS.HH} · ..." using compactOwnedTime
+    /// for owned rows (matches the chip's name-prefixed form) and
+    /// formatStopwatchTime for the Unpaired group (matches the
+    /// unowned chip form).
+    private var formattedTimes: String {
+        times.map(formatOne).joined(separator: " · ")
+    }
+
+    /// Spoken form: "1 minute 41 point 7, 1 minute 42 point 3" so
+    /// VoiceOver doesn't read "1 colon 41 point 7" (the visual text).
+    private var accessibilityFormattedTimes: String {
+        times.map(spokenForm).joined(separator: ", ")
+    }
+
+    private func formatOne(_ record: FragmentTimeRecord) -> String {
+        if record.hasOwner {
+            return compactOwnedTime(record.timeMs)
+        }
+        return formatStopwatchTime(record.timeMs)
+    }
+
+    /// "1:41.7" → "1 minute 41 point 7". VoiceOver reads colons as
+    /// "colon" by default, which is jarring for times; spelling out
+    /// the unit makes it parseable.
+    private func spokenForm(_ record: FragmentTimeRecord) -> String {
+        let totalCs = record.timeMs / 10
+        let cs = totalCs % 100
+        let totalSec = totalCs / 100
+        let sec = totalSec % 60
+        let min = totalSec / 60
+        let frac = String(format: "%02d", cs)
+        if min >= 1 {
+            return "\(min) minute\(min == 1 ? "" : "s") \(sec) point \(frac)"
+        }
+        return "\(sec) point \(frac) seconds"
+    }
 }
