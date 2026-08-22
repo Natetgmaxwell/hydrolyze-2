@@ -1152,6 +1152,13 @@ private struct FragmentCTARow: View {
                 // chip "N saved ▸" that opens the sheet via
                 // `onAggregateTap`. The tier-change transition gets
                 // Animations.springSnappy on the row layout.
+                // V0.48 Slice 3 (2026-08-22): accessibility labels.
+                // Inline chips collapse per-chip accessibility to a
+                // single "{name} {time}" or "{time}" announcement
+                // (icon + text merged via .accessibilityElement). The
+                // aggregate chip exposes "N times saved for {title},
+                // tap for detail" so VoiceOver reads the disclosure
+                // affordance as a single coherent instruction.
                 Group {
                     if let times = recordedTimes, !times.isEmpty {
                         if times.count >= 3 {
@@ -1173,6 +1180,19 @@ private struct FragmentCTARow: View {
                                         .font(record.hasOwner ? .numeric : .captionStrong)
                                         .foregroundColor(Color.statusSuccess)
                                 }
+                                // V0.48 Slice 3 (2026-08-22): collapse
+                                // the inline chip's icon + text into one
+                                // VoiceOver element. Spoken form is
+                                // "{name} {time}" for owned rows and
+                                // just "{time}" (no "Saved" prefix — the
+                                // visual "Saved" is redundancy for sighted
+                                // users; VoiceOver already knows it's a
+                                // recorded time from the row context) for
+                                // unowned rows. Pass index omitted at
+                                // 1–2 chips because there's no aggregate
+                                // disclosure to disambiguate.
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel(inlineChipAccessibilityLabel(for: record))
                             }
                             .transition(.opacity)
                         }
@@ -1214,6 +1234,15 @@ private struct FragmentCTARow: View {
     /// Tap fires `action` and propagates upward via `onTap`; never
     /// launches timing (the row's `onTap` is the timing CTA — this
     /// chip is wrapped in its own Button, separate from the row tap).
+    ///
+    /// V0.48 Slice 3 (2026-08-22): explicit accessibility label so
+    /// VoiceOver reads the chip as "N times saved for {title}, tap
+    /// for detail" — one coherent instruction rather than three
+    /// fragmented elements (icon + count + glyph). `count` is
+    /// spelled "N times" because "N saved" reads as a verb fragment
+    /// ("N saved [what?]") when spoken aloud; the spec example
+    /// "3 times saved for 75m @ fast, tap for detail" is the
+    /// canonical form.
     @ViewBuilder
     private func aggregateChip(count: Int, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -1253,6 +1282,8 @@ private struct FragmentCTARow: View {
             // the natural width of "N saved ▸" at 11pt (≈70pt).
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(count) times saved for \(fragmentChipTitle()), tap for detail")
     }
 
     /// V0.48 Slice 2 (2026-08-22): human-readable title for the
@@ -1289,26 +1320,19 @@ private struct FragmentCTARow: View {
         return "Saved \(time)"
     }
 
-    /// Spec example: "Jack 1:41.7" for 101700 ms. For ≥1min, render
-    /// M:SS.H (single decimal). For <1min, drop the leading "0:" →
-    /// "SS.HH". Preserves the spec's compactness without sacrificing
-    /// the stopwatch's mono column alignment.
-    /// V0.48 Slice 2 (2026-08-22): hoisted to file scope so the sheet
-    /// (`FragmentTimesSheetRow`) can reuse the same formatter. The
-    /// call below resolves to the file-scope function; the inner
-    /// `private func` was removed to avoid a recursion shadow.
-    /// 101700 → "1:41.7"
-    /// 42100  → "42.10"
-    private func compactOwnedTime(_ ms: Int) -> String {
-        let totalCs = ms / 10
-        let cs = totalCs % 100
-        let totalSec = totalCs / 100
-        let sec = totalSec % 60
-        let min = totalSec / 60
-        if min >= 1 {
-            return String(format: "%d:%02d.%d", min, sec, cs / 10)
+    /// V0.48 Slice 3 (2026-08-22): VoiceOver label for an inline
+    /// 1–2 chip. Owned rows: "{name} {compactTime}" (e.g. "Jack
+    /// 1:41.7"). Unowned rows: just the time — "Saved" is visual
+    /// scaffolding for sighted users; VoiceOver doesn't need it
+    /// because the row's surrounding context already tells the user
+    /// these are recorded times. The compact owned time mirrors the
+    /// visual chip text exactly so sighted and screen-reader users
+    /// hear the same digits.
+    private func inlineChipAccessibilityLabel(for record: FragmentTimeRecord) -> String {
+        if let name = record.swimmerName, !name.isEmpty {
+            return "\(name) \(compactOwnedTime(record.timeMs))"
         }
-        return String(format: "%02d.%02d", sec, cs)
+        return formatStopwatchTime(record.timeMs)
     }
 }
 
@@ -1560,31 +1584,42 @@ private struct FragmentTimesSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 0) {
-                // Sectioned list: owned groups (one per swimmer name)
-                // first, then Unpaired. Each group is a VStack of
-                // swimmer-name + times-joined-by-middle-dot.
-                let grouped = groupRecordsByOwner(records)
-                ForEach(grouped.owned, id: \.name) { group in
-                    FragmentTimesSheetRow(
-                        swimmerName: group.name,
-                        times: group.times
-                    )
-                    Divider()
-                        .background(Color.divider.opacity(0.5))
+            // V0.48 Slice 3 (2026-08-22): wrap the rows in a ScrollView
+            // so >6 swimmers don't truncate. The .medium detent caps
+            // the visible height at ~50% of the screen; an 8-swimmer
+            // × 3-passes sheet (~12 rows) would clip without scroll.
+            // The ScrollView sits inside the NavigationStack so the
+            // navigation title stays pinned at the top while the rows
+            // scroll under it (matches iOS standard sheet UX).
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Sectioned list: owned groups (one per swimmer name)
+                    // first, then Unpaired. Each group is a VStack of
+                    // swimmer-name + times-joined-by-middle-dot.
+                    let grouped = groupRecordsByOwner(records)
+                    ForEach(grouped.owned, id: \.name) { group in
+                        FragmentTimesSheetRow(
+                            swimmerName: group.name,
+                            times: group.times
+                        )
+                        Divider()
+                            .background(Color.divider.opacity(0.5))
+                    }
+                    if !grouped.unowned.isEmpty {
+                        // Spec: "unowned group last, label 'Unpaired'".
+                        // When the bucket has BOTH owned and unowned
+                        // records, the unowned group renders last under
+                        // this label — already correct from S2; no change.
+                        FragmentTimesSheetRow(
+                            swimmerName: "Unpaired",
+                            times: grouped.unowned
+                        )
+                    }
                 }
-                if !grouped.unowned.isEmpty {
-                    // Spec: "unowned group last, label 'Unpaired'".
-                    FragmentTimesSheetRow(
-                        swimmerName: "Unpaired",
-                        times: grouped.unowned
-                    )
-                }
-                Spacer(minLength: 12)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.bgRaised.ignoresSafeArea())
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -1623,6 +1658,16 @@ private struct FragmentTimesSheet: View {
 /// Body 15 for the swimmer name; JetBrains Mono numeric for the times
 /// joined by " · ". Hit target not required — the sheet is read-only,
 /// no taps.
+///
+/// V0.48 Slice 3 (2026-08-22): accessibility label uses the spec's
+/// canonical form — "{name}: pass 1 {time}, pass 2 {time}". This
+/// matches the inline chip text exactly (compact owned time) rather
+/// than the spoken "1 minute 41 point 7" form Slice 2 used. Why:
+/// the sheet has no other context (it's a focused detail view), so
+/// the count-down structure ("pass 1, pass 2, pass 3") helps
+/// VoiceOver users anchor on "this is the Nth recorded pass" — a
+/// useful orientation cue when scanning multiple swimmers with
+/// different pass counts.
 private struct FragmentTimesSheetRow: View {
     let swimmerName: String
     let times: [FragmentTimeRecord]
@@ -1642,7 +1687,10 @@ private struct FragmentTimesSheetRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         // Accessibility: combine the name + times into a single
         // announcement so VoiceOver reads one coherent sentence
-        // instead of two separate elements.
+        // instead of two separate elements. Slice 3 changed the
+        // spoken form from "1 minute 41 point 7" to "pass 1 1:41.7"
+        // — same digits as the visual row, but with explicit pass
+        // numbering for multi-pass sets.
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(swimmerName): \(accessibilityFormattedTimes)")
     }
@@ -1655,10 +1703,15 @@ private struct FragmentTimesSheetRow: View {
         times.map(formatOne).joined(separator: " · ")
     }
 
-    /// Spoken form: "1 minute 41 point 7, 1 minute 42 point 3" so
-    /// VoiceOver doesn't read "1 colon 41 point 7" (the visual text).
+    /// Spoken form: "pass 1 {time}, pass 2 {time}, pass 3 {time}".
+    /// The pass index is 1-based to match how coaches count laps
+    /// ("first pass", "second pass"). Times are spoken in the same
+    /// compact visual form as the chip — "1:41.7" not "1 minute 41
+    /// point 7" — so what VoiceOver reads matches what's on screen.
     private var accessibilityFormattedTimes: String {
-        times.map(spokenForm).joined(separator: ", ")
+        times.enumerated().map { idx, record in
+            "pass \(idx + 1) \(formatOne(record))"
+        }.joined(separator: ", ")
     }
 
     private func formatOne(_ record: FragmentTimeRecord) -> String {
@@ -1666,21 +1719,5 @@ private struct FragmentTimesSheetRow: View {
             return compactOwnedTime(record.timeMs)
         }
         return formatStopwatchTime(record.timeMs)
-    }
-
-    /// "1:41.7" → "1 minute 41 point 7". VoiceOver reads colons as
-    /// "colon" by default, which is jarring for times; spelling out
-    /// the unit makes it parseable.
-    private func spokenForm(_ record: FragmentTimeRecord) -> String {
-        let totalCs = record.timeMs / 10
-        let cs = totalCs % 100
-        let totalSec = totalCs / 100
-        let sec = totalSec % 60
-        let min = totalSec / 60
-        let frac = String(format: "%02d", cs)
-        if min >= 1 {
-            return "\(min) minute\(min == 1 ? "" : "s") \(sec) point \(frac)"
-        }
-        return "\(sec) point \(frac) seconds"
     }
 }

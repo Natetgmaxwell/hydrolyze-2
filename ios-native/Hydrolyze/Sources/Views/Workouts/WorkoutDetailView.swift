@@ -365,7 +365,22 @@ struct WorkoutDetailView: View {
             // V0.47 (2026-08-22): load persisted fragment times so the
             // chips render on revisit, not just during live capture.
             await viewModel.loadFragmentTimes()
-            recordedTimesByFragmentId = viewModel.recordedTimesByFragmentId
+            // V0.48 Slice 3 (2026-08-22): live-capture merge guard.
+            // The .task block re-runs whenever WorkoutDetailView re-appears
+            // (e.g. dismissed fullScreenCover → user re-enters via back
+            // navigation before the row's persistence landed). A naive
+            // overwrite would drop the live capture — the local @State
+            // already carries the row the DB hasn't picked up yet. We
+            // merge by UNION: for each fragment bucket, concat DB rows +
+            // local rows, then dedupe by (timeMs + capturedAt rounded
+            // to the second). The pairing handoff + DB reload will
+            // eventually resolve owner attribution; this guard only
+            // protects the in-flight merge so the chip never disappears
+            // mid-session.
+            recordedTimesByFragmentId = mergePersistedWithLive(
+                persisted: viewModel.recordedTimesByFragmentId,
+                live: recordedTimesByFragmentId
+            )
         }
         // ponytail: workout detail fade-in on push. Gating by
         // reduceMotion is the standard a11y pattern (matches d46c444,
@@ -726,6 +741,57 @@ struct WorkoutDetailView: View {
         case .inProgress: return Color.accentAmber
         case .complete: return Color.statusSuccess
         }
+    }
+
+    // V0.48 Slice 3 (2026-08-22): merge the DB-loaded map with the
+    // local @State's live captures. Dedupes by (timeMs, capturedAt
+    // truncated to the second) — the same row arriving from both
+    // sides is recognised by both fields matching within ±1s. The
+    // pairing handoff may rewrite owner attribution between the
+    // local capture and the DB load; when the dedupe key matches we
+    // prefer the persisted record (its `swimmerName` is the one the
+    // pairing engine has resolved, not the local capture's nil).
+    //
+    // Why truncate to the second: `capturedAt = Date()` on the live
+    // append happens ~milliseconds before the row's created_at lands
+    // in the DB, so equality on full Date would miss the dedupe. The
+    // spec ("dedupe by timeMs+capturedAt-second is acceptable") accepts
+    // this precision; in practice two real captures within the same
+    // centisecond from the same stopwatch don't occur — the timer
+    // can't fire twice in <1cs.
+    //
+    // Bucket-by-bucket iteration: O(N+M) where N = live buckets, M =
+    // persisted buckets. Empty inputs short-circuit to the other side
+    // (no work, no dedupe).
+    private func mergePersistedWithLive(
+        persisted: [String: [FragmentTimeRecord]],
+        live: [String: [FragmentTimeRecord]]
+    ) -> [String: [FragmentTimeRecord]] {
+        if live.isEmpty { return persisted }
+        if persisted.isEmpty { return live }
+        var merged: [String: [FragmentTimeRecord]] = [:]
+        let liveKeys = Set(live.keys)
+        let persistedKeys = Set(persisted.keys)
+        let allKeys = liveKeys.union(persistedKeys)
+        for key in allKeys {
+            let persistedRows = persisted[key] ?? []
+            let liveRows = live[key] ?? []
+            // Build a dedupe key for each persisted row and use it to
+            // filter the live set. When the same key appears in both,
+            // we keep the persisted version (its swimmerName is the
+            // pairing-resolved one, not the local capture's nil).
+            let persistedKeysByRow: Set<String> = Set(persistedRows.map(dedupeKey))
+            let newLiveRows = liveRows.filter { !persistedKeysByRow.contains(dedupeKey($0)) }
+            // Sort by capturedAt so the chip list stays chronological.
+            let combined = (persistedRows + newLiveRows).sorted { $0.capturedAt < $1.capturedAt }
+            merged[key] = combined
+        }
+        return merged
+    }
+
+    private func dedupeKey(_ record: FragmentTimeRecord) -> String {
+        let secondBucket = Int(record.capturedAt.timeIntervalSince1970)
+        return "\(record.timeMs)|\(secondBucket)"
     }
 }
 
