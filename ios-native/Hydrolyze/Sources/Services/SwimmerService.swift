@@ -34,20 +34,35 @@ final class SwimmerService {
             let lastName: String?
             let birthdate: String?
             let gender: String?
+            // The legacy `name` column is still NOT NULL on the swimmers
+            // table (it was never dropped after the split_swimmer_name
+            // migration). Supabase rejects inserts that omit it. Build the
+            // combined name from first_name [+ last_name] so callers don't
+            // have to remember.
+            let name: String
             enum CodingKeys: String, CodingKey {
                 case coachId = "coach_id"
                 case firstName = "first_name"
                 case lastName = "last_name"
                 case birthdate
                 case gender
+                case name
             }
+        }
+        let trimmedLast = lastName?.trimmingCharacters(in: .whitespaces)
+        let combinedName: String
+        if let l = trimmedLast, !l.isEmpty {
+            combinedName = "\(firstName.trimmingCharacters(in: .whitespaces)) \(l)"
+        } else {
+            combinedName = firstName.trimmingCharacters(in: .whitespaces)
         }
         let payload = CreatePayload(
             coachId: coachId,
             firstName: firstName,
             lastName: lastName,
             birthdate: birthdate,
-            gender: gender
+            gender: gender,
+            name: combinedName
         )
         let response = try await supabase.from("swimmers")
             .insert(payload)

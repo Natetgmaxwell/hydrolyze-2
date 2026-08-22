@@ -24,6 +24,9 @@ struct SwimmerSheetView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
+                        if let errorMessage = viewModel.errorMessage {
+                            errorBanner(errorMessage)
+                        }
                         firstNameField
                         lastNameField
                         birthdateField
@@ -261,6 +264,32 @@ struct SwimmerSheetView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy"
         return formatter.string(from: date)
+    }
+
+    /// Compact inline error banner. Rendered when `viewModel.errorMessage`
+    /// is non-nil so Save failures are visible instead of silent. Cleared
+    /// automatically the next time save() runs (the viewmodel nils it on
+    /// save entry at line 68 of SwimmerSheetViewModel.swift).
+    private func errorBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(Color.accentAmber)
+                .font(.system(size: 14))
+            Text(message)
+                .font(.caption)
+                .foregroundColor(Color.textPrimary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bgInset)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.accentAmber, lineWidth: 1)
+        )
+        .cornerRadius(8)
     }
 
     @State private var showDatePicker = false
