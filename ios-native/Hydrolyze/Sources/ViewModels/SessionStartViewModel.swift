@@ -363,17 +363,26 @@ final class SessionStartViewModel: ObservableObject {
                 let id: String
                 let coachId: String
                 let startedAt: String
+                // V0.49 hotfix (2026-08-22): the roster-skip lookup keys
+                // on sessions.workout_id, but this row never wrote it —
+                // every session in the DB has workout_id NULL, so
+                // fetchLatestSessionRoster(workoutId:) could never match
+                // and the picker showed every time. Derived from the
+                // first set (one launch covers all sets of the workout).
+                let workoutId: String?
 
                 enum CodingKeys: String, CodingKey {
                     case id
                     case coachId = "coach_id"
                     case startedAt = "started_at"
+                    case workoutId = "workout_id"
                 }
             }
             let sessionRow = SessionRow(
                 id: sessionId,
                 coachId: self.coachId ?? "",
-                startedAt: ISO8601DateFormatter().string(from: Date())
+                startedAt: ISO8601DateFormatter().string(from: Date()),
+                workoutId: workoutSets.first?.workoutId
             )
             struct RosterRow: Encodable {
                 let sessionId: String
