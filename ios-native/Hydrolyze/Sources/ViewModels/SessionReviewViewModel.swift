@@ -847,6 +847,9 @@ final class SessionReviewViewModel: ObservableObject {
 
         struct SessionUpdate: Encodable {
             let reviewedAt: String
+            enum CodingKeys: String, CodingKey {
+                case reviewedAt = "reviewed_at"
+            }
         }
 
         // PHASE 2.6 v1.14 hotfix: client-side retry on PostgREST
