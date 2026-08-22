@@ -289,7 +289,12 @@ struct WorkoutDetailView: View {
                             // t_d59998d9 (2026-08-05): pass the local-state
                             // recorded-times map so each fragment row can
                             // show "Saved 0:42.31" once the stopwatch stops.
-                            recordedTimesByFragmentId: recordedTimesByFragmentId
+                            recordedTimesByFragmentId: recordedTimesByFragmentId,
+                            // V0.47 Slice 3 (2026-08-22): vocabulary card
+                            // is end-of-session only — read-only contexts
+                            // hide it. The detail view surfaces mappings
+                            // via the per-row "edit" link instead.
+                            showVocabularyCard: false
                         )
                             .padding(.horizontal, 16)
                         if let errorMessage = viewModel.errorMessage {

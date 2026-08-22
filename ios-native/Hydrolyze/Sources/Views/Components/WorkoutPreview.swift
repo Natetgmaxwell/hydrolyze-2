@@ -63,6 +63,28 @@ struct WorkoutPreview: View {
             if degraded {
                 degradedBanner
             }
+            // V0.47 Slice 3 (2026-08-22): end-of-session vocabulary card.
+            // Rendered exactly once, above the set tree, when there are
+            // unmapped terms to ask the coach about. Uses `effectiveUnmappedTerms`
+            // so the card fires today even before the server emits the
+            // `unmapped_terms` field — we fall back to deriving from each
+            // rep group's `ambiguousTerm` minus terms already in the
+            // vocabulary cache. When the server does emit the field, that
+            // path wins (canonical). Card is hidden in read-only contexts
+            // (`showVocabularyCard == false`) so WorkoutDetailView stays clean.
+            if showVocabularyCard, !effectiveUnmappedTerms.isEmpty {
+                VocabularyCardView(
+                    terms: effectiveUnmappedTerms,
+                    onTermSaved: { term in
+                        // After saving, the term is in the cache — remove
+                        // it from the local list so the card collapses in
+                        // real time. Also surfaces a haptic so the coach
+                        // feels the save.
+                        savedTerms.insert(term.lowercased())
+                        Haptics.success()
+                    }
+                )
+            }
             if workout.sections.isEmpty {
                 Text("No sets defined")
                     .font(.caption)
@@ -93,6 +115,62 @@ struct WorkoutPreview: View {
                 .presentationDragIndicator(.visible)
         }
     }
+
+    /// V0.47 Slice 3 (2026-08-22): unmapped terms to render on the
+    /// end-of-session card. Prefers the server-emitted field (canonical);
+    /// falls back to the client-side derivation (each rep group's
+    /// `ambiguousTerm` minus terms already in the vocabulary cache).
+    /// Filters out terms the coach has already mapped THIS session via
+    /// `savedTerms` so the card collapses as soon as a row is confirmed.
+    private var effectiveUnmappedTerms: [UnmappedTerm] {
+        let source = workout.unmappedTerms ?? Self.derivedUnmappedTerms(from: workout)
+        let seen = Set(savedTerms)
+        return source.filter { !seen.contains($0.term.lowercased()) }
+    }
+
+    /// V0.47 Slice 3 (2026-08-22): derive an unmapped-terms list from
+    /// each rep group's `ambiguousTerm` field minus terms already in
+    /// the vocabulary cache. This is the iOS fallback that keeps the
+    /// end-of-session card functional today, before the Edge Function
+    /// learns to emit `unmapped_terms`. When the server emits the
+    /// field, that path wins (preferred) and this derivation is
+    /// skipped. Heuristic: walk every rep group, collect the term,
+    /// drop duplicates by lowercased term, drop terms that already
+    /// resolve in the cache. Use the rep group's `sourceLine` (LLM
+    /// path) as the per-term context; fall back to nil when absent
+    /// (regex path).
+    static func derivedUnmappedTerms(from workout: ParsedWorkout) -> [UnmappedTerm] {
+        var seen: Set<String> = []
+        var result: [UnmappedTerm] = []
+        for section in workout.sections {
+            for namedSet in section.namedSets {
+                for rg in namedSet.repGroups {
+                    guard let term = rg.ambiguousTerm?.lowercased(),
+                          !term.isEmpty,
+                          !seen.contains(term) else { continue }
+                    seen.insert(term)
+                    // Skip terms that already have a saved mapping
+                    // — the cache is loaded on app launch, so this
+                    // matches the server's "silently resolved" check.
+                    if VocabularyService.lookupSync(term) != nil { continue }
+                    result.append(UnmappedTerm(term: term, sourceLine: rg.sourceLine))
+                }
+            }
+        }
+        return result
+    }
+
+    /// V0.47 Slice 3 (2026-08-22): terms the coach has saved THIS
+    /// session via the end-of-session card. Used to filter the
+    /// effective list so the card collapses in real time after each
+    /// confirmation. Cleared when `workout` changes (new parse) so the
+    /// next parse starts fresh.
+    @State private var savedTerms: Set<String> = []
+
+    /// V0.47 Slice 3 (2026-08-22): toggle that hides the vocabulary
+    /// card in read-only contexts (WorkoutDetailView, TimingView).
+    /// Defaults to true; callers that don't want the card pass false.
+    var showVocabularyCard: Bool = true
 
     /// V0.37 (2026-08-13): amber banner shown when the server returned a
     /// degraded parse (LLM failed → regex fallback). Surfaces the reason
@@ -1035,6 +1113,43 @@ struct ParsedWorkout: Codable {
     // clean (nil = not degraded).
     var degraded: Bool?
     var degradedReason: String?
+    // V0.47 Slice 3 (2026-08-22): end-of-session vocabulary ask list.
+    // The server (parse-workout Edge Function) is the canonical source —
+    // it reads `coach_vocabulary` before the LLM call and emits the
+    // terms it could NOT silently resolve. iOS surfaces these on one
+    // card at end-of-session; the coach picks an RPE band per term,
+    // and `VocabularyService.saveMapping` upserts. The card appears in
+    // WorkoutPreview at the top of the preview body, above the set
+    // tree, when this array is non-empty.
+    //
+    // decodeIfPresent because the Edge Function does NOT emit this
+    // field yet (server-side slice is a separate PR). When the field
+    // is absent, the iOS layer derives an equivalent list from each
+    // rep group's `ambiguousTerm` field minus terms already in the
+    // vocabulary cache — see `derivedUnmappedTerms` below. The
+    // derivation gives us the same UX today while the server catches
+    // up; when both paths agree, the user sees the same card.
+    var unmappedTerms: [UnmappedTerm]?
+}
+
+/// V0.47 Slice 3 (2026-08-22): one unmapped term with the original
+/// workout line as context (truncated to one line by the caller).
+/// Server-emitted when `parse-workout` cannot silently resolve an
+/// ambiguous intensity word against `coach_vocabulary`. iOS displays
+/// one row per term on the end-of-session card.
+struct UnmappedTerm: Codable, Hashable {
+    let term: String
+    let sourceLine: String?
+
+    enum CodingKeys: String, CodingKey {
+        case term
+        case sourceLine = "source_line"
+    }
+
+    init(term: String, sourceLine: String? = nil) {
+        self.term = term
+        self.sourceLine = sourceLine
+    }
 }
 
 // t_c74dffbc (2026-08-04): per-fragment CTA row. Renders a single ParsedFragment

@@ -100,6 +100,40 @@ actor VocabularyService {
         }
     }
 
+    /// V0.47 Slice 3 (2026-08-22): save a progression mapping for terms like
+    /// `build` / `descend` that describe an intensity envelope (start RPE → end
+    /// RPE) rather than a single bucket. The schema stores this as ONE row
+    /// with low=start, high=end — the simplest path that preserves the
+    /// never-ask-twice invariant (one row per `(coach_id, user_term)`).
+    /// `RPERange.label` already formats low!=high as "RPE 6-9"; the card
+    /// re-derives start/end via the existing low/high pair, so no UI-side
+    /// reshuffle is needed when both ends collapse.
+    ///
+    /// Synthetic suffixes (".start", ".end") would explode the table and
+    /// break the one-row-per-term invariant. Synthetic "build_start" rows
+    /// would orphan lookups made via the bare term. Single row wins.
+    func saveProgression(term: String, startRPE: Int, endRPE: Int) async {
+        await saveMapping(
+            term: term,
+            rpe: RPERange(low: startRPE, high: endRPE)
+        )
+    }
+
+    /// V0.47 Slice 3 (2026-08-22): terms that describe a progression
+    /// (intensity envelope) rather than a single RPE bucket. The
+    /// end-of-session card shows a two-picker row for these;
+    /// everything else gets the standard 4-bucket chip row.
+    /// Source of truth: V0.47_DIALECT.md §3 — locked 2026-08-21.
+    static let progressionTerms: Set<String> = [
+        "build", "building", "descend", "desc"
+    ]
+
+    /// V0.47 Slice 3 (2026-08-22): true when the term describes a
+    /// progression and needs two pickers on the end-of-session card.
+    static func isProgression(_ term: String) -> Bool {
+        progressionTerms.contains(term.lowercased())
+    }
+
     /// Check if a term is ambiguous (needs RPE mapping).
     /// V0.47: aligned with engine `AMBIGUOUS_INTENSITY_TERMS` via the shared
     /// `_dialect-terms.ts` source-of-truth (16 Tier-1 entries; the
