@@ -15,7 +15,8 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { WORD_NUMBERS, SWIM_DISTANCES } from "../../hydrolyze-mobile/lib/constants/swim-constants.ts";
-import { LLMError, parseWithLLM } from "./_llm.ts";
+import { LLMError, parseWithLLM, type CoachVocabularyEntry } from "./_llm.ts";
+import { extractUnmappedTerms } from "./_dialect-detector.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -664,64 +665,38 @@ function parseRepDist(raw: string): {
 //
 // TIER 1 — PROMPT: the coach should map these because they're wildly different
 // between coaches (one coach's "moderate" is another's "hard").
-const AMBIGUOUS_INTENSITY_TERMS: Array<[RegExp, string]> = [
-  [/\bmoderate\b/i, "moderate"],
-  [/\bhard\b/i, "hard"],
-  [/\bsteady\b/i, "steady"],
-  [/\bcruise\b/i, "cruise"],
-  [/\blight\b/i, "light"],
-  [/\btough\b/i, "tough"],
-  [/\bstrong\b/i, "strong"],
-  [/\ball[-\s]?out\b/i, "all-out"],
-  // ponytail (iter 11, 2026-07-28): new ambiguous terms from real coach inputs
-  [/\brelaxed\b/i, "relaxed"],
-  [/\bprogressive\b/i, "progressive"],
-  [/\bactivation\b/i, "activation"],
-  [/\bmaximal\b/i, "maximal"],
-  [/\brace\s+rhythm\b/i, "race rhythm"],
-  [/\bfaster\s+than\s+race\s+pace\b/i, "faster than race pace"],
-  [/\bfast\b/i, "fast"],
-  [/\bmax\b/i, "max"],
-];
+// V0.47: single source-of-truth in _dialect-terms.ts. Edge used to inline
+// a 17-row literal array here; now consumes the shared list. Mirror lives
+// at scripts/parser-bench/_dialect-terms.ts (Node) and is intentionally
+// duplicated into ios-native/supabase/functions/parse-workout/ per the
+// 4-place sync invariant (V0.47_DIALECT.md §5).
+import { TIER1_TERMS } from "./_dialect-terms.ts";
+const AMBIGUOUS_INTENSITY_TERMS: Array<[RegExp, string]> = TIER1_TERMS.map(
+  (t) => [t[0], t[1]],
+);
 
 // TIER 2 — AUTO-RESOLVE: industry-standard swimming vocabulary. Don't prompt;
 // the parser resolves to a default RPE range that the coach can override
 // later by mapping the term in coach_vocabulary.
 // ponytail (iter 11, 2026-07-28): expanded from 2 to 30+ terms covering
 // the full intensity vocabulary observed in real coach inputs (6-10).
+// V0.47 (2026-08-22) drift fix: every term in TIER1_TERMS removed — the
+// two lists must be disjoint (Tier-1 = ASK, Tier-2 = silent default).
+// Mirror of _dialect-detector.ts DEFAULT_RPE_BY_TERM — kept in lockstep
+// by hand since the engine's defaultRPEForTerm() consumes this list.
 const DEFAULT_RPE_BY_TERM: Record<string, { low: number; high: number }> = {
-  // Recovery / easy zone
-  "easy": { low: 4, high: 5 },
-  "relaxed": { low: 3, high: 4 },
-  "recovery": { low: 3, high: 4 },
-  "light": { low: 4, high: 5 },
-  // Aerobic zone
-  "moderate": { low: 5, high: 6 },
+  // Aerobic zone — industry-standard, no coach variance
   "aerobic": { low: 5, high: 7 },
-  "steady": { low: 6, high: 7 },
-  "cruise": { low: 6, high: 7 },
-  "progressive": { low: 6, high: 7 },
-  "activation": { low: 5, high: 6 },
-  // Threshold zone
-  "tempo": { low: 8, high: 9 },
+  "smooth": { low: 5, high: 7 },
+  // Threshold zone — derived; "threshold" means LT for most coaches
   "threshold": { low: 8, high: 9 },
-  "hard": { low: 7, high: 8 },
-  "tough": { low: 7, high: 8 },
-  "strong": { low: 7, high: 8 },
-  // Race pace zone
+  // Race pace zone — industry term
   "race pace": { low: 8, high: 9 },
-  "race rhythm": { low: 8, high: 9 },
-  "faster than race pace": { low: 9, high: 10 },
-  // Sprint / max zone
-  "all-out": { low: 9, high: 10 },
-  "max": { low: 9, high: 10 },
-  "maximal": { low: 9, high: 10 },
+  // Recovery zone
+  "recovery": { low: 3, high: 4 },
+  // Sprint — pure-sprint effort, no coach variance
   "sprint": { low: 9, high: 10 },
-  "fast": { low: 8, high: 9 },
   "blast": { low: 9, high: 10 },
-  // Build / descend (intensity progression)
-  "build": { low: 7, high: 8 },
-  "descend": { low: 7, high: 8 },
 };
 
 function detectAmbiguousTerm(raw: string): string | null {
@@ -2609,38 +2584,75 @@ type DegradedReason = "llm_rate_limited" | "llm_error" | "llm_empty";
 interface ParseResult extends Workout {
   degraded?: boolean;
   degradedReason?: DegradedReason;
+  // V0.47 (2026-08-22): see _llm.ts Workout.unmapped_terms. Always
+  // present in the edge response (defaults to []) so iOS can decode it
+  // without decodeIfPresent gymnastics — iOS treats missing as empty.
+  unmapped_terms: string[];
 }
+
+// V0.47 (2026-08-22): PROGRESSION_TERMS_RE + extractUnmappedTerms now
+// live in _dialect-detector.ts (pure, runtime-agnostic). Imported at
+// the top of this file.
 
 // ponytail: LLM-first, regex-fallback. Cost on the LLM path is ~1.5-3s
 // for MiniMax-M3 warm. Cost on the fallback path is the existing ~50ms
 // parseWorkoutV2. We always check the LLM result for a non-empty tree
 // before returning it — MiniMax returning 200 with 0 repGroups counts
 // as junk.
-async function parseWithFallback(workoutText: string): Promise<ParseResult> {
+async function parseWithFallback(
+  workoutText: string,
+  coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+): Promise<ParseResult> {
+  // V0.47 (2026-08-22): defensive union of whatever the LLM reported
+  // plus whatever our local detector catches. The LLM sometimes
+  // forgets — running both gates guarantees we never miss a Tier-1
+  // word the coach actually wrote.
+  const localHits = extractUnmappedTerms(workoutText, coachVocabulary);
+  const mergeUnmapped = (llmTerms: string[] | undefined): string[] => {
+    const set = new Set<string>(localHits);
+    for (const t of llmTerms || []) {
+      const v = String(t).toLowerCase().trim();
+      if (v.length > 0) set.add(v);
+    }
+    return [...set];
+  };
+
   try {
     // ponytail: structural cast. The shapes are identical at runtime;
     // the LSP can't unify them across the module boundary without
     // exporting Workout from _llm.ts (which would couple them).
-    const llmResult = await parseWithLLM(workoutText) as unknown as Workout;
+    const llmResult = await parseWithLLM(workoutText, coachVocabulary) as unknown as Workout;
     const totalRgs = llmResult.sections.reduce(
       (acc, s) => acc + s.namedSets.reduce((a, ns) => a + ns.repGroups.length, 0),
       0
     );
-    if (totalRgs > 0) return stampFragmentIds(llmResult);
+    if (totalRgs > 0) {
+      const stamped = stampFragmentIds(llmResult);
+      return {
+        ...stamped,
+        unmapped_terms: mergeUnmapped(llmResult.unmapped_terms),
+      };
+    }
     console.error(`[parse] LLM returned 0 repGroups, falling back to regex`);
+    const fallback = stampFragmentIds(parseWorkoutV2(workoutText));
     return {
-      ...stampFragmentIds(parseWorkoutV2(workoutText)),
+      ...fallback,
       degraded: true,
       degradedReason: "llm_empty",
+      // V0.47 (2026-08-22): regex fallback never generates unmapped
+      // terms. The iOS card renders "no new terms" on a degraded parse.
+      unmapped_terms: [],
     };
   } catch (err) {
     const status = err instanceof LLMError ? err.status : 0;
     const reason: DegradedReason = status === 429 ? "llm_rate_limited" : "llm_error";
     console.error(`[parse] LLM failed, falling back to regex:`, err instanceof Error ? err.message : err);
+    const fallback = stampFragmentIds(parseWorkoutV2(workoutText));
     return {
-      ...stampFragmentIds(parseWorkoutV2(workoutText)),
+      ...fallback,
       degraded: true,
       degradedReason: reason,
+      unmapped_terms: [],
     };
   }
 }
@@ -2666,12 +2678,22 @@ serve(async (req) => {
       );
     }
 
+    // V0.47 (2026-08-22): fetch this coach's `coach_vocabulary` rows so
+    // we can (a) inject the per-coach context block into the LLM prompt
+    // and (b) tell iOS which Tier-1 terms in this workout still need a
+    // mapping (unmapped_terms). We forward the request's Authorization
+    // header so the same JWT that lets the coach hit this function also
+    // RLS-scopes the vocabulary select to their rows. If the header is
+    // missing (CLI / smoke tests), vocabulary defaults to [] — iOS
+    // gets an unmapped_terms list populated from local detection.
+    const coachVocabulary = await loadCoachVocabulary(req);
+
     // ponytail: LLM-first with regex fallback. LLM handles the failure
     // modes the regex structurally can't (composite parens, numbered
     // sub-items, ditto marks, round multipliers, input shape variance).
     // If MiniMax is down/rate-limited/junk, parseWorkoutV2 catches it
     // and the degraded flag tells the app the preview may be incomplete.
-    const parsed = await parseWithFallback(workoutText);
+    const parsed = await parseWithFallback(workoutText, coachVocabulary);
 
     // V0.38 (2026-08-15): stamp the workout-level session type so the app
     // knows to route the 3MT timing flow. Additive top-level field — old
@@ -2696,3 +2718,45 @@ serve(async (req) => {
     });
   }
 });
+
+// V0.47 (2026-08-22): load this coach's vocabulary rows. Pure REST
+// against PostgREST so RLS does the access control — the JWT in the
+// request header scopes the select to the authenticated user. Any
+// fetch / network error returns [] so a Supabase blip doesn't kill the
+// parse path (the LLM still works without the context block).
+async function loadCoachVocabulary(req: Request): Promise<CoachVocabularyEntry[]> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const authHeader = req.headers.get("Authorization");
+  if (!supabaseUrl || !authHeader) return [];
+
+  try {
+    const url = `${supabaseUrl}/rest/v1/coach_vocabulary?select=user_term,rpe_low,rpe_high&order=user_term`;
+    const resp = await fetch(url, {
+      headers: {
+        "Authorization": authHeader,
+        "apikey": Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      },
+    });
+    if (!resp.ok) {
+      console.error(`[parse] coach_vocabulary fetch failed: ${resp.status}`);
+      return [];
+    }
+    const rows = await resp.json();
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .filter((r): r is { user_term: unknown; rpe_low: unknown; rpe_high: unknown } =>
+        r && typeof r === "object" &&
+        typeof r.user_term === "string" &&
+        typeof r.rpe_low === "number" &&
+        typeof r.rpe_high === "number"
+      )
+      .map((r) => ({
+        user_term: r.user_term,
+        rpe_low: r.rpe_low,
+        rpe_high: r.rpe_high,
+      }));
+  } catch (err) {
+    console.error(`[parse] coach_vocabulary fetch threw:`, err instanceof Error ? err.message : err);
+    return [];
+  }
+}

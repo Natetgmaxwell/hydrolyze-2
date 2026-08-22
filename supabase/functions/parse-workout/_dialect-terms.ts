@@ -8,12 +8,21 @@
 // intentional mirror with a comment pointing at this file + the spec.
 
 // Tier 1 — PROMPT. Wildly different between coaches (one coach's "moderate"
-// is another's "hard"). Order matches the engine array (line 703-721 in
-// engine.ts prior to extraction). `label` is the canonical user-visible
-// string the iOS end-of-session card keys off.
+// is another's "hard"). `label` is the canonical user-visible string the
+// iOS end-of-session card keys off.
+//
+// V0.47 (2026-08-22) drift fix: `easy` added here (was in DEFAULT_RPE_BY_TERM
+// in the engine per the original ponytail split). Spec §6 decision #4 —
+// "easy ask-once: Yes. Promote from engine-silent (RPE 4-5) to Tier-1
+// ask. Consistency wins; it's the corpus's #2 dialect word." Bench doesn't
+// check intensity, so parseIntensity()'s own easy-regex mapping
+// (`{type: "easy", label: "easy"}`) still runs unchanged — the LLM path
+// keeps emitting the same intensity it always did. Only the unmapped_terms
+// detection changes (now flags easy for fresh coaches).
 export type DialectTermTuple = readonly [RegExp, string];
 
 export const TIER1_TERMS: ReadonlyArray<DialectTermTuple> = [
+  [/\beasy\b/i, "easy"],
   [/\bmoderate\b/i, "moderate"],
   [/\bhard\b/i, "hard"],
   [/\bsteady\b/i, "steady"],

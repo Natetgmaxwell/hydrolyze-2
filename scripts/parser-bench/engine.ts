@@ -715,39 +715,23 @@ const AMBIGUOUS_INTENSITY_TERMS: Array<[RegExp, string]> = TIER1_TERMS.map(
 // later by mapping the term in coach_vocabulary.
 // ponytail (iter 11, 2026-07-28): expanded from 2 to 30+ terms covering
 // the full intensity vocabulary observed in real coach inputs (6-10).
+// V0.47 (2026-08-22) drift fix: every term in TIER1_TERMS removed — the
+// two lists must be disjoint (Tier-1 = ASK, Tier-2 = silent default).
+// Mirror of supabase/functions/parse-workout/_dialect-detector.ts
+// DEFAULT_RPE_BY_TERM — kept in lockstep by hand per the 4-place sync rule.
 const DEFAULT_RPE_BY_TERM: Record<string, { low: number; high: number }> = {
-  // Recovery / easy zone
-  "easy": { low: 4, high: 5 },
-  "relaxed": { low: 3, high: 4 },
-  "recovery": { low: 3, high: 4 },
-  "light": { low: 4, high: 5 },
-  // Aerobic zone
-  "moderate": { low: 5, high: 6 },
+  // Aerobic zone — industry-standard, no coach variance
   "aerobic": { low: 5, high: 7 },
-  "steady": { low: 6, high: 7 },
-  "cruise": { low: 6, high: 7 },
-  "progressive": { low: 6, high: 7 },
-  "activation": { low: 5, high: 6 },
-  // Threshold zone
-  "tempo": { low: 8, high: 9 },
+  "smooth": { low: 5, high: 7 },
+  // Threshold zone — derived; "threshold" means LT for most coaches
   "threshold": { low: 8, high: 9 },
-  "hard": { low: 7, high: 8 },
-  "tough": { low: 7, high: 8 },
-  "strong": { low: 7, high: 8 },
-  // Race pace zone
+  // Race pace zone — industry term
   "race pace": { low: 8, high: 9 },
-  "race rhythm": { low: 8, high: 9 },
-  "faster than race pace": { low: 9, high: 10 },
-  // Sprint / max zone
-  "all-out": { low: 9, high: 10 },
-  "max": { low: 9, high: 10 },
-  "maximal": { low: 9, high: 10 },
+  // Recovery zone
+  "recovery": { low: 3, high: 4 },
+  // Sprint — pure-sprint effort, no coach variance
   "sprint": { low: 9, high: 10 },
-  "fast": { low: 8, high: 9 },
   "blast": { low: 9, high: 10 },
-  // Build / descend (intensity progression)
-  "build": { low: 7, high: 8 },
-  "descend": { low: 7, high: 8 },
 };
 
 function detectAmbiguousTerm(raw: string): string | null {

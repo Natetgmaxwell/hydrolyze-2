@@ -55,6 +55,19 @@ interface LLMSection {
 
 interface LLMOutput {
   sections: LLMSection[];
+  // V0.47 (2026-08-22): mirror _llm.ts — terms the LLM hit in the
+  // workout text that are NOT in COACH VOCABULARY and NOT in rule 6.
+  // Schema-strict (Groq requires the field in `required`), default [].
+  unmapped_terms: string[];
+}
+
+// V0.47 (2026-08-22): mirrors _llm.ts CoachVocabularyEntry. The bench
+// prototype accepts an injected vocabulary (CLI flag) so we can verify
+// the per-coach context-block path without a real Supabase fetch.
+export interface CoachVocabularyEntry {
+  user_term: string;
+  rpe_low: number;
+  rpe_high: number;
 }
 
 // ─── Validated output (post-regex, what iOS decodes) ────────────────────────
@@ -170,6 +183,17 @@ const WORKOUT_SCHEMA = {
   },
   required: ["sections"],
   additionalProperties: false
+} as const;
+
+// V0.47 (2026-08-22): extended schema for the bench prototype to
+// carry unmapped_terms. Strict-mode requires a property in `required`
+// when it's not optional, so unmapped_terms is a required string[] at
+// the top level (mirrors _llm.ts LLMOutput). Default [] when the LLM
+// has nothing to ask.
+const UNMAPPED_TERMS_SCHEMA = {
+  type: "array",
+  description: "Surface forms (lowercased) the LLM hit in the workout text that are NOT in COACH VOCABULARY and NOT in the rule-6 general mapping. Empty array when nothing needs asking.",
+  items: { type: "string" }
 } as const;
 
 // ─── Few-shot examples ──────────────────────────────────────────────────────
@@ -297,18 +321,20 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Your job is to
    - **Fragment intensity is CRITICAL**: each fragment carries its own intensity {type,label}. Map the coach's word to a type: fast/sprint/all-out/max → sprint; easy/recovery/warm-up → easy; moderate/steady/cruise/aerobic → aerobic; tempo/threshold → threshold; race pace/race rhythm/r.p. → race_pace; descend → descend; build → build. label is the coach's exact word lowercased ("fast", "maximal finish", "race rhythm"). Pure intensity words ("fast", "easy") go in intensity — NOT in stroke. Stroke stays null unless a real stroke is stated.
    - **Per-fragment gear + start_type**: each fragment carries its OWN gear: string[] | null and start_type: string | null derived from THAT fragment's segment text, NOT the parent set. gear values: fins, pull_paddle, finger_paddle, paddles, pull_buoy, kickboard, snorkel, parachute, resistance_band, ankle_band, power_tower, weight_belt, tennis_balls, drag_suit, stretchcordz. start_type: 'dive' | 'push' | 'wall' (from "from a dive"/"off the blocks" → dive; "push start"/"start or push" → push; "off the wall"/"push off the wall" → wall). Leave gear:null / start_type:null when the segment states neither.
 
-7. **Strokes**: Map to: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater (usually kick). "scull" = a drill. If the line says "Fly back or free", stroke is the first mentioned ("fly").
+7. **Coach vocabulary (per-coach overrides)**: when a "COACH VOCABULARY" block appears at the top of this prompt, it lists this coach's own word→RPE mappings. For any term that appears in BOTH the workout text AND that block, use the block's RPE band literally — even when rule 6 above would have mapped it differently. For any term that appears in the workout text but is in NEITHER the COACH VOCABULARY block NOR the rule-6 general mapping (e.g. a coach-specific word like "Jodie's moderate"), include its surface form in the top-level `unmapped_terms` array — one entry per unique word (dedup, lowercased). Tier-2 terms that resolve via the engine's DEFAULT_RPE_BY_TERM (easy, recovery, smooth, threshold, etc.) do NOT belong in `unmapped_terms`.
 
-8. **Intervals**: Pass through exactly as written ("1.50", "1:30", ":40", "@ 30"). The validator normalizes them.
+8. **Strokes**: Map to: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater (usually kick). "scull" = a drill. If the line says "Fly back or free", stroke is the first mentioned ("fly").
 
-9. **Single swims**: A line like "400 free" with no "x" is reps=1.
+9. **Intervals**: Pass through exactly as written ("1.50", "1:30", ":40", "@ 30"). The validator normalizes them.
 
-10. **Section headers**: "Warm up", "Main Set", "Cool down" etc. start new sections. Everything before the first header goes in a section with title=null.
+10. **Single swims**: A line like "400 free" with no "x" is reps=1.
 
-11. **Pattern shorthand (FBBF, FBF, etc.)**: Coaches use single-letter codes for stroke rotations:
+11. **Section headers**: "Warm up", "Main Set", "Cool down" etc. start new sections. Everything before the first header goes in a section with title=null.
+
+12. **Pattern shorthand (FBBF, FBF, etc.)**: Coaches use single-letter codes for stroke rotations:
     F=Free, B=Back, K=Breast, R=Fly, I=IM, M=Medley. "FBBF" means "Free, Back, Breast, Free" across reps. Set stroke to the FIRST letter (F=Free) and put the pattern in the note. "same as above" / "same" after a pattern set means inherit the pattern from the previous set.
 
-12. **Multi-swim lines**: A single line may contain multiple separate swims concatenated without "x" or commas, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split them on distance boundaries (a number followed by a stroke/keyword).
+13. **Multi-swim lines**: A single line may contain multiple separate swims concatenated without "x" or commas, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split them on distance boundaries (a number followed by a stroke/keyword).
 
 ## What NOT to create sets from
 - Lines that are purely instructions/notes for a set above (rep-range breakdowns, "Each N:" descriptions)
@@ -318,9 +344,33 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Your job is to
 
 // ─── Build the prompt messages ──────────────────────────────────────────────
 
-function buildMessages(workoutText: string) {
+// V0.47 (2026-08-22): mirrors _llm.ts buildCoachVocabularyBlock. One
+// line per term; progressions (build/descend) just carry a flat band
+// here — the slice-3 iOS card handles the 2-point capture.
+export function buildCoachVocabularyBlock(
+  vocabulary: ReadonlyArray<CoachVocabularyEntry>,
+): string {
+  if (vocabulary.length === 0) return "";
+  const lines = vocabulary
+    .slice()
+    .sort((a, b) => a.user_term.localeCompare(b.user_term))
+    .map((v) => `  ${v.user_term} → RPE ${v.rpe_low}-${v.rpe_high}`);
+  return [
+    "COACH VOCABULARY (this coach's own words — override the general rules below when one of these appears):",
+    ...lines,
+    "When one of these words appears, use this RPE unless the surrounding text clearly contradicts it.",
+    "",
+  ].join("\n");
+}
+
+function buildMessages(
+  workoutText: string,
+  coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+) {
+  const vocabBlock = buildCoachVocabularyBlock(coachVocabulary);
+  const systemContent = vocabBlock ? `${vocabBlock}${SYSTEM_PROMPT}` : SYSTEM_PROMPT;
   const messages: Array<{ role: string; content: string }> = [
-    { role: "system", content: SYSTEM_PROMPT }
+    { role: "system", content: systemContent }
   ];
 
   // Add few-shot examples
@@ -346,8 +396,11 @@ function buildMessages(workoutText: string) {
 
 // ─── Call Groq API ──────────────────────────────────────────────────────────
 
-async function callGroq(workoutText: string): Promise<LLMOutput> {
-  const messages = buildMessages(workoutText);
+async function callGroq(
+  workoutText: string,
+  coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+): Promise<LLMOutput> {
+  const messages = buildMessages(workoutText, coachVocabulary);
   const body = {
     model: GROQ_MODEL,
     messages,
@@ -358,7 +411,14 @@ async function callGroq(workoutText: string): Promise<LLMOutput> {
       json_schema: {
         name: "workout",
         strict: true,
-        schema: WORKOUT_SCHEMA
+        schema: {
+          ...WORKOUT_SCHEMA,
+          properties: {
+            ...WORKOUT_SCHEMA.properties,
+            unmapped_terms: UNMAPPED_TERMS_SCHEMA,
+          },
+          required: ["sections", "unmapped_terms"],
+        }
       }
     }
   };
@@ -387,6 +447,8 @@ async function callGroq(workoutText: string): Promise<LLMOutput> {
 
   const content = data.choices[0].message.content;
   const parsed = JSON.parse(content) as LLMOutput;
+  // V0.47 (2026-08-22): defensive — if the LLM forgot the field, return [].
+  if (!Array.isArray(parsed.unmapped_terms)) parsed.unmapped_terms = [];
 
   console.error(`[GROQ] ${elapsed}ms | ${data.usage.prompt_tokens} in / ${data.usage.completion_tokens} out / ${data.usage.total_tokens} total tokens`);
 
@@ -603,17 +665,30 @@ function addIntensity(sections: ValidatedSection[]): ValidatedSection[] {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
-  const inputFile = process.argv[2];
+  // V0.47 (2026-08-22): accept an optional --vocab=<json> flag (or
+  // COACH_VOCABULARY env var) so the CLI can exercise the per-coach
+  // context-block path without a live Supabase. JSON shape:
+  //   [{"user_term":"easy","rpe_low":4,"rpe_high":5}, ...]
+  const args = process.argv.slice(2);
+  let inputFile: string | undefined;
+  let vocabEnv = process.env.COACH_VOCABULARY;
+  for (const a of args) {
+    if (a.startsWith("--vocab=")) vocabEnv = a.slice("--vocab=".length);
+    else if (!a.startsWith("--")) inputFile = a;
+  }
   if (!inputFile) {
-    console.error("usage: GROQ_API_KEY=gsk_... npx tsx llm-parser.ts <input-file>");
+    console.error("usage: GROQ_API_KEY=gsk_... npx tsx llm-parser.ts <input-file> [--vocab=<json>]");
     process.exit(2);
   }
 
+  const coachVocabulary: CoachVocabularyEntry[] = vocabEnv ? JSON.parse(vocabEnv) : [];
+
   const text = fs.readFileSync(inputFile, "utf8");
-  console.error(`[INPUT] ${text.length} chars, ${text.split("\n").length} lines\n`);
+  console.error(`[INPUT] ${text.length} chars, ${text.split("\n").length} lines`);
+  console.error(`[VOCAB] ${coachVocabulary.length} mapping(s) loaded\n`);
 
   const t0 = Date.now();
-  const llmOutput = await callGroq(text);
+  const llmOutput = await callGroq(text, coachVocabulary);
   const llmElapsed = Date.now() - t0;
 
   console.error(`[LLM] total ${llmElapsed}ms\n`);
@@ -642,7 +717,8 @@ async function main() {
           sourceLine: rg.sourceLine
         }))
       }]
-    }))
+    })),
+    unmapped_terms: llmOutput.unmapped_terms || []
   };
 
   console.log(JSON.stringify(result, null, 2));
@@ -651,7 +727,8 @@ async function main() {
   const totalRGs = validated.reduce((acc, s) => acc + s.repGroups.length, 0);
   const withFragments = validated.reduce((acc, s) =>
     acc + s.repGroups.filter((rg) => rg.fragments.length > 0).length, 0);
-  console.error(`\n[SUMMARY] ${totalRGs} repGroups, ${withFragments} with fragments`);
+  const unmapped = (llmOutput.unmapped_terms || []).length;
+  console.error(`\n[SUMMARY] ${totalRGs} repGroups, ${withFragments} with fragments, ${unmapped} unmapped terms`);
 }
 
 main().catch((e) => {

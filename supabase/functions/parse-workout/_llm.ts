@@ -63,6 +63,23 @@ interface LLMSection {
 
 interface LLMOutput {
   sections: LLMSection[];
+  // V0.47 (2026-08-22): terms the LLM hit in the workout text that are
+  // NOT in COACH VOCABULARY and NOT in the rule-6 general mapping. The
+  // iOS end-of-session card surfaces these so the coach can confirm the
+  // intended RPE band. The edge function (index.ts) adds the Tier-1
+  // terms the LLM failed to report back to this list before returning
+  // to the client — defensive: the LLM sometimes forgets.
+  unmapped_terms?: string[];
+}
+
+// V0.47 (2026-08-22): one row from `coach_vocabulary` for the
+// authenticated coach. Loaded by index.ts and injected into the LLM
+// prompt as a per-coach context block. The `rpe_low`/`rpe_high` are the
+// coach's own values; the LLM uses them literally (rule 7 below).
+export interface CoachVocabularyEntry {
+  user_term: string;        // surface form, e.g. "easy", "moderate"
+  rpe_low: number;
+  rpe_high: number;
 }
 
 export interface ValidatedRepGroup {
@@ -89,6 +106,11 @@ export interface ValidatedSection {
 export interface Workout {
   title: string | null;
   sections: { title: string | null; namedSets: { label: string | null; note: string | null; repGroups: ValidatedRepGroup[] }[] }[];
+  // V0.47 (2026-08-22): see LLMOutput.unmapped_terms. Populated when
+  // the LLM path succeeds; the regex-fallback path in index.ts returns
+  // an empty array (the fallback never generates these — the iOS card
+  // shows "no new terms" on a degraded parse).
+  unmapped_terms?: string[];
 }
 
 // ─── Few-shot examples (2, highest-value; trimmed 2026-08-12 to fit
@@ -161,14 +183,15 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
    - Sub-segments sum to the parent's distance.
    - **Fragment intensity is CRITICAL**: each fragment carries its own intensity {type,label}. Map the coach's word: fast/sprint/all-out/max → sprint; easy/recovery/warm-up → easy; moderate/steady/cruise/smooth/aerobic → aerobic; tempo/threshold → threshold; race pace/race rhythm/r.p. → race_pace; descend → descend; build/acceleration → build. label is the coach's exact word lowercased ("fast", "maximal finish", "race rhythm"). Pure intensity words ("fast", "easy") go in intensity — NOT in stroke. Stroke stays null unless a real stroke is stated.
    - **Per-fragment gear + start_type**: each fragment carries its OWN gear: string[] | null and start_type: string | null derived from that fragment's segment text, NOT the parent set. gear values: fins, pull_paddle, finger_paddle, paddles, pull_buoy, kickboard, snorkel, parachute, resistance_band, ankle_band, power_tower, weight_belt, tennis_balls, drag_suit, stretchcordz. start_type: 'dive' | 'push' | 'wall' (from "from a dive"/"off the blocks" → dive; "push start"/"start or push" → push; "off the wall"/"push off the wall" → wall). Leave gear:null / start_type:null when the segment states neither.
-7. **Strokes**: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater kick. "scull" = drill. "drill/swim", "kick/swim", "scull/swim" = combo sets — stroke is the first (drill/kick/scull), the combo goes in the note. If multiple strokes, use the first mentioned.
-8. **Intervals**: Pass through exactly as written ("1.50", "1:30", ":40", "@ 30"). The validator normalizes.
-9. **Single swims**: "400 free" with no "x" is reps=1.
-10. **Section headers**: "Warm up", "Main Set", "Cool down" start new sections. Keep the full header as the title, including any em-dash distance ("Main set — 1,400m"). Append "(N rounds)" when the section has a round block.
-11. **Pattern shorthand (FBBF, FBF)**: F=Free, B=Back, K=Breast, R=Fly, I=IM, M=Medley. Set stroke to the FIRST letter, put the pattern in the note. "same as above" / "same" inherits the pattern.
-12. **Multi-swim lines**: A single line may contain multiple separate swims, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split on distance boundaries.
-13. **Start types**: "start or push", "push start", "from a dive", "off the blocks" describe the start. Keep in the note — the validator detects dive/push.
-14. **3-minute all-out test (3MT)**: when a set line contains "3MT", "3-MT", "3 MT", "3-min all-out", "3 min all out", "3-minute all-out", "3min all out", "3 min test", "3-minute test", or "3min test", emit a single repGroup with intensity { type: "3mt", label: "3-minute all-out" }, reps=1, distance=25 (the split distance the coach taps LAP at), and no interval — the 3:00 swim is continuous, not interval-based. Stroke parses from any remaining text (e.g. "3MT free" → Free); default is Free. The "3MT" marker wins over the generic "all-out" → sprint mapping. "all-out" alone is NOT a 3MT marker.
+7. **Coach vocabulary (per-coach overrides)**: the system message at the top of this prompt carries a "COACH VOCABULARY" block listing this coach's own word→RPE mappings. For any term that appears in BOTH the workout text AND that block, use the block's RPE band literally — even when rule 6 above would have mapped it differently. For progressions (build/descend/desc) the block may use the form "start RPE N → end RPE M"; emit the fragment's intensity as { type: "build" or "descend", label: "start N → end M" }. For any term that appears in the workout text but is in NEITHER the COACH VOCABULARY block NOR the rule-6 general mapping (e.g. a coach-specific word like "Jodie's moderate"), include its surface form in the response's unmapped_terms array — one entry per unique word (dedup, lowercased). Tier-2 terms that resolve via the engine's DEFAULT_RPE_BY_TERM (easy, recovery, smooth, threshold, etc.) do NOT belong in unmapped_terms — the engine already silently resolves them.
+8. **Strokes**: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater kick. "scull" = drill. "drill/swim", "kick/swim", "scull/swim" = combo sets — stroke is the first (drill/kick/scull), the combo goes in the note. If multiple strokes, use the first mentioned.
+9. **Intervals**: Pass through exactly as written ("1.50", "1:30", ":40", "@ 30"). The validator normalizes.
+10. **Single swims**: "400 free" with no "x" is reps=1.
+11. **Section headers**: "Warm up", "Main Set", "Cool down" start new sections. Keep the full header as the title, including any em-dash distance ("Main set — 1,400m"). Append "(N rounds)" when the section has a round block.
+12. **Pattern shorthand (FBBF, FBF)**: F=Free, B=Back, K=Breast, R=Fly, I=IM, M=Medley. Set stroke to the FIRST letter, put the pattern in the note. "same as above" / "same" inherits the pattern.
+13. **Multi-swim lines**: A single line may contain multiple separate swims, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split on distance boundaries.
+14. **Start types**: "start or push", "push start", "from a dive", "off the blocks" describe the start. Keep in the note — the validator detects dive/push.
+15. **3-minute all-out test (3MT)**: when a set line contains "3MT", "3-MT", "3 MT", "3-min all-out", "3 min all out", "3-minute all-out", "3min all out", "3 min test", "3-minute test", or "3min test", emit a single repGroup with intensity { type: "3mt", label: "3-minute all-out" }, reps=1, distance=25 (the split distance the coach taps LAP at), and no interval — the 3:00 swim is continuous, not interval-based. Stroke parses from any remaining text (e.g. "3MT free" → Free); default is Free. The "3MT" marker wins over the generic "all-out" → sprint mapping. "all-out" alone is NOT a 3MT marker.
 
 ## Output shape (MUST follow exactly)
 
@@ -193,7 +216,8 @@ Return a single JSON object:
         }
       ]
     }
-  ]
+  ],
+  "unmapped_terms": ["moderate", "Jodie's strong"]
 }
 
 - fragments: empty array [] for simple sets; one entry per sub-segment for composite sets.
@@ -202,6 +226,7 @@ Return a single JSON object:
 - stroke: null when no stroke is stated. Pure intensity words ("fast", "easy") go in intensity, NOT stroke.
 - reps: 1 for single swims. distance: null for time-based sets ("Free - 8:00 kick").
 - Every repGroup MUST include all keys: reps, distance, stroke, interval, note, fragments, sourceLine.
+- unmapped_terms: array of unique surface forms (lowercased) that the LLM hit in the workout text but could not resolve via COACH VOCABULARY or rule 6 — see rule 7 above. Empty array [] when the workout has no such terms.
 
 ## What NOT to create sets from
 - Lines that are purely instructions/notes for a set above (rep-range breakdowns, "Each N:" descriptions)
@@ -209,11 +234,40 @@ Return a single JSON object:
 - "Round emphasis" lists and other section-level notes
 - Lines that are choices/options ("Choose from:", "Drill choices")`;
 
+// V0.47 (2026-08-22): turn the coach's vocabulary rows into the
+// "COACH VOCABULARY" block the LLM prompt expects. One line per term,
+// progressions formatted as "start RPE N → end RPE M" when the caller
+// pre-encoded them (current v1 stores rpe_low/rpe_high as a flat band;
+// the slice-3 card handles the 2-point case at write time). Keep the
+// block tight — every line costs tokens in the cold path (V0.37 lesson).
+// The LLM hits this block on the first system message and never on the
+// few-shot exchanges.
+export function buildCoachVocabularyBlock(
+  vocabulary: ReadonlyArray<CoachVocabularyEntry>,
+): string {
+  if (vocabulary.length === 0) return "";
+  const lines = vocabulary
+    .slice()
+    .sort((a, b) => a.user_term.localeCompare(b.user_term))
+    .map((v) => `  ${v.user_term} → RPE ${v.rpe_low}-${v.rpe_high}`);
+  return [
+    "COACH VOCABULARY (this coach's own words — override the general rules below when one of these appears):",
+    ...lines,
+    "When one of these words appears, use this RPE unless the surrounding text clearly contradicts it.",
+    "",
+  ].join("\n");
+}
+
 // ─── Build prompt messages ────────────────────────────────────────────────
 
-function buildMessages(workoutText: string) {
+function buildMessages(
+  workoutText: string,
+  coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+) {
+  const vocabBlock = buildCoachVocabularyBlock(coachVocabulary);
+  const systemContent = vocabBlock ? `${vocabBlock}${SYSTEM_PROMPT}` : SYSTEM_PROMPT;
   const messages: Array<{ role: string; content: string }> = [
-    { role: "system", content: SYSTEM_PROMPT }
+    { role: "system", content: systemContent }
   ];
   for (const ex of FEW_SHOT_EXAMPLES) {
     messages.push({ role: "user", content: `Parse this swimming workout into the JSON object described above:\n\n${ex.input}` });
@@ -235,11 +289,14 @@ export class LLMError extends Error {
   }
 }
 
-async function callMiniMax(workoutText: string): Promise<LLMOutput> {
+async function callMiniMax(
+  workoutText: string,
+  coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+): Promise<LLMOutput> {
   const apiKey = Deno.env.get("MINIMAX_API_KEY");
   if (!apiKey) throw new Error("MINIMAX_API_KEY not set");
 
-  const messages = buildMessages(workoutText);
+  const messages = buildMessages(workoutText, coachVocabulary);
   const body = {
     model: MINIMAX_MODEL,
     messages,
@@ -460,9 +517,68 @@ function parseZoneTerm(raw: string): ZoneTerm | null {
   return terms.size === 1 ? [...terms][0] : null;
 }
 
+// V0.47 (2026-08-22): when the LLM emits an intensity whose label matches
+// a coach_vocabulary row, replace the label with the coach's RPE band.
+// The LLM is told to do this in rule 7 of the SYSTEM_PROMPT, but
+// json_object mode is non-strict — empirically the LLM sometimes emits
+// the surface form anyway. Apply the override defensively here so the
+// iOS preview shows the coach's intended band even when the model forgets.
+// Returns a map keyed by the canonical term label so we don't re-scan the
+// regex list per fragment.
+function buildCoachVocabLookup(
+  vocabulary: ReadonlyArray<CoachVocabularyEntry>,
+): Map<string, { type: string; label: string }> {
+  const map = new Map<string, { type: string; label: string }>();
+  for (const v of vocabulary) {
+    const term = v.user_term.toLowerCase().trim();
+    if (term.length === 0) continue;
+    // The engine's parseIntensity maps these surface forms to internal
+    // type buckets. We mirror that mapping so the override preserves
+    // the type key (which iOS / the preview switch on).
+    const type = surfaceToIntensityType(term);
+    map.set(term, { type, label: `RPE ${v.rpe_low}-${v.rpe_high}` });
+  }
+  return map;
+}
+
+// Map a coach_vocabulary surface form → its engine-side intensity type.
+// Mirrors _llm.ts parseIntensity + the V0.47 Tier-1 list. Only the
+// cases the LLM is likely to emit land here; unknown terms fall through
+// to "easy" as a benign default (the RPE band is what iOS shows).
+function surfaceToIntensityType(term: string): string {
+  // Exact matches from _llm.ts parseIntensity.
+  const lower = term.toLowerCase();
+  if (lower === "descend" || lower === "desc") return "descend";
+  if (lower === "build" || lower === "building") return "build";
+  if (lower === "negative split") return "negative_split";
+  if (/^(sprint|all-out|max|atp|fast|maximal|breakout|blast)$/.test(lower)) return "sprint";
+  if (/^(race pace|race rhythm|r\.p\.)$/.test(lower)) return "race_pace";
+  if (/^(threshold|css|t-pace)$/.test(lower)) return "threshold";
+  if (/^(easy|recovery|warm-?up|ez|relaxed)$/.test(lower)) return "easy";
+  if (/^(aerobic|steady|cruise|moderate|smooth)$/.test(lower)) return "aerobic";
+  if (/^(hard|tough|strong)$/.test(lower)) return "aerobic"; // spec §3 row 5/6/7 — pre-canonicalization
+  return "easy";
+}
+
+// V0.47 (2026-08-22): rewrite a fragment's intensity when its label
+// matches a coach_vocabulary row. Used by cleanFragmentIntensity so the
+// validator output reflects the coach's RPE band, not the LLM's
+// surface-form echo.
+function applyCoachVocabOverride(
+  intensity: { type: string; label: string } | null,
+  lookup: Map<string, { type: string; label: string }>,
+): { type: string; label: string } | null {
+  if (!intensity) return null;
+  const key = intensity.label.toLowerCase().trim();
+  const hit = lookup.get(key);
+  if (!hit) return intensity;
+  return { type: hit.type, label: hit.label };
+}
+
 function cleanFragmentIntensity(
   intensity: { type: string; label: string } | null,
-  segText: string
+  segText: string,
+  lookup: Map<string, { type: string; label: string }> = new Map(),
 ): { type: string; label: string } | null {
   if (intensity) {
     // FIX (2026-08-19): "75 @ 100 pace DIVE" — the LLM emits the
@@ -478,12 +594,24 @@ function cleanFragmentIntensity(
     if (paceMatch) {
       return { type: "race_pace", label: `${paceMatch[1]} pace` };
     }
+    // V0.47 (2026-08-22): coach_vocabulary override — when the LLM
+    // emits a surface form that the coach has mapped, rewrite to the
+    // coach's RPE band. Runs after the pace-target fix above so a
+    // pace-target never accidentally swallows a coach mapping.
+    const overridden = applyCoachVocabOverride(intensity, lookup);
+    if (overridden !== intensity) return overridden;
     return intensity;
   }
   return parseIntensity(segText);
 }
 
-function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
+function validateLLMOutput(
+  llmOutput: LLMOutput,
+  coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+): ValidatedSection[] {
+  // V0.47 (2026-08-22): build the lookup once per call so per-fragment
+  // override is O(1) instead of an N×M scan.
+  const vocabLookup = buildCoachVocabLookup(coachVocabulary);
   return llmOutput.sections.map((section) => ({
     title: section.title,
     repGroups: section.repGroups.map((rg): ValidatedRepGroup => {
@@ -511,6 +639,9 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
         // V0.37 (2026-08-13): same fallback for per-fragment gear + start_type —
         // the pairing cost tiers key on (distance, stroke, gear, intensity),
         // so each fragment carries its OWN context, not the parent's.
+        // V0.47 (2026-08-22): cleanFragmentIntensity consults the
+        // coach_vocabulary lookup so a mapped term (e.g. "easy" → RPE 6-7)
+        // shows the coach's band, not the LLM's surface-form echo.
         fragments: (rg.fragments || []).map((f) => {
           const segText = [f.stroke, f.instruction].filter(Boolean).join(" ");
           return {
@@ -519,7 +650,7 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
             // FIX (2026-08-19): cleanFragmentIntensity — the LLM emits
             // pace-targets ("@ 100 pace") as fragment intensities; map
             // them to race_pace so pairing keys on the effort tier.
-            intensity: cleanFragmentIntensity(f.intensity ?? null, segText),
+            intensity: cleanFragmentIntensity(f.intensity ?? null, segText, vocabLookup),
             gear: f.gear ?? extractGear(segText),
             start_type: f.start_type ?? deriveStartType(segText)
           };
@@ -530,7 +661,13 @@ function validateLLMOutput(llmOutput: LLMOutput): ValidatedSection[] {
   }));
 }
 
-function addIntensity(sections: ValidatedSection[]): ValidatedSection[] {
+function addIntensity(
+  sections: ValidatedSection[],
+  coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+): ValidatedSection[] {
+  // V0.47 (2026-08-22): same coach-vocab lookup for the parent repGroup
+  // intensity path (no fragments → derive intensity at the rg level).
+  const vocabLookup = buildCoachVocabLookup(coachVocabulary);
   for (const section of sections) {
     for (const rg of section.repGroups) {
       // ponytail: skip intensity derivation when the repGroup has fragments —
@@ -538,8 +675,14 @@ function addIntensity(sections: ValidatedSection[]): ValidatedSection[] {
       // Deriving at the parent level overwrites the meaningful per-segment signal.
       if (rg.fragments && rg.fragments.length > 0) continue;
       const text = [rg.note, rg.sourceLine].filter(Boolean).join(" ");
-      const intensity = parseIntensity(text);
+      let intensity = parseIntensity(text);
       if (intensity) {
+        // V0.47 (2026-08-22): apply the coach's RPE band when the
+        // surface form matches a coach_vocabulary row. Mirrors
+        // cleanFragmentIntensity's behaviour so parent-level sets
+        // get the same override treatment as fragment-level ones.
+        const overridden = applyCoachVocabOverride(intensity, vocabLookup);
+        if (overridden) intensity = overridden;
         rg.intensity_type = intensity.type;
         rg.intensity_label = intensity.label;
       }
@@ -550,14 +693,24 @@ function addIntensity(sections: ValidatedSection[]): ValidatedSection[] {
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
-export async function parseWithLLM(workoutText: string): Promise<Workout> {
-  const llmOutput = await callMiniMax(workoutText);
-  const validated = addIntensity(validateLLMOutput(llmOutput));
+export async function parseWithLLM(
+  workoutText: string,
+  coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+): Promise<Workout> {
+  const llmOutput = await callMiniMax(workoutText, coachVocabulary);
+  const validated = addIntensity(validateLLMOutput(llmOutput, coachVocabulary), coachVocabulary);
   return {
     title: null,
     sections: validated.map((s) => ({
       title: s.title,
       namedSets: [{ label: null, note: null, repGroups: s.repGroups }]
-    }))
+    })),
+    // V0.47 (2026-08-22): pass the LLM-reported unmapped terms straight
+    // through. index.ts defensively re-derives Tier-1 hits that the LLM
+    // missed (it sometimes returns unmapped_terms: [] for inputs that
+    // contain an unmapped Tier-1 word).
+    unmapped_terms: Array.isArray(llmOutput.unmapped_terms)
+      ? llmOutput.unmapped_terms.map((t) => String(t).toLowerCase()).filter((t) => t.length > 0)
+      : [],
   };
 }
