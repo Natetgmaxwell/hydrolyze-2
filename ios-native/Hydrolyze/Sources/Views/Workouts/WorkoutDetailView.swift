@@ -32,17 +32,39 @@ final class WorkoutDetailViewModel: ObservableObject {
     /// overwrote pass 1 with pass 2. Values are time_ms arrays
     /// ordered oldest→newest by created_at (fetch order). Rows without
     /// a fragment_id can't be attributed and are dropped.
-    @Published var recordedTimesByFragmentId: [String: [Int]] = [:]
+    ///
+    /// V0.48 Slice 1 (2026-08-22): carry owner attribution alongside
+    /// the time. `FragmentTimeRecord.swimmerName` is nil for rows that
+    /// were never paired (solo runs, pre-pair handoff, or engine-declined).
+    /// Load path joins swimmer names via `paired_swimmer_id` in a single
+    /// bulk fetch (≤2 round trips total: one for times, one for swimmers).
+    @Published var recordedTimesByFragmentId: [String: [FragmentTimeRecord]] = [:]
 
     func loadFragmentTimes() async {
         guard !sets.isEmpty else { return }
-        var map: [String: [Int]] = [:]
+        // Phase 1: fetch all times for all sets, build a flat list of
+        // (fragmentId, timeMs, pairedSwimmerId, createdAt) tuples, and
+        // collect unique paired_swimmer_ids for the join.
+        struct PendingRow {
+            let fragmentId: String
+            let timeMs: Int
+            let pairedSwimmerId: String?
+            let createdAt: String
+        }
+        var pending: [PendingRow] = []
+        var pairedIds = Set<String>()
         do {
             for set in sets {
                 let times = try await workoutService.fetchTimesForSet(workoutSetId: set.id)
                 for t in times where t.fragmentId != nil {
                     if let fid = t.fragmentId {
-                        map[fid, default: []].append(t.timeMs)
+                        pending.append(PendingRow(
+                            fragmentId: fid,
+                            timeMs: t.timeMs,
+                            pairedSwimmerId: t.pairedSwimmerId,
+                            createdAt: t.createdAt
+                        ))
+                        if let pid = t.pairedSwimmerId { pairedIds.insert(pid) }
                     }
                 }
                 // Legacy rows from before the fragment stamp: they
@@ -51,12 +73,57 @@ final class WorkoutDetailViewModel: ObservableObject {
                 // (a single-fragment set is unambiguous).
                 if let frags = set.fragments, frags.count == 1, let only = frags.first {
                     for t in times where t.fragmentId == nil {
-                        map[only.id, default: []].append(t.timeMs)
+                        pending.append(PendingRow(
+                            fragmentId: only.id,
+                            timeMs: t.timeMs,
+                            pairedSwimmerId: t.pairedSwimmerId,
+                            createdAt: t.createdAt
+                        ))
+                        if let pid = t.pairedSwimmerId { pairedIds.insert(pid) }
                     }
                 }
             }
         } catch {
             print("[WorkoutDetail] fragment-times fetch failed: \(error.localizedDescription)")
+            return
+        }
+
+        // Phase 2: one bulk swimmer fetch for the join. Empty set
+        // (no paired rows at all) skips the round trip.
+        var nameBySwimmerId: [String: String] = [:]
+        if !pairedIds.isEmpty {
+            do {
+                let swimmers = try await workoutService.fetchSwimmersByIds(ids: Array(pairedIds))
+                for s in swimmers { nameBySwimmerId[s.id] = s.firstName }
+            } catch {
+                // Name lookup failed — fall back to unattributed rendering
+                // for every row. The chips still render the times correctly.
+                print("[WorkoutDetail] swimmer-name join failed: \(error.localizedDescription)")
+            }
+        }
+
+        // Phase 3: bucket by fragmentId, preserving created_at order
+        // (oldest→newest) so the chip list reads chronologically.
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoFallback = ISO8601DateFormatter()
+        var map: [String: [FragmentTimeRecord]] = [:]
+        for row in pending {
+            let capturedAt = isoFormatter.date(from: row.createdAt)
+                ?? isoFallback.date(from: row.createdAt)
+                ?? Date()
+            let record = FragmentTimeRecord(
+                swimmerName: row.pairedSwimmerId.flatMap { nameBySwimmerId[$0] },
+                timeMs: row.timeMs,
+                capturedAt: capturedAt
+            )
+            map[row.fragmentId, default: []].append(record)
+        }
+        // Each bucket is already in fetch order (rep_index asc within set,
+        // sets iterated in order); stable sort by capturedAt defends against
+        // any out-of-order rows the DB returns for legacy fragment_ids.
+        for (key, bucket) in map {
+            map[key] = bucket.sorted { $0.capturedAt < $1.capturedAt }
         }
         recordedTimesByFragmentId = map
     }
@@ -101,10 +168,14 @@ struct WorkoutDetailView: View {
     @State private var pendingSessionId = UUID().uuidString
     // t_d59998d9 (2026-08-05): per-fragment recorded times held in
     // local component state until persistence runs (t_be09a643).
-    // V0.47 (2026-08-22): [Int] per fragment — a 2×-through set holds
-    // one time per pass. Survives redraws; merged with the VM's DB
-    // map in .task and appended to by onRecord on each capture.
-    @State private var recordedTimesByFragmentId: [String: [Int]] = [:]
+    // V0.48 Slice 1 (2026-08-22): [FragmentTimeRecord] per fragment —
+    // carries owner attribution so the chip can render name-prefixed
+    // when the pairing engine has resolved the row. Live captures from
+    // `onRecord` arrive unowned (swimmerName nil); the pairing handoff
+    // eventually fills them in, and the next reload from the DB
+    // renders the owned chip form. Merge with the VM's DB map in
+    // `.task` and append to by onRecord on each capture.
+    @State private var recordedTimesByFragmentId: [String: [FragmentTimeRecord]] = [:]
     // ponytail (warmth-through-motion iter 6): on-appear reveal.
     // Same pattern as login reveal (d46c444), today reveal (0a90257),
     // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
@@ -237,7 +308,21 @@ struct WorkoutDetailView: View {
                 // runs once the row is saved (pairExistingRow) —
                 // the handoff is its own typed result, never a throw.
                 onRecord: { payload in
-                    recordedTimesByFragmentId[payload.fragment.fragmentId, default: []].append(payload.recordedTimeMs)
+                    // V0.48 Slice 1 (2026-08-22): append a fresh
+                    // FragmentTimeRecord with swimmerName nil. The
+                    // pairing handoff runs asynchronously (pairExistingRow
+                    // — out of scope for this slice); when it resolves, the
+                    // swimmer is written to recorded_times.paired_swimmer_id
+                    // and the next loadFragmentTimes() reload repaints the
+                    // chip in owned form ("Jack 1:41.7"). Until then the
+                    // chip renders as unowned, identical to today.
+                    recordedTimesByFragmentId[payload.fragment.fragmentId, default: []].append(
+                        FragmentTimeRecord(
+                            swimmerName: nil,
+                            timeMs: payload.recordedTimeMs,
+                            capturedAt: Date()
+                        )
+                    )
                     // V0.46 fix (2026-08-20): do NOT persist a fragment
                     // row here. onRecord only fires for sessioned runs
                     // (assembleCapturePayload returns nil when sessionId

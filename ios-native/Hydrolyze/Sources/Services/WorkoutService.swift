@@ -285,6 +285,25 @@ final class WorkoutService {
         return try JSONDecoder().decode([RecordedTime].self, from: response.data)
     }
 
+    /// V0.48 Slice 1 (2026-08-22) — bulk fetch swimmers by id for the
+    /// fragment-time owner join. One round trip; the caller (typically
+    /// `WorkoutDetailViewModel.loadFragmentTimes`) collects the unique
+    /// `paired_swimmer_id`s from a set of `RecordedTime` rows and passes
+    /// them here. Returns the full row (we only need `first_name` but
+    /// `Swimmer` is the standard decode target). Empty input → empty
+    /// output, never a DB round trip.
+    ///
+    /// Lives on `WorkoutService` (not `SwimmerService`) because SwimmerService
+    /// is in a squad-link WIP branch and is on this slice's DO-NOT-TOUCH list.
+    func fetchSwimmersByIds(ids: [String]) async throws -> [Swimmer] {
+        guard !ids.isEmpty else { return [] }
+        let response = try await supabase.from("swimmers")
+            .select()
+            .in("id", values: ids)
+            .execute()
+        return try JSONDecoder().decode([Swimmer].self, from: response.data)
+    }
+
     /// Insert structured sets from a parsed workout into workout_sets.
     func createSetsForWorkout(workoutId: String, from parsed: ParsedWorkout) async throws {
         struct SetRow: Encodable {

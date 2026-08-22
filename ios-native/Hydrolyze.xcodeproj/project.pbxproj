@@ -28,6 +28,7 @@
 		26536DFA9FD82838F59E442C /* CalibrationFactors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B57DEE2C8841CB1436A3D30 /* CalibrationFactors.swift */; };
 		28CD62954E1118D3DC040D67 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 77654CFD8C1B0DF21907935A /* Supabase */; };
 		28FED3E04FFB918C91963A49 /* FragmentContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6B560FA423DF14C8AF6DADD /* FragmentContext.swift */; };
+		7B8C4F2E5A1D9B3C8E2F4A6D /* FragmentTimeRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2E5F8A3C7B1D4E6F8A2C5B /* FragmentTimeRecord.swift */; };
 		2990CADD9BDCA5076319F71C /* DropRuleDisplayCLITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F24A4DBD691DD24E3404531 /* DropRuleDisplayCLITest.swift */; };
 		2B5DE3E8702D5162B451A7BF /* HydrolyzeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D35CBCFB723977C7138568CD /* HydrolyzeApp.swift */; };
 		3097A6C6E18712ABFF2B647E /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2C863D2B9B6375268ACA3C /* SupabaseService.swift */; };
@@ -251,6 +252,7 @@
 		9BCC2E5E797656F432A0858C /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		9ED58B38E311216828F53455 /* SwimmerHomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerHomeViewModel.swift; sourceTree = "<group>"; };
 		A6B560FA423DF14C8AF6DADD /* FragmentContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FragmentContext.swift; sourceTree = "<group>"; };
+		9D2E5F8A3C7B1D4E6F8A2C5B /* FragmentTimeRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FragmentTimeRecord.swift; sourceTree = "<group>"; };
 		A882ABF77A943AB7D9D175C0 /* build_and_run_parser3mt.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_parser3mt.sh; sourceTree = "<group>"; };
 		A9B8CB893521F12CBAC32325 /* PBAddSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PBAddSheet.swift; sourceTree = "<group>"; };
 		AD6216796BE406C11CB42FF1 /* SquadSessionsEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquadSessionsEditor.swift; sourceTree = "<group>"; };
@@ -661,6 +663,7 @@
 				5A9DDFCB5E521A95C7B7910E /* CoachPreferences.swift */,
 				066524AA52E1B4A8C140F20D /* Enums.swift */,
 				A6B560FA423DF14C8AF6DADD /* FragmentContext.swift */,
+				9D2E5F8A3C7B1D4E6F8A2C5B /* FragmentTimeRecord.swift */,
 				B0102BBE0B7283BBAEB2212A /* LapAssignment.swift */,
 				D662EC6A41D34AFB29805D1C /* Prediction.swift */,
 				C8E3D5422A3C8FB38F9DC0CA /* RecordedTime.swift */,
@@ -822,6 +825,7 @@
 				CDCD6C2C307A57FD86A728E4 /* Enums.swift in Sources */,
 				EB9A7B5E535E0B22F94BB591 /* FlowLayout.swift in Sources */,
 				28FED3E04FFB918C91963A49 /* FragmentContext.swift in Sources */,
+				7B8C4F2E5A1D9B3C8E2F4A6D /* FragmentTimeRecord.swift in Sources */,
 				473295BD12B206A9E24E0374 /* Haptics.swift in Sources */,
 				B7F5FBBA0267F4F9ED9DBE4F /* HistoricalTimePredictor.swift in Sources */,
 				49636A4AD8B6BA6A7BF17B23 /* HungarianMatching.swift in Sources */,

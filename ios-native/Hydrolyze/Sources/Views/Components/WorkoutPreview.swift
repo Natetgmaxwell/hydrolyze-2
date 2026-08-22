@@ -34,9 +34,13 @@ struct WorkoutPreview: View {
     /// FragmentCTARow reads this to show "Saved 0:42.31" + a green check
     /// after the stopwatch stops. nil = no recorded times yet; the row
     /// just shows the play icon.
-    /// V0.47 (2026-08-22): [Int] per fragment — multi-pass (2×-through)
-    /// sets hold one time per pass; all render on the row.
-    var recordedTimesByFragmentId: [String: [Int]]? = nil
+    /// V0.48 Slice 1 (2026-08-22): [FragmentTimeRecord] per fragment —
+    /// each record carries owner attribution. Unowned records render
+    /// as today ("Saved M:SS.HH"); owned records render name-prefixed
+    /// ("Jack M:SS.H" for sub-minute, "Jack M:SS.HH" for ≥1min). Tier
+    /// logic and the aggregate chip land in Slice 2 — this slice keeps
+    /// one chip per record.
+    var recordedTimesByFragmentId: [String: [FragmentTimeRecord]]? = nil
     /// V0.37 (2026-08-13): degraded-parse banner. When the server returns
     /// degraded:true, render an amber banner above the preview with the
     /// reason and a retry button. Defaults keep read-only contexts clean.
@@ -115,7 +119,7 @@ private struct SectionView: View {
     let sectionIndex: Int
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
     let onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)?
-    let recordedTimesByFragmentId: [String: [Int]]?
+    let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -169,7 +173,7 @@ private struct RepGroupRowView: View {
     let repGroupIndex: Int
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
     let onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)?
-    let recordedTimesByFragmentId: [String: [Int]]?
+    let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -1022,7 +1026,7 @@ private struct FragmentCTARow: View {
     let fragment: ParsedFragment
     let reps: Int?
     let paceTargetText: String?
-    let recordedTimes: [Int]?
+    let recordedTimes: [FragmentTimeRecord]?
     // V0.35 (2026-08-12): nil = static row (builder preview). Renders
     // the same fragment metadata but is not tappable and shows no play
     // icon — the detail view owns timing.
@@ -1093,16 +1097,24 @@ private struct FragmentCTARow: View {
                         ConfidenceBadge(confidence: conf)
                     }
                 }
-                // V0.47 (2026-08-22): multi-pass — render one chip per
-                // collected time (2×-through sets hold 2 per fragment).
+                // V0.48 Slice 1 (2026-08-22): one chip per FragmentTimeRecord.
+                // Unowned rows render "Saved M:SS.HH" (today's exact
+                // form — visual parity with V0.47). Owned rows render
+                // "<Name> M:SS.HH" (two-digit hundredths when ≥1min,
+                // single-digit tenths when sub-minute, matching the
+                // spec example "Jack 1:41.7"). All time text is
+                // JetBrains Mono via the `.numeric` role. Slice 2
+                // collapses 3+ chips into an aggregate chip with a
+                // sheet — this slice keeps one chip per record so the
+                // join behavior is observable in isolation.
                 if let times = recordedTimes {
-                    ForEach(Array(times.enumerated()), id: \.offset) { _, ms in
+                    ForEach(Array(times.enumerated()), id: \.offset) { _, record in
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.caption)
                                 .foregroundColor(Color.statusSuccess)
-                            Text("Saved \(formatStopwatchTime(ms))")
-                                .font(.captionStrong)
+                            Text(chipLabel(for: record))
+                                .font(record.hasOwner ? .numeric : .captionStrong)
                                 .foregroundColor(Color.statusSuccess)
                         }
                     }
@@ -1128,6 +1140,41 @@ private struct FragmentCTARow: View {
                 .buttonStyle(.plain)
         } else {
             content
+        }
+    }
+
+    /// V0.48 Slice 1 (2026-08-22): owned vs. unowned label. Owned =
+    /// "<Name> <time>" (name-prefixed); unowned = "Saved <time>" (today).
+    /// Time format mirrors the stopwatch: M:SS.HH always; the spec example
+    /// drops the leading "0:" and the second hundredths digit for sub-minute
+    /// (e.g. "Jack 1:41.7"). To preserve the "Saved" prefix visual identical
+    /// to V0.47, unowned rows keep the full "0:42.31" shape — only owned
+    /// rows adopt the spec's compact form. Both render in JetBrains Mono.
+    private func chipLabel(for record: FragmentTimeRecord) -> String {
+        let time = formatStopwatchTime(record.timeMs)
+        if let name = record.swimmerName, !name.isEmpty {
+            return "\(name) \(compactOwnedTime(record.timeMs))"
+        }
+        return "Saved \(time)"
+    }
+
+    /// Spec example: "Jack 1:41.7" for 101700 ms. For ≥1min, render
+    /// M:SS.H (single decimal). For <1min, drop the leading "0:" →
+    /// "SS.HH". Preserves the spec's compactness without sacrificing
+    /// the stopwatch's mono column alignment.
+    private func compactOwnedTime(_ ms: Int) -> String {
+        let totalCs = ms / 10
+        let cs = totalCs % 100
+        let totalSec = totalCs / 100
+        let sec = totalSec % 60
+        let min = totalSec / 60
+        if min >= 1 {
+            // 101700 → "1:41.7"
+            let tenths = cs / 10
+            return String(format: "%d:%02d.%d", min, sec, tenths)
+        } else {
+            // 42100 → "42.10" — sub-minute, two-digit seconds, two-digit hundredths.
+            return String(format: "%02d.%02d", sec, cs)
         }
     }
 }
@@ -1159,7 +1206,7 @@ private struct PairRepGroupRow: View {
     let fragments: [ParsedFragment]
     let reps: Int?
     let paceTargetText: String?
-    let recordedTimesByFragmentId: [String: [Int]]?
+    let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
     // V0.35 (2026-08-12): nil = static rows (builder preview).
     let onFragmentTap: ((Int, ParsedFragment) -> Void)?
 
@@ -1211,11 +1258,13 @@ private struct PairRepGroupRow: View {
     }
 }
 
-// t_d59998d9 (2026-08-05): resolve recorded ms for a fragment from the
+// t_d59998d9 (2026-08-05): resolve recorded times for a fragment from the
 // WorkoutDetailView-held map. Looks up by fragment.id, then falls back
 // to descriptor+distance+intensity as a soft key so a row that lost its
 // id (older builds) still finds its recorded time. nil = no recording.
-private func recordedTimesForFragment(_ fragment: ParsedFragment, in map: [String: [Int]]?) -> [Int]? {
+// V0.48 Slice 1 (2026-08-22): value type widened to [FragmentTimeRecord];
+// lookup logic unchanged.
+private func recordedTimesForFragment(_ fragment: ParsedFragment, in map: [String: [FragmentTimeRecord]]?) -> [FragmentTimeRecord]? {
     guard let map = map, !map.isEmpty else { return nil }
     if let id = fragment.id, let times = map[id], !times.isEmpty { return times }
     // Soft-key fallback for rows without an id.
