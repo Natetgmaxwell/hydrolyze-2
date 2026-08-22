@@ -237,6 +237,33 @@ struct WorkoutDetailView: View {
         // workoutSetId in TimingView.onAppear, but the explicit param
         // is the cleaner source of truth and matches TodayView's path.
         let workoutSetId: String
+        // V0.49 Slice 2 (2026-08-22): the roster snapshot's entries
+        // for the in-TimingView roster strip. nil when the launch
+        // follows the picker path (no cached roster) — the strip
+        // then hides entirely and the picker flow renders exactly
+        // as today. Hashable so the activeSession equality check in
+        // `.onChange(of: activeSession)` still works (Hashable
+        // conformance on ActiveSession is the .fullScreenCover
+        // trigger mechanism, and adding the optional [RosterEntryLite]
+        // requires RosterEntryLite to be Hashable too — which Slice 2
+        // ships in `TimingView.swift`).
+        let roster: [RosterEntryLite]?
+
+        static func == (lhs: ActiveSession, rhs: ActiveSession) -> Bool {
+            // V0.49 Slice 2 (2026-08-22): the cover dismissal
+            // detection (`.onChange(of: activeSession)`) compares
+            // for `nil`, so equality here is a strict identity
+            // check. Including the roster in `hash(into:)` would
+            // trigger false re-dismissals on roster change; we
+            // want dismissal tied to the cover's open/close only.
+            return lhs.id == rhs.id
+                && lhs.workoutSetId == rhs.workoutSetId
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(id)
+            hasher.combine(workoutSetId)
+        }
     }
 
     var body: some View {
@@ -330,10 +357,48 @@ struct WorkoutDetailView: View {
             // "Session is missing its workout set". The onComplete
             // callback already computed the correct set id and stored it
             // in activeSession.workoutSetId — use that.
+            //
+            // V0.49 Slice 2 (2026-08-22): thread `roster` and the
+            // `onRosterUpdated` callback so the in-TimingView
+            // strip has its initial snapshot AND can push a
+            // freshly-edited roster back up to refresh the
+            // workout's cached snapshot on next launch.
             TimingView(
                 prefill: timingPrefill,
                 sessionId: session.id,
                 workoutSetId: session.workoutSetId.isEmpty ? timingPrefill?.workoutSetId : session.workoutSetId,
+                roster: session.roster,
+                // V0.49 Slice 2 (2026-08-22): the strip's
+                // post-Edit refresh bubbles a roster list up to
+                // WorkoutDetailView so the next fragment launch
+                // skips the picker with the freshly-locked
+                // snapshot. The callback projects the strip's
+                // UI mirror back into SessionRosterSnapshot.Entry
+                // (since WorkoutDetailView's VM caches the
+                // heavier-service type) — keeping the wiring
+                // types-aligned avoids drift.
+                onRosterUpdated: { entries in
+                    // V0.49 Slice 2 (2026-08-22): wrap the VM
+                    // write in `Task` because the callback fires
+                    // from inside the cover's body context, and
+                    // writing @Published properties during view
+                    // updates produces a runtime warning. The
+                    // Task hops to the next runloop tick.
+                    Task { @MainActor in
+                        viewModel.latestRosterSnapshot = SessionRosterSnapshot(
+                            sessionId: session.id,
+                            entries: entries.map { entry in
+                                SessionRosterSnapshot.Entry(
+                                    swimmerId: entry.swimmerId,
+                                    firstName: entry.firstName,
+                                    lastName: entry.lastName,
+                                    lane: nil,
+                                    positionInLane: nil
+                                )
+                            }
+                        )
+                    }
+                },
                 // t_d59998d9 (2026-08-05) + t_be09a643 (2026-08-05)
                 // + t_bec2b88b (2026-08-06): recorded-time callback.
                 // Fires once when the stopwatch transitions out of
@@ -395,9 +460,20 @@ struct WorkoutDetailView: View {
                 // previewSetIndex at Start time.
                 onComplete: { sessionId, workoutSetId in
                     showSessionStart = false
+                    // V0.49 Slice 2 (2026-08-22): the picker
+                    // path passes nil roster into the cover —
+                    // TimingView's strip is hidden (today's flow,
+                    // exactly the same as pre-Slice 2 once the
+                    // strip is gone). After the lockRoster write
+                    // lands, the cover dismiss triggers the
+                    // .onChange that calls `loadLatestRoster`, so
+                    // the next launch uses the freshly-cached
+                    // snapshot (now populated) and the strip
+                    // appears.
                     activeSession = ActiveSession(
                         id: sessionId,
-                        workoutSetId: workoutSetId
+                        workoutSetId: workoutSetId,
+                        roster: nil
                     )
                 }
             )
@@ -561,7 +637,18 @@ struct WorkoutDetailView: View {
                 if let roster = viewModel.latestRosterSnapshot {
                     activeSession = ActiveSession(
                         id: roster.sessionId,
-                        workoutSetId: set.id
+                        workoutSetId: set.id,
+                        // V0.49 Slice 2 (2026-08-22): populate
+                        // the timing roster strip from the snapshot.
+                        // Skip-the-picker path → strip is visible.
+                        // Picker path (no snapshot) → strip hidden.
+                        roster: roster.entries.map { entry in
+                            RosterEntryLite(
+                                swimmerId: entry.swimmerId,
+                                firstName: entry.firstName,
+                                lastName: entry.lastName
+                            )
+                        }
                     )
                 } else {
                     pendingSessionId = UUID().uuidString
@@ -702,7 +789,17 @@ struct WorkoutDetailView: View {
         if let roster = viewModel.latestRosterSnapshot {
             activeSession = ActiveSession(
                 id: roster.sessionId,
-                workoutSetId: parentSet?.id ?? ""
+                workoutSetId: parentSet?.id ?? "",
+                // V0.49 Slice 2 (2026-08-22): populate the
+                // strip from the cached snapshot. nil → strip
+                // hidden (picker path — same as today).
+                roster: roster.entries.map { entry in
+                    RosterEntryLite(
+                        swimmerId: entry.swimmerId,
+                        firstName: entry.firstName,
+                        lastName: entry.lastName
+                    )
+                }
             )
         } else {
             // Fallback path: today's flow. The session id is fresh

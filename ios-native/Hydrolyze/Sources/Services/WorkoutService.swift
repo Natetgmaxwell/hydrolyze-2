@@ -159,6 +159,71 @@ final class WorkoutService {
         return SessionRosterSnapshot(sessionId: session.id, entries: entries)
     }
 
+    /// V0.49 Slice 2 (2026-08-22): mirror of `fetchLatestSessionRoster`
+    /// keyed by `session_id` instead of `workout_id`. Used by
+    /// `TimingView.refreshRosterFromServer` after the in-strip Edit
+    /// sheet's `onComplete` fires so the strip re-renders in place
+    /// with the freshly-persisted swimmer list. Returns `nil` when
+    /// the session has no roster rows (the strip should hide — same
+    /// semantics as the snapshot helper).
+    ///
+    /// Two-round-trip budget (`session_roster!inner(swimmers)` for
+    /// the embedded join, then `fetchSwimmersByIds` for the names)
+    /// matches `fetchLatestSessionRoster`; the strip's Edit flow is
+    /// coach-initiated and rare, so the budget is generous.
+    func fetchSessionRoster(forSessionId sessionId: String) async throws -> SessionRosterSnapshot? {
+        struct RosterRow: Decodable {
+            let sessionId: String
+            let swimmerId: String
+            let lane: Int?
+            let positionInLane: Int?
+
+            enum CodingKeys: String, CodingKey {
+                case sessionId = "session_id"
+                case swimmerId = "swimmer_id"
+                case lane
+                case positionInLane = "position_in_lane"
+            }
+        }
+        struct SessionWithRoster: Decodable {
+            let id: String
+            let startedAt: String?
+            let roster: [RosterRow]
+
+            enum CodingKeys: String, CodingKey {
+                case id
+                case startedAt = "started_at"
+                case roster = "session_roster"
+            }
+        }
+        let response = try await supabase.from("sessions")
+            .select("id, started_at, session_roster(session_id, swimmer_id, lane, position_in_lane)")
+            .eq("id", value: sessionId)
+            .limit(1)
+            .execute()
+        let sessions = try JSONDecoder().decode([SessionWithRoster].self, from: response.data)
+        guard let session = sessions.first, !session.roster.isEmpty else {
+            return nil
+        }
+        let swimmerIds = Array(Set(session.roster.map { $0.swimmerId }))
+        let swimmers = try await fetchSwimmersByIds(ids: swimmerIds)
+        var nameBySwimmerId: [String: (first: String?, last: String?)] = [:]
+        for s in swimmers {
+            nameBySwimmerId[s.id] = (s.firstName, s.lastName)
+        }
+        let entries: [SessionRosterSnapshot.Entry] = session.roster.map { row in
+            let names = nameBySwimmerId[row.swimmerId]
+            return SessionRosterSnapshot.Entry(
+                swimmerId: row.swimmerId,
+                firstName: names?.first,
+                lastName: names?.last,
+                lane: row.lane,
+                positionInLane: row.positionInLane
+            )
+        }
+        return SessionRosterSnapshot(sessionId: session.id, entries: entries)
+    }
+
     /// Fetch all sets for a workout.
     func fetchWorkoutSets(workoutId: String) async throws -> [WorkoutSet] {
         let response = try await supabase.from("workout_sets")
