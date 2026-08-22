@@ -501,7 +501,7 @@ final class WorkoutBuilderViewModel: ObservableObject {
 
         // 2. Server reconciliation. The server is canonical for both
         //    rep-group count AND section grouping (the on-device parser
-        //    flattens everything into a single unnamed section, so
+        //  ……  flattens everything into a single unnamed section, so
         //    section dividers like "Pool warm-up — 1,000m" only appear
         //    when we adopt the server result). Always prefer the server
         //    output when the call succeeds, regardless of count —

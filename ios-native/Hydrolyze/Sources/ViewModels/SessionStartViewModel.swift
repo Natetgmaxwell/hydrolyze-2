@@ -63,6 +63,10 @@ final class SessionStartViewModel: ObservableObject {
 
     private let supabase = SupabaseService.shared.client
     private let swimmerService = SwimmerService()
+    // V0.46 (2026-08-21): used by loadRoster to read the workout's
+    // squad link (group_id) so the picker can filter the roster to
+    // in-squad swimmers when the workout is squad-scoped.
+    private let workoutService = WorkoutService()
 
     private(set) var createdSessionId: String?
 
@@ -121,7 +125,20 @@ final class SessionStartViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            let fetched = try await swimmerService.fetchSwimmers(coachId: coachId)
+            // V0.46 (2026-08-21): scope the picker to the workout's squad
+            // when one is set. fetchSwimmersInGroup is the same query path
+            // SwimmersListView uses for squad-scoped rows. Unscoped
+            // workouts (no group_id) fall back to the coach-wide roster —
+            // pre-existing behavior, preserved intentionally for legacy
+            // workouts that predate the squad-link feature.
+            var fetched: [Swimmer]
+            if let workoutId = workoutId,
+               let workout = try? await workoutService.fetchWorkout(workoutId: workoutId),
+               let groupId = workout.groupId {
+                fetched = try await swimmerService.fetchSwimmersInGroup(groupId: groupId)
+            } else {
+                fetched = try await swimmerService.fetchSwimmers(coachId: coachId)
+            }
             // Dedupe by id — protects downstream ForEach (Identifiable) and the
             // optimizer from processing the same swimmer twice.
             var seen = Set<String>()

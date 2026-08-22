@@ -26,6 +26,11 @@ struct Workout: Codable, Identifiable, Sendable {
     /// when seeding a template workout so the row tag survives the
     /// round-trip to the DB.
     var sessionType: String?
+    /// V0.46 (2026-08-21): squad link. Workouts tagged with a `group_id`
+    /// are scoped to that squad's swimmers; the session-start picker
+    /// reads this to filter the roster to in-squad swimmers only.
+    /// Optional — old unscoped rows decode clean (nil).
+    var groupId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -39,6 +44,7 @@ struct Workout: Codable, Identifiable, Sendable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case sessionType = "session_type"
+        case groupId = "group_id"
     }
 }
 
