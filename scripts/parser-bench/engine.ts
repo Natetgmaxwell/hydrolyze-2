@@ -700,25 +700,15 @@ function parseRepDist(raw: string): {
 //
 // TIER 1 — PROMPT: the coach should map these because they're wildly different
 // between coaches (one coach's "moderate" is another's "hard").
-const AMBIGUOUS_INTENSITY_TERMS: Array<[RegExp, string]> = [
-  [/\bmoderate\b/i, "moderate"],
-  [/\bhard\b/i, "hard"],
-  [/\bsteady\b/i, "steady"],
-  [/\bcruise\b/i, "cruise"],
-  [/\blight\b/i, "light"],
-  [/\btough\b/i, "tough"],
-  [/\bstrong\b/i, "strong"],
-  [/\ball[-\s]?out\b/i, "all-out"],
-  // ponytail (iter 11, 2026-07-28): new ambiguous terms from real coach inputs
-  [/\brelaxed\b/i, "relaxed"],
-  [/\bprogressive\b/i, "progressive"],
-  [/\bactivation\b/i, "activation"],
-  [/\bmaximal\b/i, "maximal"],
-  [/\brace\s+rhythm\b/i, "race rhythm"],
-  [/\bfaster\s+than\s+race\s+pace\b/i, "faster than race pace"],
-  [/\bfast\b/i, "fast"],
-  [/\bmax\b/i, "max"],
-];
+// V0.47: single source-of-truth in _dialect-terms.ts. Engine used to inline
+// a 17-row literal array here; now consumes the shared list so Swift can
+// mirror it from the same place. See V0.47_DIALECT.md §3.
+import { TIER1_TERMS } from "./_dialect-terms";
+// _dialect-terms exports tuples (readonly [RegExp, string]); the map reads
+// them positionally, not by key. `t.pattern` would be undefined.
+const AMBIGUOUS_INTENSITY_TERMS: Array<[RegExp, string]> = TIER1_TERMS.map(
+  (t) => [t[0], t[1]],
+);
 
 // TIER 2 — AUTO-RESOLVE: industry-standard swimming vocabulary. Don't prompt;
 // the parser resolves to a default RPE range that the coach can override

@@ -101,9 +101,21 @@ actor VocabularyService {
     }
 
     /// Check if a term is ambiguous (needs RPE mapping).
+    /// V0.47: aligned with engine `AMBIGUOUS_INTENSITY_TERMS` via the shared
+    /// `_dialect-terms.ts` source-of-truth (16 Tier-1 entries; the
+    /// PROGRESSION_TERMS set {build, descend, desc} is handled separately
+    /// by the 2-point capture in the end-of-session card — not in this set).
+    /// KEEP IN SYNC with V0.47_DIALECT.md §3 (locked 2026-08-21, commit e7e394b)
+    /// and the three TS mirrors at:
+    ///   - scripts/parser-bench/_dialect-terms.ts
+    ///   - supabase/functions/parse-workout/_dialect-terms.ts
+    ///   - ios-native/supabase/functions/parse-workout/_dialect-terms.ts
+    /// When adding/removing a term, update all four locations in the same PR.
     static let ambiguousTerms: Set<String> = [
-        "moderate", "hard", "easy", "steady", "cruise",
-        "light", "tough", "tempo", "strong", "all-out"
+        "moderate", "hard", "steady", "cruise",
+        "light", "tough", "strong", "all-out",
+        "relaxed", "progressive", "activation", "maximal",
+        "race rhythm", "faster than race pace", "fast", "max",
     ]
 }
 
