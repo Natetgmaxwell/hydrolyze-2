@@ -68,6 +68,13 @@ final class SessionStartViewModel: ObservableObject {
     // in-squad swimmers when the workout is squad-scoped.
     private let workoutService = WorkoutService()
 
+    // V0.49 Slice 1 (2026-08-22): one-shot completion flag for
+    // Edit Attendees. `lockRoster` sets this in edit mode (instead
+    // of advancing to wavePreview); the view reads it via
+    // `.onChange`, dismisses the sheet, and resets it. Kept
+    // distinct from `createdSessionId` because that's `private(set)`
+    // and the view-side reset would be a compile error.
+    @Published var didCompleteEdit: Bool = false
     private(set) var createdSessionId: String?
 
     var selectedSwimmers: [Swimmer] {
@@ -119,7 +126,17 @@ final class SessionStartViewModel: ObservableObject {
     @Published private(set) var attendanceReasons: [String: AttendanceResolver.Reason] = [:]
     @Published private(set) var rosterSeed: RosterSeed = .unavailable
 
-    func loadRoster(coachId: String?, workoutId: String? = nil) async {
+    func loadRoster(
+        coachId: String?,
+        workoutId: String? = nil,
+        // V0.49 Slice 1 (2026-08-22): Edit Attendees entry
+        // point. When `isEditMode` is true the picker seeds from
+        // `preselectedSwimmerIds` (the current roster) instead
+        // of attendance-derived guesses. Normal mode is
+        // unchanged — `isEditMode = false` skips the edit path.
+        isEditMode: Bool = false,
+        preselectedSwimmerIds: Set<UUID>? = nil
+    ) async {
         self.coachId = coachId
         guard let coachId = coachId else { return }
         isLoading = true
@@ -151,7 +168,27 @@ final class SessionStartViewModel: ObservableObject {
                 return (uuid, swimmer.fullName)
             })
 
-            await seedSelectionFromAttendance(workoutId: workoutId)
+            // V0.49 Slice 1 (2026-08-22): Edit Attendees bypasses
+            // the attendance-derived seed and uses the current
+            // roster ids as the initial selection. The picker
+            // then renders with checkmarks on exactly who's
+            // currently in the session, so the coach can add or
+            // remove without having to re-find every swimmer.
+            if isEditMode, let preselected = preselectedSwimmerIds {
+                // Intersect with the loaded roster so the count
+                // doesn't inflate on a stale preselection
+                // (matches the v1.17 attendance-seed safety
+                // check below).
+                let available = Set(availableSwimmers.map(\.id))
+                selectedSwimmerIds = Set(
+                    preselected
+                        .filter { available.contains($0.uuidString) }
+                )
+                rosterSeed = .attendance
+                attendanceReasons = [:]
+            } else {
+                await seedSelectionFromAttendance(workoutId: workoutId)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -222,6 +259,69 @@ final class SessionStartViewModel: ObservableObject {
         }
     }
 
+    // V0.49 Slice 1 (2026-08-22): per-set prediction helper — shared
+    // between the normal and edit branches of `lockRoster` so both
+    // paths compute identical WaveAllocator inputs. PHASE 2.6 v1.13.0
+    // uses PBService for the 5-way match (swimmer, stroke, distance,
+    // intensity, gear) with tiered fallbacks. Returns the raw map;
+    // callers decide whether to assign it to `predictionsBySwimmerBySet`.
+    private func buildPerSetPredictions(
+        workoutSets: [WorkoutSet],
+        allPBsFetched: [SwimmerPB],
+        allTimesFetched: [RecordedTime],
+        calibration: CalibrationFactors
+    ) -> [String: [String: Prediction]] {
+        let pbService = PBService()
+        var perSetPredictions: [String: [String: Prediction]] = [:]
+        for set in workoutSets {
+            guard set.stroke != nil, set.distance != nil else { continue }
+            let intensity = set.intensityLabel ?? "moderate"
+            let gear = "none"  // wave preview defaults to no gear
+            var predsForSet: [String: Prediction] = [:]
+            for swimmer in selectedSwimmers {
+                if let pred = pbService.fetchPrediction(
+                    swimmer: swimmer,
+                    set: set,
+                    intensity: intensity,
+                    gear: gear,
+                    prefs: coachPreferences,
+                    recordedTimes: allTimesFetched,
+                    pbs: allPBsFetched,
+                    calibration: calibration
+                ) {
+                    predsForSet[swimmer.id] = pred
+                }
+            }
+            if !predsForSet.isEmpty {
+                perSetPredictions[set.id] = predsForSet
+            }
+        }
+        return perSetPredictions
+    }
+
+    // V0.49 Slice 1 (2026-08-22): per-swimmer "best across any set"
+    // fallback map. Surfaced through `pbBySwimmer` for the legacy
+    // WavePreviewView tight-gap heuristic + debug paths. v2 reads
+    // from `predictionsBySwimmerBySet` directly for the maturity
+    // badges; the fallback map only exists for back-compat.
+    private func buildPbFallbackMap(
+        workoutSets: [WorkoutSet],
+        perSetPredictions: [String: [String: Prediction]]
+    ) -> [String: Int] {
+        var fallbackPBMap: [String: Int] = [:]
+        for set in workoutSets {
+            guard let preds = perSetPredictions[set.id] else { continue }
+            for (swimmerId, pred) in preds {
+                if let existing = fallbackPBMap[swimmerId] {
+                    fallbackPBMap[swimmerId] = min(existing, pred.timeMs)
+                } else {
+                    fallbackPBMap[swimmerId] = pred.timeMs
+                }
+            }
+        }
+        return fallbackPBMap
+    }
+
     func toggleSwimmer(_ id: UUID) {
         if selectedSwimmerIds.contains(id) {
             selectedSwimmerIds.remove(id)
@@ -241,7 +341,13 @@ final class SessionStartViewModel: ObservableObject {
     func lockRoster(
         sessionId: String,
         workoutSets: [WorkoutSet],
-        poolConfig: WaveAllocator.PoolConfig = WaveAllocator.PoolConfig()
+        poolConfig: WaveAllocator.PoolConfig = WaveAllocator.PoolConfig(),
+        // V0.49 Slice 1 (2026-08-22): Edit Attendees mode — same
+        // upsert path but skips the session-row upsert (the row
+        // already exists) and the wave-preview step transition
+        // (the sheet dismisses via `didCompleteEdit`). Defaults to
+        // false so the normal picker flow is untouched.
+        isEditMode: Bool = false
     ) async {
         guard !selectedSwimmers.isEmpty else { return }
         self.sessionId = sessionId
@@ -299,6 +405,60 @@ final class SessionStartViewModel: ObservableObject {
             // returns `PostgrestResponse<Void>`, not `Void`. Letting the
             // compiler infer the type and awaiting the result works.
             let selectedSwimmerIds = selectedSwimmers.map { $0.id }
+            // V0.49 Slice 1 (2026-08-22): in edit mode the session
+            // row already exists — we only re-upsert session_roster
+            // for the new selection. Re-upserting the session row
+            // would overwrite `started_at` with `now()`, corrupting
+            // the session timeline. Skipping is safe because
+            // `sessions.id` is the PK — it can't be missing if
+            // `latestRosterSnapshot` returned a session id.
+            //
+            // We split into two code paths (the edit-mode branch
+            // drops the session upsert; the normal branch runs the
+            // original 4-way parallel await) rather than mixing a
+            // conditional inside an `async let` (the latter doesn't
+            // compose cleanly with the trailing-`execute()` shape
+            // used everywhere else in this method).
+            if isEditMode {
+                _ = try await supabase.from("session_roster")
+                    .upsert(rosterPayload)
+                    .execute()
+                // WaveAllocator still runs so the pairing engine
+                // can rebuild waves if the roster changed shape
+                // (added/removed swimmers), and predictions are
+                // re-fetched below — these are read-only operations
+                // and don't touch the session row.
+                let pbResponse = try await supabase.from("swimmer_pbs")
+                    .select()
+                    .execute()
+                let allPBsFetched = try JSONDecoder().decode([SwimmerPB].self, from: pbResponse.data)
+                let allTimesFetched = try await swimmerService.fetchRecordedTimes(
+                    swimmerIds: selectedSwimmerIds
+                )
+                self.allPBs = allPBsFetched
+                self.recordedTimes = allTimesFetched
+                let calibration = CalibrationFactors()
+                _ = try await calibration.prefetch(forSwimmerIds: selectedSwimmerIds)
+                self.calibration = calibration
+                let perSetPredictions = buildPerSetPredictions(
+                    workoutSets: workoutSets,
+                    allPBsFetched: allPBsFetched,
+                    allTimesFetched: allTimesFetched,
+                    calibration: calibration
+                )
+                self.predictionsBySwimmerBySet = perSetPredictions
+                self.pbBySwimmer = buildPbFallbackMap(workoutSets: workoutSets, perSetPredictions: perSetPredictions)
+                waveAssignments = WaveAllocator.allocate(
+                    roster: selectedSwimmers,
+                    sets: workoutSets,
+                    poolConfig: poolConfig,
+                    predictions: perSetPredictions
+                )
+                createdSessionId = sessionId
+                didCompleteEdit = true
+                isLoading = false
+                return
+            }
             async let sessionInsert = supabase.from("sessions")
                 .upsert(sessionRow)
                 .execute()
@@ -342,102 +502,36 @@ final class SessionStartViewModel: ObservableObject {
             // minus anyone the coach removed and plus anyone they added.
             // The roster insert at line ~284 already carries it.
 
+            // V0.49 Slice 1 (2026-08-22): the edit-mode branch already
+            // handled calibration + WaveAllocator + didCompleteEdit
+            // and returned above. The code below is the normal-mode
+            // path only.
+            //
             // PHASE 2.6 v1.13.0: use PBService as the SINGLE function
             // for "what's this swimmer's predicted time for this set +
-            // intensity + gear?" Replaces the per-(swimmer, set) call
-            // to HistoricalTimePredictor. The 4 code paths to the
-            // same data (profile screen, wave preview, save flow,
-            // coarsePredictions) all use this function now.
-            //
-            // For the wave preview, we use the set's intensityLabel
-            // (e.g., 'moderate', 'max') and the swimmer's preferredGear
-            // (defaults to 'none'). PBService does the 5-way match
-            // (swimmer, stroke, distance, intensity, gear) with
-            // tiered fallbacks: exact → any-gear-same-intensity →
-            // any-intensity-same-stroke/distance → population seed.
-            let pbService = PBService()
-            // PHASE 1 (T3.5, 2026-06-20): the calibration factors are
-            // fetched in parallel with the other inputs (the existing
-            // async lets above). Empty calibration (no `swimmer_suits`
-            // / `swimmer_starts` rows yet for these swimmers) is fine —
-            // the predictor falls back to a multiplier of 1.0 (no
-            // adjustment) when the helper returns nil. So this
-            // prefetch is non-blocking in the sense that the
-            // prediction flow works whether or not the data exists.
+            // intensity + gear?" — factored into
+            // `buildPerSetPredictions` so the edit-mode branch can
+            // call it without copy-pasting the PBService /
+            // CalibrationFactors setup. `WaveAllocator.allocate` is
+            // a `static` method on the type (was an instance-method
+            // call in 1b7d65c, which caused a 'static member cannot
+            // be used on instance' error on the Mac Studio build).
             let calibration = CalibrationFactors()
             async let calibrationFetch = calibration.prefetch(
                 forSwimmerIds: selectedSwimmerIds
             )
-            // Await calibration (in parallel with the other
-            // continuations below; calibrationFetch is the 5th parallel
-            // read alongside sessionInsert / rosterInsert / pbsFetch
-            // / timesFetch above).
             _ = try await calibrationFetch
             self.calibration = calibration
 
-            // PHASE 2.6 v1.13.0: use PBService as the SINGLE function
-            // for "what's this swimmer's predicted time for this set +
-            // intensity + gear?" Replaces the per-(swimmer, set) call
-            // to HistoricalTimePredictor. The 4 code paths to the
-            // same data (profile screen, wave preview, save flow,
-            // coarsePredictions) all use this function now.
-            //
-            // For the wave preview, we use the set's intensityLabel
-            // (e.g., 'moderate', 'max') and the swimmer's preferredGear
-            // (defaults to 'none'). PBService delegates to
-            // HistoricalTimePredictor which applies the suit +
-            // start calibration from the `calibration` cache.
-            var perSetPredictions: [String: [String: Prediction]] = [:]
-            for set in workoutSets {
-                guard set.stroke != nil, set.distance != nil else { continue }
-                let intensity = set.intensityLabel ?? "moderate"
-                let gear = "none"  // wave preview defaults to no gear
-                var predsForSet: [String: Prediction] = [:]
-                for swimmer in selectedSwimmers {
-                    if let pred = pbService.fetchPrediction(
-                        swimmer: swimmer,
-                        set: set,
-                        intensity: intensity,
-                        gear: gear,
-                        prefs: coachPreferences,
-                        recordedTimes: allTimesFetched,
-                        pbs: allPBsFetched,
-                        calibration: calibration
-                    ) {
-                        predsForSet[swimmer.id] = pred
-                    }
-                }
-                if !predsForSet.isEmpty {
-                    perSetPredictions[set.id] = predsForSet
-                }
-            }
+            let perSetPredictions = buildPerSetPredictions(
+                workoutSets: workoutSets,
+                allPBsFetched: allPBsFetched,
+                allTimesFetched: allTimesFetched,
+                calibration: calibration
+            )
             self.predictionsBySwimmerBySet = perSetPredictions
+            self.pbBySwimmer = buildPbFallbackMap(workoutSets: workoutSets, perSetPredictions: perSetPredictions)
 
-            // Also build a per-swimmer prediction map (any set) for the
-            // legacy `pbBySwimmer` accessor (still used by old debug paths
-            // and by the v1 WavePreviewView's tight-gap heuristic). v2
-            // surfaces predictions through `predictionsBySwimmerBySet`
-            // for the maturity badges.
-            var fallbackPBMap: [String: Int] = [:]
-            for set in workoutSets {
-                guard let preds = perSetPredictions[set.id] else { continue }
-                for (swimmerId, pred) in preds {
-                    if let existing = fallbackPBMap[swimmerId] {
-                        fallbackPBMap[swimmerId] = min(existing, pred.timeMs)
-                    } else {
-                        fallbackPBMap[swimmerId] = pred.timeMs
-                    }
-                }
-            }
-            self.pbBySwimmer = fallbackPBMap
-
-            // WaveAllocator: constraint-aware wave + lane assignment using
-            // the per-set predictions. Replaces the old WaveOptimizer.
-            // WaveAllocator.allocate is a `static` method, so no instance
-            // creation — call it on the type directly. (This was an
-            // instance-method call in 1b7d65c, which caused a 'static
-            // member cannot be used on instance' error on the Mac Studio
-            // build.)
             waveAssignments = WaveAllocator.allocate(
                 roster: selectedSwimmers,
                 sets: workoutSets,

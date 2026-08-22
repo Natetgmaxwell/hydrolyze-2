@@ -35,6 +35,7 @@
 		3497E66C422511C24A5CC259 /* SwimmersListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946F09F1BB6D858EE01E66E2 /* SwimmersListViewModel.swift */; };
 		35BB153592C18C6C2EA4EBB2 /* RestCountdownCLITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 246C536E073F48E1810FB2F0 /* RestCountdownCLITest.swift */; };
 		3E355B12AB83C683FEA2BAE5 /* Swimmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F992C337F1E63DF1765344 /* Swimmer.swift */; };
+		50B17E1A2C3D4E5F6A7B8C9E /* SessionRosterSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B17E1A2C3D4E5F6A7B8C9D /* SessionRosterSnapshot.swift */; };
 		405BE8EA1458591790096EF7 /* CoachPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A9DDFCB5E521A95C7B7910E /* CoachPreferences.swift */; };
 		43A8DB7ED5553BE4C4093940 /* RPEParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16F2B9FC412EF150DB478F46 /* RPEParser.swift */; };
 		4438DAF750326B995BF375F6 /* SessionReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF78D9146F2ADACFD15FB25D /* SessionReviewView.swift */; };
@@ -241,6 +242,7 @@
 		8F3B0E1EAB016A69A8583CC2 /* WaveAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveAssignment.swift; sourceTree = "<group>"; };
 		9108E7DFD14A0CC8F3D48ADC /* SwimmerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerDetailView.swift; sourceTree = "<group>"; };
 		91F992C337F1E63DF1765344 /* Swimmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Swimmer.swift; sourceTree = "<group>"; };
+		50B17E1A2C3D4E5F6A7B8C9D /* SessionRosterSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRosterSnapshot.swift; sourceTree = "<group>"; };
 		926870B5EFF0BE961263DB15 /* ThreeMinuteTestCLITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreeMinuteTestCLITest.swift; sourceTree = "<group>"; };
 		92CEF8A2E9404B9958AA494E /* AttendanceNarrowingCLITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceNarrowingCLITest.swift; sourceTree = "<group>"; };
 		93A75A9B833BA692D9F61C24 /* SwimmerHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerHomeView.swift; sourceTree = "<group>"; };
@@ -669,6 +671,7 @@
 				C8E3D5422A3C8FB38F9DC0CA /* RecordedTime.swift */,
 				6183BCCD17BD2E09C91BBA76 /* StopwatchCapture.swift */,
 				91F992C337F1E63DF1765344 /* Swimmer.swift */,
+				50B17E1A2C3D4E5F6A7B8C9D /* SessionRosterSnapshot.swift */,
 				8072313F8796BE24142DE5B4 /* TimingModels.swift */,
 				52A4B3670041A064FEE0BD7C /* TrainingSchedule.swift */,
 				8F3B0E1EAB016A69A8583CC2 /* WaveAssignment.swift */,
@@ -868,6 +871,7 @@
 				7A9C508458AD6189D3C8765D /* StopwatchCapture.swift in Sources */,
 				3097A6C6E18712ABFF2B647E /* SupabaseService.swift in Sources */,
 				3E355B12AB83C683FEA2BAE5 /* Swimmer.swift in Sources */,
+				50B17E1A2C3D4E5F6A7B8C9E /* SessionRosterSnapshot.swift in Sources */,
 				E54D8BD8A2A4AAB4A01A51C2 /* SwimmerAnalyticsView.swift in Sources */,
 				AE95ECADBA2F3754F7785556 /* SwimmerAnalyticsViewModel.swift in Sources */,
 				7855878CDCEFE64FD8F75904 /* SwimmerDetailView.swift in Sources */,

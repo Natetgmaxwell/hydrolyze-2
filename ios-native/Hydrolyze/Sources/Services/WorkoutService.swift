@@ -64,6 +64,101 @@ final class WorkoutService {
         return try JSONDecoder().decode(Workout.self, from: response.data)
     }
 
+    /// V0.49 Slice 1 (2026-08-22) — fetch the most-recent session roster
+    /// for a workout, joined to swimmer names. Used by
+    /// `WorkoutDetailViewModel` to skip the picker sheet when the
+    /// workout already has a locked roster (assumed to remain valid
+    /// for every subsequent fragment launch today — see V0.49 spec).
+    ///
+    /// Two round trips:
+    ///   1. Most-recent `sessions` row for `workout_id` (order by
+    ///      started_at desc, limit 1) AND a roster count check. We
+    ///      use a single select with a "has-roster" hint via the
+    ///      postgrest relationship join to `session_roster!sessions(id)`,
+    ///      filtering sessions that have at least one roster row.
+    ///   2. Join roster to `swimmers` for first/last name by id.
+    ///
+    /// Fail-open: any thrown error, empty roster, or no session for
+    /// the workout returns nil so the caller falls back to today's
+    /// picker. We deliberately do NOT propagate an error here — the
+    /// picker is the safe default, and surfacing a banner for a
+    /// lookup failure would degrade the experience without
+    /// changing the user's outcome.
+    func fetchLatestSessionRoster(workoutId: String) async throws -> SessionRosterSnapshot? {
+        // Round trip 1: most-recent sessions row for this workout with
+        // its roster rows embedded via the foreign-key relationship.
+        // The `session_roster!inner(...)` embed is the canonical
+        // Supabase way to filter parents by children's existence —
+        // `inner` produces an INNER JOIN, so sessions with zero
+        // roster rows are excluded by Postgres itself (the legacy
+        // safety path against "session exists but no attendance was
+        // ever locked" — those fall through to nil and the caller
+        // shows today's picker).
+        struct RosterEmbeddedRow: Decodable {
+            let sessionId: String
+            let swimmerId: String
+            let lane: Int?
+            let positionInLane: Int?
+
+            enum CodingKeys: String, CodingKey {
+                case sessionId = "session_id"
+                case swimmerId = "swimmer_id"
+                case lane
+                case positionInLane = "position_in_lane"
+            }
+        }
+        struct SessionWithRoster: Decodable {
+            let id: String
+            let startedAt: String?
+            let roster: [RosterEmbeddedRow]
+
+            enum CodingKeys: String, CodingKey {
+                case id
+                case startedAt = "started_at"
+                case roster = "session_roster"
+            }
+        }
+        let response = try await supabase.from("sessions")
+            .select("id, started_at, session_roster!inner(session_id, swimmer_id, lane, position_in_lane)")
+            .eq("workout_id", value: workoutId)
+            .order("started_at", ascending: false)
+            .limit(1)
+            .execute()
+        let sessions = try JSONDecoder().decode([SessionWithRoster].self, from: response.data)
+        guard let session = sessions.first, !session.roster.isEmpty else {
+            return nil
+        }
+
+        // Round trip 2: swimmer names for the roster. Use the existing
+        // `fetchSwimmersByIds` helper (same bulk-fetch path as
+        // V0.48 Slice 1's owner join). Empty roster short-circuits,
+        // but we already filtered empty above so the call always
+        // runs at least once.
+        let swimmerIds = Array(Set(session.roster.map { $0.swimmerId }))
+        let swimmers = try await fetchSwimmersByIds(ids: swimmerIds)
+        var nameBySwimmerId: [String: (first: String?, last: String?)] = [:]
+        for s in swimmers {
+            nameBySwimmerId[s.id] = (s.firstName, s.lastName)
+        }
+
+        // Build entries preserving the roster's first-seen order per
+        // session (DB has no ordering guarantee, but the seed picker
+        // used `selectedSwimmerIds.sorted(...)` so this is "best
+        // effort" — Slice 2's roster strip renders by swimmerId order
+        // via `swimmerNamesById` lookup).
+        let entries: [SessionRosterSnapshot.Entry] = session.roster.map { row in
+            let names = nameBySwimmerId[row.swimmerId]
+            return SessionRosterSnapshot.Entry(
+                swimmerId: row.swimmerId,
+                firstName: names?.first,
+                lastName: names?.last,
+                lane: row.lane,
+                positionInLane: row.positionInLane
+            )
+        }
+        return SessionRosterSnapshot(sessionId: session.id, entries: entries)
+    }
+
     /// Fetch all sets for a workout.
     func fetchWorkoutSets(workoutId: String) async throws -> [WorkoutSet] {
         let response = try await supabase.from("workout_sets")

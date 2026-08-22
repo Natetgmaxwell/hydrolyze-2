@@ -10,6 +10,20 @@ final class WorkoutDetailViewModel: ObservableObject {
 
     private let workoutService = WorkoutService()
 
+    /// V0.49 Slice 1 (2026-08-22): cached snapshot of the most-recent
+    /// session roster for this workout, populated once in `.task` and
+    /// refreshed after a session is dismissed. `launchFragmentTiming`
+    /// reads this on tap to decide whether to skip the picker sheet:
+    /// - snapshot non-nil → reuse that session id, drop straight into
+    ///   `TimingView` with the existing roster pre-selected (V0.49
+    ///   spec: assume attendance is stable across the workout).
+    /// - snapshot nil → today's picker (legacy / first fragment of
+    ///   the day / no roster yet locked).
+    /// Fetched best-effort (nil on any error) — surfacing a banner
+    /// here would degrade the experience without changing the
+    /// outcome (the picker is the safe default).
+    @Published var latestRosterSnapshot: SessionRosterSnapshot?
+
     func loadWorkout(workoutId: String) async {
         isLoading = true
         errorMessage = nil
@@ -24,6 +38,24 @@ final class WorkoutDetailViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// V0.49 Slice 1 (2026-08-22): populate `latestRosterSnapshot`
+    /// from the workout's most-recent session with ≥1 roster row.
+    /// Called from the existing `.task` block in WorkoutDetailView.
+    /// Refreshed after a session dismisses so the next tap sees the
+    /// freshest roster (Edit Attendees upserts can land on the same
+    /// session id).
+    func loadLatestRoster(workoutId: String) async {
+        do {
+            latestRosterSnapshot = try await workoutService.fetchLatestSessionRoster(workoutId: workoutId)
+        } catch {
+            // Fail-open: the picker remains the default. We log so a
+            // persistent failure (RLS, schema cache miss) is debuggable
+            // but we do NOT surface a banner.
+            print("[WorkoutDetail] latest-roster fetch failed: \(error.localizedDescription)")
+            latestRosterSnapshot = nil
+        }
     }
 
     /// V0.47 (2026-08-22): multi-pass fragment times. The set is 2×
@@ -166,6 +198,16 @@ struct WorkoutDetailView: View {
     @State private var timingPrefill: SetPrefill?
     @State private var showSessionStart = false
     @State private var pendingSessionId = UUID().uuidString
+    // V0.49 Slice 1 (2026-08-22): state driving the Edit Attendees
+    // sheet. `editAttendeesSessionId` reuses the active session id
+    // (latestRosterSnapshot.sessionId) when one exists, so the edit
+    // upsert lands on the same session and wave_assignments stays
+    // consistent. `editAttendeesPreselected` seeds the picker from
+    // the current roster so the coach sees who's in, not an
+    // attendance-derived guess.
+    @State private var showEditAttendees: Bool = false
+    @State private var editAttendeesSessionId: String = UUID().uuidString
+    @State private var editAttendeesPreselected: Set<UUID> = []
     // t_d59998d9 (2026-08-05): per-fragment recorded times held in
     // local component state until persistence runs (t_be09a643).
     // V0.48 Slice 1 (2026-08-22): [FragmentTimeRecord] per fragment —
@@ -360,11 +402,40 @@ struct WorkoutDetailView: View {
                 }
             )
         }
+        // V0.49 Slice 1 (2026-08-22): Edit Attendees sheet. Same
+        // SessionStartView component, but in `isEditMode = true`
+        // with the current roster pre-selected. On Done,
+        // `SessionStartViewModel.lockRoster` re-upserts
+        // session_roster for the ACTIVE session id (the one we
+        // threaded in), so wave_assignments stay consistent and
+        // the next fragment-launch skip reads the fresh roster.
+        .sheet(isPresented: $showEditAttendees) {
+            SessionStartView(
+                sessionId: editAttendeesSessionId,
+                workoutSets: viewModel.sets,
+                isEditMode: true,
+                preselectedSwimmerIds: editAttendeesPreselected,
+                onComplete: { _, _ in
+                    showEditAttendees = false
+                    // Refresh the cached roster so the next fragment
+                    // launch sees the latest set (in case the coach
+                    // added/removed swimmers via Edit Attendees).
+                    Task {
+                        await viewModel.loadLatestRoster(workoutId: workoutId)
+                    }
+                }
+            )
+        }
         .task {
             await viewModel.loadWorkout(workoutId: workoutId)
             // V0.47 (2026-08-22): load persisted fragment times so the
             // chips render on revisit, not just during live capture.
             await viewModel.loadFragmentTimes()
+            // V0.49 Slice 1 (2026-08-22): pre-fetch the latest roster
+            // snapshot so the per-fragment timing launcher can decide
+            // synchronously whether to skip the picker. Best-effort —
+            // nil on any error keeps today's flow.
+            await viewModel.loadLatestRoster(workoutId: workoutId)
             // V0.48 Slice 3 (2026-08-22): live-capture merge guard.
             // The .task block re-runs whenever WorkoutDetailView re-appears
             // (e.g. dismissed fullScreenCover → user re-enters via back
@@ -389,6 +460,24 @@ struct WorkoutDetailView: View {
         .scaleEffect(animateIn ? 1.0 : 0.98)
         .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
         .onAppear { animateIn = true }
+        // V0.49 Slice 1 (2026-08-22): re-fetch the latest roster
+        // snapshot every time the timing cover dismisses. Two
+        // reasons we want a fresh read on return:
+        //   1. Picker → TimingView path: the coach just locked a
+        //      roster, so `latestRosterSnapshot` should now reflect
+        //      that session id (without this, the second tap on
+        //      any fragment would re-show the picker).
+        //   2. Edit Attendees → Done path: the sheet's onComplete
+        //      already reloads, but a defensive refresh here covers
+        //      a Cancel-tap on the edit sheet that still persisted
+        //      (lockRoster runs on Done only — Cancel is a no-op,
+        //      but the cover dismissal is the unified signal).
+        .onChange(of: activeSession) { _, newValue in
+            guard newValue == nil else { return }
+            Task {
+                await viewModel.loadLatestRoster(workoutId: workoutId)
+            }
+        }
     }
 
     // Per-set start buttons — inline in the sets list.
@@ -462,8 +551,22 @@ struct WorkoutDetailView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 timingPrefill = prefill
-                pendingSessionId = UUID().uuidString
-                showSessionStart = true
+                // V0.49 Slice 1 (2026-08-22): apply the same skip
+                // decision the fragment path uses — a cached roster
+                // drops the coach straight into TimingView with the
+                // existing session id; otherwise today's picker.
+                // Reuses the same V0.49 mechanism (wave_assignments
+                // keyed by session id resolves pairing on the timing
+                // side without a second picker round-trip).
+                if let roster = viewModel.latestRosterSnapshot {
+                    activeSession = ActiveSession(
+                        id: roster.sessionId,
+                        workoutSetId: set.id
+                    )
+                } else {
+                    pendingSessionId = UUID().uuidString
+                    showSessionStart = true
+                }
             } label: {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -539,6 +642,21 @@ struct WorkoutDetailView: View {
     // fragmentContexts carries a single fragment context (the one the
     // coach tapped) so the save flow keys the prediction on the
     // fragment's distance / intensity / start — not the parent set.
+    //
+    // V0.49 Slice 1 (2026-08-22): SKIP-THE-PICKER.
+    // `latestRosterSnapshot` is the cached most-recent session roster
+    // for this workout, populated once in `.task` (and refreshed after
+    // a session dismisses). On a roster hit we drop straight into
+    // TimingView with the existing session id — `wave_assignments`
+    // already keys off it, so the timing flow's pairing engine
+    // resolves swimmers from those rows without ever asking the
+    // coach to pick again. On a miss (legacy / first fragment of the
+    // day / RLS-blank), we mint a fresh UUID and show today's picker
+    // — the safe default. Fail-open: any error or empty roster
+    // resolves to the picker path. workoutSetId is the parent's id
+    // (not "" — passing "" would have save() throw "Session is
+    // missing its workout set" for composite workouts per the long
+    // comment at :279-:294).
     private func launchFragmentTiming(repGroupIndex: Int, fragment: ParsedFragment) {
         let parentSet = viewModel.sets[safe: repGroupIndex]
         let fragmentContext = FragmentContext(
@@ -576,8 +694,25 @@ struct WorkoutDetailView: View {
             gear: parentSet?.gear
         )
         timingPrefill = prefill
-        pendingSessionId = UUID().uuidString
-        showSessionStart = true
+        // V0.49 Slice 1 skip path: read the cached snapshot (loaded
+        // in `.task`). The snapshot is non-nil only when the
+        // workout already has a locked roster — `wave_assignments`
+        // rows for that session id drive pairing on the timing
+        // side, so reusing the id is the entire mechanism.
+        if let roster = viewModel.latestRosterSnapshot {
+            activeSession = ActiveSession(
+                id: roster.sessionId,
+                workoutSetId: parentSet?.id ?? ""
+            )
+        } else {
+            // Fallback path: today's flow. The session id is fresh
+            // because no roster exists yet for this workout — the
+            // picker will lock one, then `.task`'s re-run on the
+            // next view appearance will populate the cache and the
+            // following tap will skip.
+            pendingSessionId = UUID().uuidString
+            showSessionStart = true
+        }
     }
 
     private func metadataSection(workout: Workout) -> some View {
@@ -644,6 +779,40 @@ struct WorkoutDetailView: View {
                         .stroke(Color.statusSuccess.opacity(0.3), lineWidth: 1)
                 )
             }
+
+            // V0.49 Slice 1 (2026-08-22): Edit Attendees. Shown for ALL
+            // statuses (not gated on draft/scheduled) because the
+            // mid-session case is the spec's explicit edge case —
+            // "a swimmer does leave/join" is handled via this button,
+            // NOT by re-showing the picker on every fragment launch.
+            // Below the existing buttons so the eye scans the
+            // primary CTAs first; identical secondary style to Edit
+            // Workout so the muscle memory is the same.
+            Button("Edit Attendees") {
+                // Reuse the latest roster's session id when one
+                // exists so the upsert lands on the active session
+                // (V0.49 spec: Done re-persists session_roster for
+                // the ACTIVE session id). Falls back to a fresh UUID
+                // when no roster exists yet — first-fragment edit
+                // path — which becomes the new active id.
+                editAttendeesSessionId = viewModel.latestRosterSnapshot?.sessionId ?? UUID().uuidString
+                editAttendeesPreselected = Set(
+                    (viewModel.latestRosterSnapshot?.entries ?? []).compactMap { entry in
+                        UUID(uuidString: entry.swimmerId)
+                    }
+                )
+                showEditAttendees = true
+            }
+            .font(.titleSmall)
+            .foregroundColor(Color.textPrimary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .background(Color.bgSunken)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.divider, lineWidth: 1)
+            )
         }
         .padding(.horizontal, 16)
     }

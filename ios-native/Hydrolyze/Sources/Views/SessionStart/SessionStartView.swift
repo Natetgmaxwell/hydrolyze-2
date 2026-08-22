@@ -30,6 +30,14 @@ struct SessionStartView: View {
 
     let sessionId: String
     let workoutSets: [WorkoutSet]
+    // V0.49 Slice 1 (2026-08-22): optional Edit Attendees entry
+    // point. When `isEditMode` is true the picker seeds from
+    // `preselectedSwimmerIds` (the current roster) instead of
+    // attendance-derived guesses, the button label switches to
+    // "Done", and `lockRoster` re-upserts `session_roster` for
+    // the threaded session id. Normal mode is unchanged.
+    let isEditMode: Bool
+    let preselectedSwimmerIds: Set<UUID>?
     // Phase 2.6 v1.6.1 fix: onComplete now also passes the selected
     // workoutSetId, so the caller can thread it into TimingView. The
     // set is the one the user picked in the wave preview (via
@@ -42,6 +50,27 @@ struct SessionStartView: View {
     // safety guard.
     let onComplete: (String, String) -> Void
 
+    /// Convenience init for the normal (non-edit) call site — keeps
+    /// every existing caller (the per-fragment timing launcher) free
+    /// of the new params. `isEditMode = false`, no pre-selection.
+    init(sessionId: String, workoutSets: [WorkoutSet], onComplete: @escaping (String, String) -> Void) {
+        self.sessionId = sessionId
+        self.workoutSets = workoutSets
+        self.isEditMode = false
+        self.preselectedSwimmerIds = nil
+        self.onComplete = onComplete
+    }
+
+    /// Edit Attendees entry point — `isEditMode = true` with the
+    /// current roster passed in as the initial selection.
+    init(sessionId: String, workoutSets: [WorkoutSet], isEditMode: Bool, preselectedSwimmerIds: Set<UUID>?, onComplete: @escaping (String, String) -> Void) {
+        self.sessionId = sessionId
+        self.workoutSets = workoutSets
+        self.isEditMode = isEditMode
+        self.preselectedSwimmerIds = preselectedSwimmerIds
+        self.onComplete = onComplete
+    }
+
     private var coachId: String? {
         authManager.coachId
     }
@@ -53,7 +82,7 @@ struct SessionStartView: View {
 
                 switch viewModel.step {
                 case .rosterPicker:
-                    RosterPickerView(viewModel: viewModel, coachId: coachId, sessionId: sessionId, workoutSets: workoutSets)
+                    RosterPickerView(viewModel: viewModel, coachId: coachId, sessionId: sessionId, workoutSets: workoutSets, isEditMode: isEditMode)
                 case .wavePreview:
                     WavePreviewView(
                         viewModel: viewModel,
@@ -79,6 +108,25 @@ struct SessionStartView: View {
                     )
                 }
             }
+            // V0.49 Slice 1 (2026-08-22): in edit mode the
+            // `lockRoster` upsert path completes inside the
+            // roster picker step (we never advance to wave
+            // preview). When the VM flips `didCompleteEdit`
+            // true, dismiss the sheet and call `onComplete`
+            // with the threaded session id + an empty set id
+            // (Edit Attendees doesn't launch timing). Normal
+            // mode never sets this flag (lockRoster advances
+            // to wave preview there), so this branch is dead
+            // code outside the edit path.
+            .onChange(of: viewModel.didCompleteEdit) { _, didFinish in
+                guard isEditMode, didFinish else { return }
+                let sid = viewModel.createdSessionId ?? sessionId
+                // Reset so a future Edit Attendees tap
+                // doesn't re-fire on this stale value.
+                viewModel.didCompleteEdit = false
+                dismiss()
+                onComplete(sid, "")
+            }
             .navigationTitle(viewModel.step == .rosterPicker ? "Select Swimmers" : "Wave Preview")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -102,7 +150,14 @@ struct SessionStartView: View {
             // resolved attendance instead of selecting everyone.
             await viewModel.loadRoster(
                 coachId: coachId,
-                workoutId: workoutSets.first?.workoutId
+                workoutId: workoutSets.first?.workoutId,
+                // V0.49 Slice 1 (2026-08-22): Edit mode seeds from
+                // the current roster snapshot (passed in via the
+                // view's `preselectedSwimmerIds`), so the picker
+                // shows exactly who's in. Normal mode keeps the
+                // existing attendance-derived seed path intact.
+                isEditMode: isEditMode,
+                preselectedSwimmerIds: preselectedSwimmerIds
             )
         }
         // PHASE 2.8.6: same nil→non-nil race fix as SwimmersListView.
@@ -115,7 +170,9 @@ struct SessionStartView: View {
             Task {
                 await viewModel.loadRoster(
                     coachId: newCoachId,
-                    workoutId: workoutSets.first?.workoutId
+                    workoutId: workoutSets.first?.workoutId,
+                    isEditMode: isEditMode,
+                    preselectedSwimmerIds: preselectedSwimmerIds
                 )
             }
         }
@@ -147,6 +204,11 @@ struct RosterPickerView: View {
     let coachId: String?
     let sessionId: String
     let workoutSets: [WorkoutSet]
+    // V0.49 Slice 1 (2026-08-22): Edit Attendees mode propagates
+    // through here so the Lock Roster / Done button label and the
+    // `lockRoster` call can branch on it. Plain picker view
+    // stays unchanged (false).
+    let isEditMode: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
 
     /// Captured frame of each row in the `rosterScroll` coordinate space.
@@ -320,9 +382,26 @@ struct RosterPickerView: View {
 
     private var lockRosterButton: some View {
         VStack(spacing: 8) {
+            // V0.49 Slice 1 (2026-08-22): in edit mode the button
+            // label flips to "Done" — the existing `lockRoster`
+            // upsert path runs AS IS (it already upserts
+            // session_roster + wave_assignments for every set),
+            // so tapping Done re-persists the (possibly edited)
+            // roster against the threaded session id. Same action,
+            // different copy.
             Button {
                 Task {
-                    await viewModel.lockRoster(sessionId: sessionId, workoutSets: workoutSets)
+                    // V0.49 Slice 1 (2026-08-22): thread the view's
+                    // `isEditMode` through to the VM so the upsert
+                    // branches correctly. Edit mode skips the
+                    // session-row upsert and the wave-preview step
+                    // transition; the VM sets `didCompleteEdit` to
+                    // dismiss the sheet via the view's `.onChange`.
+                    await viewModel.lockRoster(
+                        sessionId: sessionId,
+                        workoutSets: workoutSets,
+                        isEditMode: isEditMode
+                    )
                 }
             } label: {
                 HStack {
@@ -331,7 +410,7 @@ struct RosterPickerView: View {
                             .tint(Color.textOnAccent)
                             .padding(.trailing, 8)
                     }
-                    Text("Lock Roster")
+                    Text(isEditMode ? "Done" : "Lock Roster")
                         .font(.titleSmall)
                     Text("(\(viewModel.selectedSwimmerIds.count))")
                         .font(.body)
