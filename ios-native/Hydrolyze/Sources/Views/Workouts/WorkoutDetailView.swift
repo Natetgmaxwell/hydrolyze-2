@@ -363,47 +363,16 @@ struct WorkoutDetailView: View {
             // callback already computed the correct set id and stored it
             // in activeSession.workoutSetId — use that.
             //
-            // V0.49 Slice 2 (2026-08-22): thread `roster` and the
-            // `onRosterUpdated` callback so the in-TimingView
-            // strip has its initial snapshot AND can push a
-            // freshly-edited roster back up to refresh the
-            // workout's cached snapshot on next launch.
+            // V0.49 Slice 2 (2026-08-22): thread `roster` so the
+            // in-TimingView strip has its initial snapshot. The
+            // strip is read-only now (2026-08-23): attendee edits
+            // live ONLY in this view's Edit Attendees sheet, so no
+            // roster-updated callback is threaded back.
             TimingView(
                 prefill: timingPrefill,
                 sessionId: session.id,
                 workoutSetId: session.workoutSetId.isEmpty ? timingPrefill?.workoutSetId : session.workoutSetId,
                 roster: session.roster,
-                // V0.49 Slice 2 (2026-08-22): the strip's
-                // post-Edit refresh bubbles a roster list up to
-                // WorkoutDetailView so the next fragment launch
-                // skips the picker with the freshly-locked
-                // snapshot. The callback projects the strip's
-                // UI mirror back into SessionRosterSnapshot.Entry
-                // (since WorkoutDetailView's VM caches the
-                // heavier-service type) — keeping the wiring
-                // types-aligned avoids drift.
-                onRosterUpdated: { entries in
-                    // V0.49 Slice 2 (2026-08-22): wrap the VM
-                    // write in `Task` because the callback fires
-                    // from inside the cover's body context, and
-                    // writing @Published properties during view
-                    // updates produces a runtime warning. The
-                    // Task hops to the next runloop tick.
-                    Task { @MainActor in
-                        viewModel.latestRosterSnapshot = SessionRosterSnapshot(
-                            sessionId: session.id,
-                            entries: entries.map { entry in
-                                SessionRosterSnapshot.Entry(
-                                    swimmerId: entry.swimmerId,
-                                    firstName: entry.firstName,
-                                    lastName: entry.lastName,
-                                    lane: nil,
-                                    positionInLane: nil
-                                )
-                            }
-                        )
-                    }
-                },
                 // t_d59998d9 (2026-08-05) + t_be09a643 (2026-08-05)
                 // + t_bec2b88b (2026-08-06): recorded-time callback.
                 // Fires once when the stopwatch transitions out of

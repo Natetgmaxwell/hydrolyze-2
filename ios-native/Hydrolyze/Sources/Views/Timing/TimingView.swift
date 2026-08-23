@@ -74,21 +74,12 @@ struct TimingView: View {
     /// reload (per spec: "mutate the strip's driving state
     /// directly (no TimingView reload)").
     var roster: [RosterEntryLite]? = nil
-    /// V0.49 Slice 2 (2026-08-22): invoked after the in-strip
-    /// Edit sheet's Done handler reads the freshly-persisted
-    /// `session_roster` for the session id. WorkoutDetailView
-    /// uses this to refresh its cached `latestRosterSnapshot` so
-    /// the next fragment-launch skip sees the latest set. Nil
-    /// when the strip is hidden (picker path) — calls are
-    /// gated by the strip's visibility.
-    var onRosterUpdated: (([RosterEntryLite]) -> Void)? = nil
 
     init(
         prefill: SetPrefill? = nil,
         sessionId: String? = nil,
         workoutSetId: String? = nil,
         roster: [RosterEntryLite]? = nil,
-        onRosterUpdated: (([RosterEntryLite]) -> Void)? = nil,
         onRecord: ((StopwatchCapturePayload) -> Void)? = nil
     ) {
         self.prefill = prefill
@@ -96,7 +87,6 @@ struct TimingView: View {
         self.workoutSetId = workoutSetId
         self.onRecord = onRecord
         self.roster = roster
-        self.onRosterUpdated = onRosterUpdated
     }
 
     @State private var showSwimmerPicker = false
@@ -108,12 +98,6 @@ struct TimingView: View {
     // without an outer reload. `currentRoster.first` is the gate:
     // strip is hidden iff nil/empty.
     @State private var currentRoster: [RosterEntryLite] = []
-    @State private var showEditAttendees: Bool = false
-    // The Edit-sheet preselected set lives in @State so a coach
-    // tap propagates to SessionStartView on every open. Seeded
-    // from currentRoster.swimmerIds in `.task`, refreshed by the
-    // sheet's onComplete (which also writes currentRoster).
-    @State private var editAttendeesPreselected: Set<UUID> = []
 
     var body: some View {
         // PHASE 2.6 v1.8: render SessionReviewView directly when
@@ -177,23 +161,7 @@ struct TimingView: View {
             VStack(spacing: 0) {
                 if !currentRoster.isEmpty {
                     RosterStripView(
-                        roster: currentRoster,
-                        onEdit: {
-                            Haptics.selection()
-                            // Re-seed the preselected set from the
-                            // current strip so the Edit sheet opens
-                            // with the latest visible names. This
-                            // matters when the coach opens, then
-                            // cancels, then re-opens Edit — the
-                            // preselected set would otherwise be
-                            // frozen at the original launch value.
-                            editAttendeesPreselected = Set(
-                                currentRoster.compactMap { entry in
-                                    UUID(uuidString: entry.swimmerId)
-                                }
-                            )
-                            showEditAttendees = true
-                        }
+                        roster: currentRoster
                     )
                     .padding(.top, 8)
                 }
@@ -307,47 +275,11 @@ struct TimingView: View {
                 print("[TimingView] assembleCapturePayload FAILED: \(error.localizedDescription) — onRecord not fired")
             }
         }
-        // V0.49 Slice 2 (2026-08-22): strip sheet. The sheet lives
-        // here (not in WorkoutDetailView) because the strip is part
-        // of TimingView's surface — the spec calls for the strip's
-        // right-side "Edit" affordance to present this sheet
-        // directly. `.medium`/`.large` detents match the spec.
-        // `.interactiveDismissDisabled(false)` keeps Cancel alive
-        // (the picker was interactive-disabled to defend against
-        // drag-to-add bubbles, but the strip edit is rare and a
-        // drag-down-to-cancel is the natural gesture).
-        .sheet(isPresented: $showEditAttendees) {
-            if let sid = sessionId {
-                SessionStartView(
-                    sessionId: sid,
-                    workoutSets: [],
-                    isEditMode: true,
-                    preselectedSwimmerIds: editAttendeesPreselected,
-                    // Edit Attendees doesn't change the timing target
-                    // (no workoutSetId is selected); pass "" to match
-                    // the existing Slice 1 Edit Attendees
-                    // convention (WorkoutDetailView's
-                    // `showEditAttendees` sheet does the same).
-                    onComplete: { _, _ in
-                        // Refresh the local strip from the DB so the
-                        // visible chips match what was just
-                        // persisted. Done in-place per spec
-                        // ("mutate the strip's driving state
-                        // directly (no TimingView reload)").
-                        Task { await refreshRosterFromServer() }
-                        showEditAttendees = false
-                    }
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
-        }
-        // V0.49 Slice 2 (2026-08-22): seed the strip's driving
-        // state once from the init param (the snapshot's entries
-        // come from WorkoutDetailView at cover-open time). The
-        // post-Edit refresh flows through
-        // `refreshRosterFromServer()` above (called from the
-        // Edit sheet's onComplete).
+        // V0.49 Slice 2 (2026-08-23, revised): the strip is read-only
+        // now — the in-strip Edit sheet was removed (attendee edits
+        // live only in WorkoutDetailView's Edit Attendees button, the
+        // single home per the coach's directive). The strip keeps its
+        // `.task` seeding from the init param.
         .task {
             if currentRoster.isEmpty {
                 currentRoster = roster ?? []
@@ -1344,7 +1276,7 @@ struct SwimmerPickerSheet: View {
         .environment(AuthManager())
 }
 
-// MARK: - Roster strip (V0.49 Slice 2, 2026-08-22)
+// MARK: - Roster strip (V0.49 Slice 2; read-only since 2026-08-23)
 
 /// Compact "Jack · Ariana · Sofie" header above the stopwatch in
 /// `TimingView`. Hidden by the caller when the roster is nil / empty —
@@ -1357,17 +1289,11 @@ struct SwimmerPickerSheet: View {
 /// cluster above the stopwatch — the two pill families share a
 /// design DNA.
 ///
-/// Tap target: the Edit button is wrapped in a 44pt-tall invisible
-/// hit area via `.frame(minHeight: 44)` so it clears iOS HIG on a
-/// pool deck (wet hands, gloves). The row itself isn't tappable —
-/// only the explicit Edit affordance fires `onEdit`.
-///
-/// `Haptics.selection()` is fired by the parent's closure (TimingView
-/// fires it before showing the sheet; TimingView fires the same
-/// haptic that the spec requested).
+/// Read-only: the in-strip Edit affordance was removed 2026-08-23 —
+/// attendee edits live ONLY in WorkoutDetailView's Edit Attendees
+/// sheet (single home). The strip is a pure who's-in display.
 struct RosterStripView: View {
     let roster: [RosterEntryLite]
-    let onEdit: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
 
     var body: some View {
@@ -1403,34 +1329,6 @@ struct RosterStripView: View {
             .layoutPriority(0)
 
             Spacer(minLength: 8)
-
-            Button(action: onEdit) {
-                Text("Edit")
-                    .font(.monoChip)
-                    .foregroundColor(Color.textPrimary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.bgInset)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color.divider, lineWidth: 1)
-                    )
-            }
-            .buttonStyle(.plain)
-            // V0.49 Slice 2 (2026-08-22): explicit ≥44pt hit target.
-            // The `.padding(.vertical, 6)` + 11pt font gives ~23pt
-            // natural height; the frame pushes it past 44 with
-            // breathing room (wet hands).
-            .frame(minHeight: 44)
-            .layoutPriority(1)
-            // V0.49 Slice 2 (2026-08-22): VoiceOver reads the
-            // strip as "N swimmers: a, b, c. Edit roster button."
-            // — one coherent instruction rather than fragmenting
-            // across names + Edit. `roster` pl. is "N swimmers"
-            // when count > 1, "1 swimmer" when = 1.
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(accessibilityLabel)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -1459,8 +1357,9 @@ struct RosterStripView: View {
         return roster.count - 3
     }
 
-    /// VoiceOver label: "Jack, Ariana, Sofie plus 2 more. Edit
-    /// roster." One sentence, one instruction, one tap target.
+    /// VoiceOver label: "Jack, Ariana, Sofie plus 2 more." One
+    /// sentence naming who's in — no action sentence (the strip
+    /// is read-only; edits live in WorkoutDetailView).
     private var accessibilityLabel: String {
         let countText = roster.count == 1 ? "1 swimmer" : "\(roster.count) swimmers"
         let names = roster.map { $0.displayName }
@@ -1472,58 +1371,7 @@ struct RosterStripView: View {
             let extra = roster.count - 3
             namesText = "\(visible) plus \(extra) more"
         }
-        return "\(countText): \(namesText). Edit roster."
+        return "\(countText): \(namesText)."
     }
 }
 
-// MARK: - Roster refresh helper (V0.49 Slice 2, 2026-08-22)
-
-extension TimingView {
-    /// Fetches the freshly-persisted `session_roster` for the
-    /// active session id and re-projects it onto the strip's
-    /// driving state. Runs after the in-strip Edit sheet's
-    /// `onComplete` fires so the strip chips re-render in place
-    /// with the new names. Fail-open: any error leaves the strip
-    /// unchanged (the coach can still see and edit again — losing
-    /// the live update is the acceptable failure mode, since the
-    /// underlying DB row is already persisted by `lockRoster`).
-    ///
-    /// Swim id query is `session_roster!inner(swimmers)` (matches
-    /// the existing `WorkoutService.fetchLatestSessionRoster`
-    /// path) so the read fetches the joined swimmer names in ≤2
-    /// round trips. The result is projected to the strip's UI
-    /// mirror (`RosterEntryLite`) so the strip component stays
-    /// decoupled from SessionRosterSnapshot.
-    @MainActor
-    fileprivate func refreshRosterFromServer() async {
-        guard let sid = sessionId else { return }
-        do {
-            let snapshot = try await WorkoutService().fetchSessionRoster(forSessionId: sid)
-            // Project the snapshot's entries into the strip's UI
-            // mirror (RosterEntryLite) so the strip component stays
-            // decoupled from the service snapshot type. `snapshot`
-            // is nil when the session has no roster rows (post-
-            // delete edge case); hide the strip in that case so
-            // the coach sees a clean state rather than the stale
-            // list.
-            guard let snapshot = snapshot, !snapshot.entries.isEmpty else {
-                currentRoster = []
-                return
-            }
-            currentRoster = snapshot.entries.map { entry in
-                RosterEntryLite(
-                    swimmerId: entry.swimmerId,
-                    firstName: entry.firstName,
-                    lastName: entry.lastName
-                )
-            }
-            // Bubble the refreshed roster up to WorkoutDetailView so
-            // its cached `latestRosterSnapshot` matches reality. The
-            // callback is fired-and-forgotten — failures here can't
-            // block the strip's local update.
-            onRosterUpdated?(currentRoster)
-        } catch {
-            print("[TimingView] refreshRosterFromServer FAILED: \(error.localizedDescription) — strip unchanged")
-        }
-    }
-}

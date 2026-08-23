@@ -363,17 +363,26 @@ final class SessionStartViewModel: ObservableObject {
                 let id: String
                 let coachId: String
                 let startedAt: String
+                // V0.49 hotfix (2026-08-22): the roster-skip lookup keys
+                // on sessions.workout_id, but this row never wrote it —
+                // every session in the DB has workout_id NULL, so
+                // fetchLatestSessionRoster(workoutId:) could never match
+                // and the picker showed every time. Derived from the
+                // first set (one launch covers all sets of the workout).
+                let workoutId: String?
 
                 enum CodingKeys: String, CodingKey {
                     case id
                     case coachId = "coach_id"
                     case startedAt = "started_at"
+                    case workoutId = "workout_id"
                 }
             }
             let sessionRow = SessionRow(
                 id: sessionId,
                 coachId: self.coachId ?? "",
-                startedAt: ISO8601DateFormatter().string(from: Date())
+                startedAt: ISO8601DateFormatter().string(from: Date()),
+                workoutId: workoutSets.first?.workoutId
             )
             struct RosterRow: Encodable {
                 let sessionId: String
@@ -420,8 +429,36 @@ final class SessionStartViewModel: ObservableObject {
             // compose cleanly with the trailing-`execute()` shape
             // used everywhere else in this method).
             if isEditMode {
+                // RLS fix (2026-08-23): the edit path can arrive with a
+                // freshly-generated session id (WorkoutDetailView falls
+                // back to UUID().uuidString when no roster snapshot has
+                // loaded yet — e.g. editing attendees before the first
+                // timing launch of the day). session_roster's coach
+                // policy requires session_id to reference a session the
+                // caller owns; with no sessions row the roster upsert
+                // throws 42501 ("new row violates row-level security
+                // policy") — the exact error reported from the workout
+                // page. Upsert the session row with ignoreDuplicates so
+                // the common case (row exists) is a no-op that preserves
+                // the original started_at, and the missing-row case
+                // creates it before the roster write.
+                _ = try await supabase.from("sessions")
+                    .upsert(sessionRow, onConflict: "id", ignoreDuplicates: true)
+                    .execute()
+                // Deselect fix (2026-08-23): upsert alone can never REMOVE
+                // a swimmer — on conflict it only adds/updates rows. Delete
+                // every roster row for this session whose swimmer is not
+                // in the new selection first, then upsert the selection
+                // with onConflict matching UNIQUE(session_id, swimmer_id)
+                // (the table's PK is a surrogate `id` the client never
+                // sends, so a bare upsert would 23505 on re-kept rows).
+                try await supabase.from("session_roster")
+                    .delete()
+                    .eq("session_id", value: sessionId)
+                    .not("swimmer_id", operator: .in, value: selectedSwimmerIds)
+                    .execute()
                 _ = try await supabase.from("session_roster")
-                    .upsert(rosterPayload)
+                    .upsert(rosterPayload, onConflict: "session_id,swimmer_id")
                     .execute()
                 // WaveAllocator still runs so the pairing engine
                 // can rebuild waves if the roster changed shape
