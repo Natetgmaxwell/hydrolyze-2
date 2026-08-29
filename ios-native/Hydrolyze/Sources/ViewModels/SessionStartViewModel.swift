@@ -455,7 +455,15 @@ final class SessionStartViewModel: ObservableObject {
                 try await supabase.from("session_roster")
                     .delete()
                     .eq("session_id", value: sessionId)
-                    .not("swimmer_id", operator: .in, value: selectedSwimmerIds)
+                    // Filter fix (2026-08-23): PostgrestFilterBuilder.not()
+                    // interpolates `value.rawValue` WITHOUT parentheses —
+                    // passing the [String] array directly emitted
+                    // `swimmer_id=not.in.<uuid>`, which PostgREST rejects
+                    // ("failed to parse filter (not.in. ...)"). The `in`
+                    // operator's grammar requires a parenthesized list.
+                    // Hand-build the parens (same shape supabase-js
+                    // documents for .not('col','in','(a,b,c)')).
+                    .not("swimmer_id", operator: .in, value: "(\(selectedSwimmerIds.joined(separator: ",")))")
                     .execute()
                 _ = try await supabase.from("session_roster")
                     .upsert(rosterPayload, onConflict: "session_id,swimmer_id")
