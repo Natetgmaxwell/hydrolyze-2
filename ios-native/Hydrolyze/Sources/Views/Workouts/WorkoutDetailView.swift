@@ -100,13 +100,40 @@ final class WorkoutDetailViewModel: ObservableObject {
                     }
                 }
                 // Legacy rows from before the fragment stamp: they
-                // carry workout_set_id but NULL fragment_id. If the
-                // set has exactly ONE fragment, attribute them to it
-                // (a single-fragment set is unambiguous).
+                // carry workout_set_id but NULL fragment_id. Two
+                // legitimate buckets:
+                //   (a) the set has exactly ONE parsed fragment
+                //       (unambiguous — attribute to it)
+                //   (b) the set has ZERO parsed fragments (non-composite
+                //       plain set like `8 x 50 Free @ 1:30`). V0.50
+                //       (2026-08-30) added (b): these sets now write
+                //       fragment_id = "set_<setId>" via the synthetic
+                //       FragmentContext in setRow, so the load path
+                //       can bucket them under the same key.
+                //       Legacy rows pre-V0.50 still carry NULL — bucket
+                //       them under the synthetic key for back-compat.
                 if let frags = set.fragments, frags.count == 1, let only = frags.first {
                     for t in times where t.fragmentId == nil {
                         pending.append(PendingRow(
                             fragmentId: only.id,
+                            timeMs: t.timeMs,
+                            pairedSwimmerId: t.pairedSwimmerId,
+                            createdAt: t.createdAt
+                        ))
+                        if let pid = t.pairedSwimmerId { pairedIds.insert(pid) }
+                    }
+                }
+                // V0.50 (2026-08-30): non-composite sets (fragments
+                // empty / nil). All NULL-fragment_id rows for this set
+                // bucket under the synthetic key the V0.50 setRow
+                // prefill stamps on. Both fresh V0.50 rows and any
+                // pre-V0.50 legacy rows land here.
+                let isNonComposite = (set.fragments ?? []).isEmpty
+                if isNonComposite {
+                    let syntheticKey = "set_\(set.id)"
+                    for t in times where t.fragmentId == nil {
+                        pending.append(PendingRow(
+                            fragmentId: syntheticKey,
                             timeMs: t.timeMs,
                             pairedSwimmerId: t.pairedSwimmerId,
                             createdAt: t.createdAt
@@ -589,7 +616,29 @@ struct WorkoutDetailView: View {
             // term so the timing flow resolves each swimmer's zone
             // pace as the drop-rule standard + target.
             zoneTerm: set.zoneTerm,
-            fragmentContexts: nil,
+            // V0.50 (2026-08-30): synthetic fragment context for
+            // non-composite sets. Previously nil here left a saved
+            // row with fragment_id=NULL — the V0.48 chip renderer's
+            // `where t.fragmentId != nil` filter excluded it, so the
+            // coach saw no chip at all. The synthetic context uses
+            // `set_\(set.id)` as the fragmentId so:
+            //   1. save() forwards it to recorded_times.fragment_id
+            //   2. loadFragmentTimes bucketing finds it under the
+            //      same key and renders chips inline on setRow
+            //   3. parsed-fragment rows (composite sets) keep their
+            //      own non-synthetic fragmentIds — no collision
+            // The fragmentId is namespaced (`set_`) so a future
+            // parsed fragment id can never match by accident.
+            fragmentContexts: [FragmentContext(
+                fragmentId: "set_\(set.id)",
+                parentIntervalId: set.id,
+                distance: set.distance ?? 50,
+                intensity: set.intensityLabel,
+                startType: set.startType,
+                suit: set.suit,
+                gear: set.gear,
+                descriptor: set.label
+            )],
             // V0.43a (2026-08-18): forward the set-level gear so the
             // VM persists it to `recorded_times.gear`. Mirrors
             // `WorkoutSet.gear: [String]?` — nil for bare sets, which
@@ -687,10 +736,74 @@ struct WorkoutDetailView: View {
             .disabled(!isTimeable)
             .opacity(isTimeable ? 1 : 0.5)
 
+            // V0.50 (2026-08-30): inline chip surface for non-composite
+            // sets. Buckets under the synthetic `set_<setId>` key the
+            // setRow prefill stamps on the saved row. Renders the same
+            // 1-2 / 3+ tier logic as FragmentCTARow so a coach's eye
+            // gets identical feedback for both a fragment-tapped set
+            // and a set-row-tapped set. Hidden when no records (the
+            // common case for sets not yet timed).
+            let syntheticKey = "set_\(set.id)"
+            let setTimes = recordedTimesByFragmentId[syntheticKey] ?? []
+            if !setTimes.isEmpty {
+                setChipsRow(records: setTimes, syntheticKey: syntheticKey)
+            }
+
             Divider()
                 .background(Color.bgInset)
                 .padding(.leading, 16)
         }
+    }
+
+    // V0.50 (2026-08-30): chip strip rendered under non-composite set
+    // rows. Mirrors the V0.48 tier logic from FragmentCTARow so a
+    // coach's eye reads the same surface regardless of whether they
+    // tapped a per-fragment CTA or a set-row play button. Inline chips
+    // for 1-2 records; aggregate `N saved ▸` for 3+. The aggregate
+    // opens the same per-fragment sheet via onAggregateTap when the
+    // view declares one — for setRow, no aggregate sheet is wired in
+    // this slice, so 3+ just renders the inline chip count for now
+    // (deferred to a follow-up slice once the spec decides whether
+    // set-level buckets deserve a sheet of their own).
+    @ViewBuilder
+    private func setChipsRow(records: [FragmentTimeRecord], syntheticKey: String) -> some View {
+        HStack(spacing: 6) {
+            if records.count <= 2 {
+                ForEach(records) { rec in
+                    Text(setChipText(rec))
+                        .font(.numeric)
+                        .foregroundColor(Color.textMuted)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.bgInset)
+                        .cornerRadius(8)
+                }
+            } else {
+                Text("\(records.count) saved")
+                    .font(.numeric)
+                    .foregroundColor(Color.textMuted)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.bgInset)
+                    .cornerRadius(8)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+
+    /// V0.50 (2026-08-30): single-chip formatter for set-level
+    /// records. Mirrors FragmentCTARow's owned/unowned rendering
+    /// exactly: owned rows read "Jack 1:41.7", unowned read
+    /// "Saved 0:33.10" (same prefix the fragment rows use, so the
+    /// coach's eye never has to context-switch).
+    private func setChipText(_ rec: FragmentTimeRecord) -> String {
+        let formatted = TimingSession.formatMs(rec.timeMs)
+        if rec.hasOwner, let name = rec.swimmerName {
+            return "\(name) \(formatted)"
+        }
+        return "Saved \(formatted)"
     }
 
     // t_c74dffbc (2026-08-04): per-fragment timing launch. Builds a
