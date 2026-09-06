@@ -1892,6 +1892,22 @@ function parseWorkoutV2(input: string): Workout {
       }
 
       // ponytail (iter 14, 2026-07-29): match both "odd:" and "Odd -"
+      // ponytail (autoresearch iter V0.52, 2026-09-06): rule (b) bare
+      // interval. A standalone "M:SS" line on its own (no reps/distance)
+      // attaches as the interval of the previous repGroup, not as a set.
+      const bareInterval = line.text.match(/^\s*(\d+):(\d{2})\s*$/);
+      if (bareInterval) {
+        for (let si = namedSets.length - 1; si >= 0; si--) {
+          const ns = namedSets[si];
+          if (ns.repGroups.length > 0) {
+            ns.repGroups[ns.repGroups.length - 1].interval = `${bareInterval[1]}:${bareInterval[2]}`;
+            break;
+          }
+        }
+        pendingLabel = null;
+        i++;
+        continue;
+      }
       if (/^odd\s*[:–-]/i.test(line.text)) {
         const result = parseOddEvenBlock(block.lines, i);
         if (result) {
