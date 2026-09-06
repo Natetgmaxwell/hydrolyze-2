@@ -235,6 +235,18 @@ struct WorkoutDetailView: View {
     @State private var showEditAttendees: Bool = false
     @State private var editAttendeesSessionId: String = UUID().uuidString
     @State private var editAttendeesPreselected: Set<UUID> = []
+    // V0.52 Slice 2 (2026-09-06): per-fragment confirmation sheet.
+    // When the skip-the-picker path is live (cached roster), tapping
+    // a fragment or set row sets `pendingSheetContext` instead of
+    // jumping straight to TimingView. The sheet renders the read-only
+    // deck brief (set name + squad + lane count + close-finish
+    // warning if any), with one Start CTA + a Same Squad chip. The
+    // sheet's Start handler synthesizes wave_assignments (idempotent
+    // via V0.51's helper) and then sets `activeSession` — same as
+    // today's skip path, just behind one extra read-only confirmation
+    // gate. Tapping Cancel returns to the workout list with no
+    // side effects.
+    @State private var pendingSheetContext: PendingSheetContext?
     // t_d59998d9 (2026-08-05): per-fragment recorded times held in
     // local component state until persistence runs (t_be09a643).
     // V0.48 Slice 1 (2026-08-22): [FragmentTimeRecord] per fragment —
@@ -503,6 +515,59 @@ struct WorkoutDetailView: View {
                 }
             )
         }
+        // V0.52 Slice 2 (2026-09-06): per-fragment read-only
+        // confirmation sheet. The skip-the-picker flow (any
+        // fragment tap when a roster is cached) used to jump
+        // straight into TimingView with no read-only confirmation.
+        // The spec requires a one-tap read-only gate so the coach
+        // sees who's in + which lane + which set BEFORE the
+        // stopwatch starts. The sheet renders the cached roster
+        // (no WaveAllocator run needed — V0.51 already wrote
+        // wave_assignments rows). Tapping Start → synthesize
+        // (idempotent guard) + activate the timing cover. Tapping
+        // Cancel → return to the workout list with no side
+        // effects.
+        .sheet(item: $pendingSheetContext) { ctx in
+            FragmentWaveSheetView(
+                context: ctx,
+                // Default to 6 lanes per V0.52 decisions (the spec
+                // default). The skip path doesn't carry a per-set
+                // lane count today — V0.53 will thread the
+                // workout's lane count through `latestRosterSnapshot`
+                // so the sheet can show the real number. 6 is the
+                // common Australian squad pool width and matches
+                // WaveAllocator.PoolConfig()'s default.
+                poolLaneCount: 6,
+                hasCloseFinishWarning: false,
+                onStart: {
+                    pendingSheetContext = nil
+                    // Reuse V0.51's idempotent synthesizer. Already
+                    // exists on the WorkoutService instance cached
+                    // inside WorkoutDetailViewModel. Iterates with
+                    // the WaveAllocator only if missing — no
+                    // double-write risk.
+                    Task {
+                        await viewModel.workoutService.synthesizeWaveAssignmentsIfMissing(
+                            sessionId: ctx.sessionId,
+                            workoutSetId: ctx.workoutSetId,
+                            rosterEntries: ctx.entries,
+                            coachId: ctx.coachId
+                        )
+                        activeSession = ActiveSession(
+                            id: ctx.sessionId,
+                            workoutSetId: ctx.workoutSetId,
+                            roster: ctx.roster
+                        )
+                    }
+                },
+                onCancel: {
+                    pendingSheetContext = nil
+                },
+                // V0.52 Slice 3: wire Edit Attendees here. Slice 2
+                // passes nil so the chip renders inert.
+                onEditAttendees: nil
+            )
+        }
         .task {
             await viewModel.loadWorkout(workoutId: workoutId)
             // V0.47 (2026-08-22): load persisted fragment times so the
@@ -657,35 +722,25 @@ struct WorkoutDetailView: View {
                 // Reuses the same V0.49 mechanism (wave_assignments
                 // keyed by session id resolves pairing on the timing
                 // side without a second picker round-trip).
+                //
+                // V0.52 Slice 2 (2026-09-06): the skip path now
+                // routes through the read-only confirmation sheet
+                // (`pendingSheetContext`) instead of jumping
+                // straight into TimingView. See the matching
+                // comment in `launchFragmentTiming` for the
+                // rationale. The set-row path uses `set.label` as
+                // the sheet's title; the fragment path uses the
+                // fragment descriptor when present, falling through
+                // to the parent set's label.
                 if let roster = viewModel.latestRosterSnapshot {
                     let sessionId = roster.sessionId
-                    activeSession = ActiveSession(
-                        id: sessionId,
+                    pendingSheetContext = PendingSheetContext(
+                        sessionId: sessionId,
                         workoutSetId: set.id,
-                        // V0.49 Slice 2 (2026-08-22): populate
-                        // the timing roster strip from the snapshot.
-                        // Skip-the-picker path → strip is visible.
-                        // Picker path (no snapshot) → strip hidden.
-                        roster: roster.entries.map { entry in
-                            RosterEntryLite(
-                                swimmerId: entry.swimmerId,
-                                firstName: entry.firstName,
-                                lastName: entry.lastName
-                            )
-                        }
+                        setLabel: set.label,
+                        entries: roster.entries,
+                        coachId: authManager.coachId
                     )
-                    // V0.51 (2026-08-30): synthesize wave_assignments
-                    // for this (session, set) pair on first launch so
-                    // loadSessionContext + save() see the rows they need.
-                    // Idempotent (check-then-upsert) — safe on re-tap.
-                    Task {
-                        await viewModel.workoutService.synthesizeWaveAssignmentsIfMissing(
-                            sessionId: sessionId,
-                            workoutSetId: set.id,
-                            rosterEntries: roster.entries,
-                            coachId: authManager.coachId
-                        )
-                    }
                 } else {
                     pendingSessionId = UUID().uuidString
                     showSessionStart = true
@@ -886,34 +941,32 @@ struct WorkoutDetailView: View {
         // workout already has a locked roster — `wave_assignments`
         // rows for that session id drive pairing on the timing
         // side, so reusing the id is the entire mechanism.
+        //
+        // V0.52 Slice 2 (2026-09-06): the skip path now flows
+        // through a per-fragment read-only confirmation sheet
+        // (`pendingSheetContext`) instead of jumping straight into
+        // TimingView. The sheet renders the set label, the cached
+        // roster (one row per swimmer), and a single Start CTA.
+        // The Start handler invokes V0.51's idempotent
+        // `synthesizeWaveAssignmentsIfMissing` and then sets
+        // `activeSession` — the same end state as the V0.49 path,
+        // behind one extra tap the spec mandates ("the coach's
+        // job at session start becomes ASSENT, not data entry").
+        // Cancel dismisses without writing anything. Fragment-flow
+        // memory: subsequent fragment taps re-use the cached
+        // snapshot, so the sheet's Start handler is a 1-tap
+        // acknowledgment per fragment, not a per-fragment
+        // roster-picker round-trip.
         if let roster = viewModel.latestRosterSnapshot {
             let sessionId = roster.sessionId
-            activeSession = ActiveSession(
-                id: sessionId,
-                workoutSetId: parentSet?.id ?? "",
-                // V0.49 Slice 2 (2026-08-22): populate the
-                // strip from the cached snapshot. nil → strip
-                // hidden (picker path — same as today).
-                roster: roster.entries.map { entry in
-                    RosterEntryLite(
-                        swimmerId: entry.swimmerId,
-                        firstName: entry.firstName,
-                        lastName: entry.lastName
-                    )
-                }
+            let setId = parentSet?.id ?? ""
+            pendingSheetContext = PendingSheetContext(
+                sessionId: sessionId,
+                workoutSetId: setId,
+                setLabel: fragment.descriptor ?? parentSet?.label ?? "Set",
+                entries: roster.entries,
+                coachId: authManager.coachId
             )
-            // V0.51 (2026-08-30): see setRow skip branch. Same
-            // idempotent upsert for the fragment path. `workoutSetId`
-            // is the parent set's id (composite fragments still key
-            // pairing on the parent set per V0.50 spec).
-            Task {
-                await viewModel.workoutService.synthesizeWaveAssignmentsIfMissing(
-                    sessionId: sessionId,
-                    workoutSetId: parentSet?.id ?? "",
-                    rosterEntries: roster.entries,
-                    coachId: authManager.coachId
-                )
-            }
         } else {
             // Fallback path: today's flow. The session id is fresh
             // because no roster exists yet for this workout — the
@@ -1179,4 +1232,303 @@ struct WorkoutDetailView: View {
         WorkoutDetailView(workoutId: "test-id")
     }
     .environment(AuthManager())
+}
+
+// MARK: - V0.52 Slice 2 — Per-fragment confirmation sheet
+
+/// V0.52 Slice 2 (2026-09-06): the Identifiable context for the
+/// per-fragment read-only deck-brief sheet. Carries everything the
+/// sheet needs to render + Start the timing flow:
+///   - `sessionId`: the cached roster's session id (the skip path's
+///     reusable session — wave_assignments already keys off it)
+///   - `workoutSetId`: the set the coach tapped (parent set for
+///     composite fragments, per V0.50 spec)
+///   - `setLabel`: human label like "8 × 50 Free"
+///   - `entries`: the cached roster snapshot's entries (drives the
+///     squad count, name resolution, and the Same Squad chip)
+///   - `coachId`: passed into synthesizeWaveAssignmentsIfMissing
+///
+/// `id` is the sessionId — sheet(item:) treats each context as a
+/// distinct presentation, so two rapid taps on different fragments
+/// would re-render rather than ignore the second tap.
+struct PendingSheetContext: Identifiable, Hashable {
+    let sessionId: String
+    let workoutSetId: String
+    let setLabel: String
+    let entries: [SessionRosterSnapshot.Entry]
+    let coachId: String?
+
+    var id: String { sessionId + ":" + workoutSetId }
+
+    static func == (lhs: PendingSheetContext, rhs: PendingSheetContext) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    var roster: [RosterEntryLite] {
+        entries.map { entry in
+            RosterEntryLite(
+                swimmerId: entry.swimmerId,
+                firstName: entry.firstName,
+                lastName: entry.lastName
+            )
+        }
+    }
+}
+
+/// V0.52 Slice 2 (2026-09-06): the read-only per-fragment deck
+/// brief. Slimmer than the SessionStartView's WaveSheetView — it
+/// renders the SET the coach is about to time (not the wave-by-lane
+/// allocation, which V0.51 synthesized as placeholder rows rather
+/// than computed via WaveAllocator). The squad is shown as a flat
+/// name list with lane hints, plus the one-tap Start CTA.
+///
+/// Tapping Start → `onStart` → synthesizeWaveAssignmentsIfMissing
+/// (idempotent) → dismiss + activate the timing cover. Tapping
+/// Cancel → dismiss with no side effects.
+///
+/// "Same squad" chip (V0.52 Slice 3): wired here as the
+/// `onEditAttendees` callback. Slice 2 ships the chip present but
+/// inert (S3's Edit Attendees integration is the next slice).
+struct FragmentWaveSheetView: View {
+    let context: PendingSheetContext
+    let poolLaneCount: Int
+    let hasCloseFinishWarning: Bool
+    let onStart: () -> Void
+    let onCancel: () -> Void
+    let onEditAttendees: (() -> Void)?
+
+    /// Squad count shown on the chip + Start CTA subtitle.
+    private var swimmerCount: Int { context.entries.count }
+
+    /// Per-spec label: "SQUAD OF N" (matches the sheet's quiet
+    /// vocabulary — no "Selected", no "Locked", just the count).
+    private var squadLabel: String {
+        swimmerCount == 1 ? "SQUAD OF 1" : "SQUAD OF \(swimmerCount)"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.bgBase.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    header
+                    if hasCloseFinishWarning {
+                        closeFinishBanner
+                    }
+                    squadScroll
+                    sameSquadChip
+                    startButton
+                }
+            }
+            .navigationTitle("Confirm Squad")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel", action: onCancel)
+                        .foregroundColor(Color.textPrimary)
+                }
+            }
+            .interactiveDismissDisabled(true)
+        }
+    }
+
+    /// Header — set label + lane count. The set label is the
+    /// line a coach reads aloud ("Wave 1, on the zero — go!"); the
+    /// lane count is the pool's spatial anchor (the coach knows
+    /// "Lane 3" maps to a physical lane).
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("FRAGMENT")
+                .font(.eyebrow)
+                .tracking(1.0)
+                .foregroundColor(Color.textFaint)
+            Text(context.setLabel)
+                .font(.titleMedium)
+                .foregroundColor(Color.textPrimary)
+                .multilineTextAlignment(.leading)
+            HStack(spacing: 8) {
+                Text("POOL")
+                    .font(.eyebrow)
+                    .tracking(1.0)
+                    .foregroundColor(Color.textFaint)
+                Text("\(poolLaneCount) LANES")
+                    .font(.eyebrow)
+                    .foregroundColor(Color.textMuted)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bgDeep)
+    }
+
+    /// Squad list — names, one per row, no drag handles. The
+    /// "N swimmers" prefix tells the coach at a glance who's
+    /// in; the names below are the lineup.
+    private var squadScroll: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(squadLabel)
+                        .font(.eyebrow)
+                        .tracking(1.0)
+                        .foregroundColor(Color.textFaint)
+                    Spacer()
+                    Text("\(poolLaneCount) LANE POOL")
+                        .font(.eyebrow)
+                        .foregroundColor(Color.textFaint)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                LazyVStack(spacing: 0) {
+                    ForEach(context.entries, id: \.swimmerId) { entry in
+                        HStack(spacing: 12) {
+                            // Lane pill from the snapshot. nil for
+                            // sessions without lane data → no pill.
+                            if let lane = entry.lane {
+                                Text("L\(lane)")
+                                    .font(.numericSmall)
+                                    .foregroundColor(Color.textFaint)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.bgInset)
+                                    .cornerRadius(4)
+                            }
+                            Text(entry.displayName)
+                                .font(.bodyEmphasis)
+                                .foregroundColor(Color.textPrimary)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.bgRaised)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 12)
+            }
+        }
+    }
+
+    /// V0.52 Slice 3 placeholder: same-squad chip. Slice 2
+    /// renders the chip present but inert (no `onEditAttendees`).
+    /// Slice 3 will pass the Edit Attendees closure from the
+    /// parent `WorkoutDetailView`.
+    @ViewBuilder
+    private var sameSquadChip: some View {
+        HStack {
+            Spacer()
+            if let onEdit = onEditAttendees {
+                Button(action: onEdit) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.2.fill")
+                            .font(.captionStrong)
+                        Text("Same squad")
+                            .font(.captionStrong)
+                        Text("·")
+                            .font(.captionStrong)
+                            .foregroundColor(Color.textFaint)
+                        Text("edit")
+                            .font(.caption)
+                            .foregroundColor(Color.textMuted)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.bgDeep)
+                    .foregroundColor(Color.textPrimary)
+                    .cornerRadius(8)
+                }
+            } else {
+                // Slice 2: chip rendered but inert. Shows the
+                // affordance so the layout is stable across
+                // slices.
+                HStack(spacing: 6) {
+                    Image(systemName: "person.2.fill")
+                        .font(.captionStrong)
+                    Text("Same squad")
+                        .font(.captionStrong)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.bgDeep)
+                .foregroundColor(Color.textMuted)
+                .cornerRadius(8)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+
+    /// Per-spec close-finish banner — same shape as the picker
+    /// sheet's banner so the coach's eye reads the same warning
+    /// across both surfaces. The skip path's synthesizeWaveAssignmentsIfMissing
+    /// does NOT run a real WaveAllocator — placeholder rows have
+    /// wave_number=1, lane=1, no cross-lane collisions. The banner
+    /// therefore stays quiet for skip-path launches today; the
+    /// future V0.53+ wave_assignment refresh will surface real
+    /// collisions here.
+    @ViewBuilder
+    private var closeFinishBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.eyebrow)
+                .foregroundColor(Color.accentAmber)
+            Text("CLOSE FINISHES — coach can't LAP < 0.5s")
+                .font(.eyebrow)
+                .tracking(0.8)
+                .foregroundColor(Color.accentAmber)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentAmber.opacity(0.15))
+        .cornerRadius(8)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    /// Primary CTA. One tap → onStart → synthesize
+    /// wave_assignments + open TimingView.
+    private var startButton: some View {
+        Button(action: onStart) {
+            HStack {
+                Text("Start Fragment")
+                    .font(.titleSmall)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(Color.accentAction)
+            .foregroundColor(Color.textOnAccent)
+            .cornerRadius(12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+    }
+}
+
+private extension SessionRosterSnapshot.Entry {
+    /// Human-readable name from first/last (matches the
+    /// `RosterEntryLite` projection's naming for visual consistency
+    /// across skip-path UI surfaces).
+    var displayName: String {
+        switch (firstName, lastName) {
+        case let (first?, last?) where !last.isEmpty:
+            return "\(first) \(last)"
+        case let (first?, _):
+            return first
+        case let (nil, last?) where !last.isEmpty:
+            return last
+        default:
+            return "Swimmer"
+        }
+    }
 }
