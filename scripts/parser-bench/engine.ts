@@ -659,7 +659,7 @@ function extractLabel(text: string): { label: string; rest: string } {
   return { label: text, rest: "" };
 }
 
-function parseRepDist(raw: string): {
+function parseRepDist(raw: string, allowExplicitDistance = false): {
   reps: number | null;
   distance: number | null;
 } {
@@ -679,7 +679,7 @@ function parseRepDist(raw: string): {
   const solo = n.match(/^(\d+(?:\.\d+)?)\s*/);
   if (solo) {
     const d = parseFloatSafe(solo[1]);
-    if (d !== null && isKnownDistance(d)) {
+    if (d !== null && (isKnownDistance(d) || allowExplicitDistance)) {
       // ponytail (iter 12, 2026-07-28): trailing × N or x N multiplier
       // after a bare distance. "100 Back × 2" → reps=2, dist=100.
       // Note: no \b before x/× because × (U+00D7) is not a word char.
@@ -1295,7 +1295,10 @@ function parseCompositeFragments(
     }
 
     // Parse the swim segment: "75 at race rhythm" → distance=75, intensity=...
-    const rd = parseRepDist(trimmed);
+    // ponytail (autoresearch iter V0.52, 2026-09-06): rule (c) — inside
+    // composite fragments ("75 fast / 25 easy"), distances like "15 m"
+    // may NOT be in the known-distance table; allow them through explicitly.
+    const rd = parseRepDist(trimmed, true);
     if (rd.distance === null) continue; // skip unparseable segments
 
     const intensity = parseIntensity(trimmed);
