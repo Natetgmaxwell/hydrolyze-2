@@ -1363,6 +1363,76 @@ function parseRepGroup(lineText: string): RepGroup | null {
     }
   }
 
+  // ponytail (autoresearch iter V0.52, 2026-09-06): rule (f) standalone
+  // slash-set / plus-set composite. "25 strong / 25 easy",
+  // "25 pursuit + 25 easy", "25 scull + 25 swim — connect catch to
+  // stroke". A line with NO leading "Nx" whose body splits on " / " or
+  // " + " into 2 distance-bearing segments → rewrite to composite
+  // "1 x (a / b)" form so the existing fragment path handles it. Each
+  // segment must start with a digit, must NOT contain its own "Nx"
+  // rep pattern (guards the danger case "400 swim + 4 × 100 pull +
+  // 4 × 50"), AND must NOT end with a trailing "× N" multiplier (the
+  // trailing multiplier belongs to the per-rep description, not the
+  // composite — regression guard for real-input-7's
+  // "400 Swim 100 Free / 100 Back × 2 - Build effort each 100" where
+  // the "× 2" on the right side is per-rep, not composite). Skip lines
+  // containing " as " — the slash inside an "as" sub-pattern is the
+  // existing per-rep variant notation (regression guard for
+  // real-input-10's "200m swim as 25m streamline kick at moderate
+  // effort / 25m long, relaxed swimming"). sourceLine stays the
+  // original text — the rewrite is parser-internal, matching rule (d).
+  {
+    // Skip if a leading "Nx" already exists — the existing main-loop
+    // path handles "Nx ..." patterns.
+    const hasLeadingNx = /^\s*\d+\s*[x×]\s*/.test(text);
+    // Skip "as" notation lines — the slash inside "as" is per-rep
+    // variant notation, NOT a top-level composite separator.
+    const hasAsNotation = /\bas\b/i.test(text);
+    if (!hasLeadingNx && !hasAsNotation) {
+      // Find the separator character ('/' or '+') directly, not the
+      // leading space, so slice() lands past the full separator.
+      const slashIdx = text.indexOf(" / ");
+      const plusIdx = text.indexOf(" + ");
+      const slashAt = slashIdx === -1 ? -1 : slashIdx + 1; // position of "/"
+      const plusAt = plusIdx === -1 ? -1 : plusIdx + 1; // position of "+"
+      const sepChar = (() => {
+        if (slashAt === -1) return plusAt === -1 ? null : { at: plusAt, char: "+" };
+        if (plusAt === -1) return { at: slashAt, char: "/" };
+        return slashAt < plusAt ? { at: slashAt, char: "/" } : { at: plusAt, char: "+" };
+      })();
+      if (sepChar !== null) {
+        const left = text.slice(0, sepChar.at).trim();
+        const right = text.slice(sepChar.at + 1).trim();
+        // Both sides must start with a digit (distance-bearing).
+        if (/^\d/.test(left) && /^\d/.test(right)) {
+          const segs = [left, right];
+          // Regression guards: any segment carrying
+          //   (a) its own "Nx" rep pattern → multi-set "+"-join (the
+          //       existing + -split path handles it), OR
+          //   (b) a "× N" multiplier anywhere in the segment →
+          //       per-rep description, the parent set's reps×distance
+          //       structure lives in the LEFT segment, the slash/plus
+          //       is INSIDE the per-rep rotation, NOT a top-level
+          //       composite (regression guard for real-input-7's
+          //       "400 Swim 100 Free / 100 Back × 2 - Build effort
+          //       each 100" where "× 2" sits mid-segment, not at end)
+          // means refuse to split.
+          const hasInternalNx = segs.some((s) => /\b\d+\s*[x×]\s*\d+/.test(s));
+          const hasTrailingMult = segs.some((s) => /(?:x|×)\s*\d+/.test(s));
+          if (!hasInternalNx && !hasTrailingMult) {
+            // Rewrite to composite "1 x (a / b)" form so the existing
+            // fragment path handles it. The "/" separator inside the
+            // parens is what parseCompositeFragments expects, even when
+            // the source line used "+" — semantically a "+"-joined
+            // composite is the same workout ("do these two segments").
+            const slashForm = segs.join(" / ");
+            text = "1 x (" + slashForm + ")";
+          }
+        }
+      }
+    }
+  }
+
   // Composite-set detection runs FIRST — before extractInlineNote,
   // because extractInlineNote would strip the "(...)" content as a note,
   // leaving just the prefix "4 x". For composite sets we need the full text.
@@ -2082,6 +2152,45 @@ function parseWorkoutV2(input: string): Workout {
       // extractLabel would split into label="Build each" rest="50",
       // creating a false set). Uses line.text directly.
       const lineText = line.text.trim();
+      // ponytail (autoresearch iter V0.52, 2026-09-06): rule (f) guard.
+      // A line like "25 strong / 25 easy" or "25 pursuit + 25 easy" has
+      // a leading digit ≤25 + coaching word, so Pattern 2 below would
+      // catch it and treat the WHOLE line as an instruction note. But it
+      // is actually a standalone slash-/plus-composite set (rule f) that
+      // parseRepGroup's standalone-slash-set rewrite handles. Exclude
+      // these from the instruction guard so they reach parseRepGroup.
+      // Multi-segment heuristic: contains " / " or " + " and the part
+      // after the separator starts with a digit. Skip lines with " as "
+      // notation — the "/" / "+" inside an "as" sub-pattern is the
+      // existing per-rep variant notation, NOT a top-level slash/plus
+      // composite (regression guard for real-input-10's
+      // "200m swim as 25m streamline kick at moderate effort / 25m long,
+      // relaxed swimming"). Skip lines where either side ends in a
+      // trailing "× N" multiplier — that's a per-rep description, not a
+      // composite (regression guard for real-input-7's
+      // "400 Swim 100 Free / 100 Back × 2 - Build effort each 100").
+      const looksLikeRuleF =
+        !/\d+\s*[x×]\s*\d+/.test(lineText) &&
+        !/\bas\b/i.test(lineText) &&
+        (lineText.includes(" / ") || lineText.includes(" + ")) &&
+        /^\d/.test(lineText.trim()) &&
+        (() => {
+          const slashIdx = lineText.indexOf(" / ");
+          const plusIdx = lineText.indexOf(" + ");
+          // Point at the separator char (not the leading space).
+          const slashAt = slashIdx === -1 ? -1 : slashIdx + 1;
+          const plusAt = plusIdx === -1 ? -1 : plusIdx + 1;
+          if (slashAt === -1 && plusAt === -1) return false;
+          const sepAt = slashAt === -1 ? plusAt : plusAt === -1 ? slashAt : Math.min(slashAt, plusAt);
+          const left = lineText.slice(0, sepAt).trim();
+          const right = lineText.slice(sepAt + 1).trim();
+          if (!/^\d/.test(right)) return false;
+          // Mirror parseRepGroup's rule (f) guards.
+          const segs = [left, right];
+          if (segs.some((s) => /\b\d+\s*[x×]\s*\d+/.test(s))) return false;
+          if (segs.some((s) => /(?:x|×)\s*\d+/.test(s))) return false;
+          return true;
+        })();
       const isInstructionLine =
         !THREE_MT_RE.test(lineText) && // V0.38: a 3MT line is a SET, never an instruction
         !/\d+\s*[x×]\s*\d+/.test(lineText) && // no NxM pattern
@@ -2090,6 +2199,8 @@ function parseWorkoutV2(input: string): Workout {
         // 25 easy)" matches Pattern 2 (leading digit ≤25 + fast/easy
         // coaching words) and the whole set is swallowed as a note.
         !/\d+\s*[x×]\s*\(/.test(lineText) &&
+        // rule (f) exclusion (see above).
+        !looksLikeRuleF &&
         (
           // Pattern 1: starts with a coaching word → instruction
           /^\s*(?:build|descend|hold|focus|maintain|strong|smooth|underwater|breakout|streamline|dolphin|easy|fast|slow|controlled|relaxed|perfect|race|quality|explosive|turn|push|dive|kick|drill|scull|breathe|negative|positive|long|short|tall|high|low|tight|loose|steady|consistent|gradual|progressive|activation|recovery)\b/i.test(lineText) ||
@@ -2168,7 +2279,20 @@ function parseWorkoutV2(input: string): Workout {
       //   "50 free breathe 3 / 50 free catch up drill"
       // These describe HOW to swim each rep, not separate sets. Detect by:
       // line has "/" + segments sum to the last rep group's distance.
-      if (line.text.includes("/")) {
+      //
+      // ponytail (V0.52 dispatch, rule f, 2026-09-06): exclude lines
+      // that are standalone slash-/plus-composite candidates (rule f)
+      // — those describe a SEPARATE composite set, not a per-rep
+      // variant of the previous rg. Without this guard, "25 strong /
+      // 25 easy" (where each side has distance=25, sums to 50, and
+      // follows a `4 × 50 @ 1:00` set) is misattached as a per-rep
+      // note on the previous rg, dropping it from the parse.
+      const isStandaloneCompositeCandidate =
+        !/\d+\s*[x×]\s*\d+/.test(line.text) &&
+        !/\bas\b/i.test(line.text) &&
+        (line.text.includes(" / ") || line.text.includes(" + ")) &&
+        /^\d/.test(line.text.trim());
+      if (line.text.includes("/") && !isStandaloneCompositeCandidate) {
         const lastNs = namedSets[namedSets.length - 1];
         if (lastNs && lastNs.repGroups.length > 0) {
           const lastRg = lastNs.repGroups[lastNs.repGroups.length - 1];
@@ -2506,14 +2630,23 @@ function parseWorkoutV2(input: string): Workout {
         }
       }
 
-      const plusMatch = rest.match(/^(.+?)\s*\+\s*(.+)$/);
-      if (plusMatch && !/\bas[\s:]/i.test(plusMatch[1])) {
-        const secondRg = parseRepGroup(plusMatch[2].trim());
-        if (secondRg) {
-          if (!secondRg.interval) secondRg.interval = rg?.interval ?? null;
-          if (!secondRg.intensity) secondRg.intensity = rg?.intensity ?? null;
-          secondRg.connectors.push("+");
-          namedSet.repGroups.push(secondRg);
+      // ponytail (V0.52 dispatch, rule f, 2026-09-06): the + -split below fires
+      // after parseRepGroup. If rule (f) already produced fragments for
+      // a line like "25 pursuit + 25 easy", we must NOT also emit a
+      // second repGroup for the trailing segment — the fragments array
+      // already covers it. Check rg.fragments first.
+      if (rg.fragments && rg.fragments.length >= 2) {
+        // Skip + -split; rule (f) owns this line.
+      } else {
+        const plusMatch = rest.match(/^(.+?)\s*\+\s*(.+)$/);
+        if (plusMatch && !/\bas[\s:]/i.test(plusMatch[1])) {
+          const secondRg = parseRepGroup(plusMatch[2].trim());
+          if (secondRg) {
+            if (!secondRg.interval) secondRg.interval = rg?.interval ?? null;
+            if (!secondRg.intensity) secondRg.intensity = rg?.intensity ?? null;
+            secondRg.connectors.push("+");
+            namedSet.repGroups.push(secondRg);
+          }
         }
       }
 
