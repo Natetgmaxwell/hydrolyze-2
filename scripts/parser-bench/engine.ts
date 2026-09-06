@@ -2155,7 +2155,22 @@ function parseWorkoutV2(input: string): Workout {
         }
       }
 
+      // ponytail (autoresearch iter V0.52, 2026-09-06): rule (a) athletePrefix.
+      // Anchors: (1) the prefix is a known athlete keyword (whitelist),
+      // not any 2-5 cap letters + colon — a plain regex matched "Evens:"
+      // inside "* Evens: ..." and dropped the Flip set in real-input-7.
+      // (2) line starts with the label (not preceded by "*" or content).
+      const ATHLETE_KEYWORDS = new Set(["SP", "MD", "IM", "SURF", "BR", "FL", "BK", "FR"]);
+      const athletePrefix = line.text.match(/^\s*([A-Z]{2,5}):\s+/);
       let { label, rest } = extractLabel(line.text);
+      if (
+        athletePrefix &&
+        ATHLETE_KEYWORDS.has(athletePrefix[1].toUpperCase()) &&
+        /^\s*[A-Z]{2,5}:\s+\S/.test(line.text)
+      ) {
+        label = athletePrefix[1];
+        rest = line.text.slice(athletePrefix[0].length).trim();
+      }
 
       // ponytail (autoresearch iter 6, 2026-07-17): resolve
       // "same as above" / "do previous" / "repeat above" / "as above"
