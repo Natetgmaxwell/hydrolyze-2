@@ -27,13 +27,49 @@ const athleteSet = athletePrefix.sections[0].namedSets[0];
 assert.equal(athleteSet.label, "SP");
 assert.equal(athleteSet.repGroups[0].sourceLine, "25 race speed + easy");
 
-// ponytail (V0.52 dispatch brief, 2026-09-06): "2 x through\n4 x 100 free"
-// → reps=8 (multiply-by-N resolution) is OUT OF SCOPE for this iteration.
-// The brief explicitly enumerated four rules (a)/(b)/(c)/(d); "through"
-// resolution is not among them. Re-enable when a rule (e) for the
-// "through" multiplier is implemented.
-// const through = groups("2 x through\n4 x 100 free");
-// assert.equal(through[0].reps, 8);
+// ponytail (V0.52 dispatch, rule e, 2026-09-06): "2 x through" round
+// multiplier. The existing round-multiplier detector in the main loop
+// (engine.ts ~line 1898) already handles "Nx through" via
+// /^(\d+)\s*[x×]\s*(?:thru|through)\s*:?\s*$/i. No engine change needed —
+// document coverage via these grammar assertions.
+{
+  const through = groups("2 x through\n4 x 100 free");
+  assert.equal(through.length, 1);
+  assert.equal(through[0].reps, 8);
+  assert.equal(through[0].distance, 100);
+  assert.equal(through[0].stroke, "Free");
+  assert.equal(through[0].sourceLine, "4 x 100 free");
+
+  // Trailing colon variant.
+  const throughColon = groups("2 x through:\n4 x 100 free");
+  assert.equal(throughColon.length, 1);
+  assert.equal(throughColon[0].reps, 8);
+
+  // × (U+00D7) variant.
+  const timesSign = groups("3 × through\n4 x 50 free");
+  assert.equal(timesSign.length, 1);
+  assert.equal(timesSign[0].reps, 12);
+
+  // Multiplies multiple repGroups, persists across blank lines.
+  const multiplies = groups("2 x through\n\n4 x 100 free\n\n8 x 50");
+  assert.equal(multiplies.length, 2);
+  assert.equal(multiplies[0].reps, 8);
+  assert.equal(multiplies[1].reps, 16);
+
+  // Adjacent to "each 100:" / "repeat" / word-number rounds — the
+  // existing round-multiplier detector handles all four forms with the
+  // same machinery. Verify "two rounds" still works as a sanity check.
+  const wordRound = groups("two rounds:\n4 x 100 free");
+  assert.equal(wordRound.length, 1);
+  assert.equal(wordRound[0].reps, 8);
+
+  // Indented block (commit-jodie-08 form: indented subsequent lines still
+  // receive the multiplier — roundMultiplier is set at section scope).
+  const indented = groups("      2 x through\n\n            4 x 200 holding pace 3:00\n            4 x 100 desc 1:30");
+  assert.equal(indented.length, 2);
+  assert.equal(indented[0].reps, 8);
+  assert.equal(indented[1].reps, 8);
+}
 
 const continuedInterval = groups("4 x 50\n1:22");
 assert.equal(continuedInterval.length, 1);
