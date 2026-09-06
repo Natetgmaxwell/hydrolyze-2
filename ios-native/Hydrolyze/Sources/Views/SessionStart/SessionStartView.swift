@@ -88,6 +88,17 @@ struct SessionStartView: View {
                         viewModel: viewModel,
                         swimmerNames: viewModel.swimmerNamesById,
                         workoutSets: viewModel.workoutSets,
+                        // V0.52 Slice 3: thread sessionId +
+                        // coachId + workoutId so the Edit
+                        // Attendees sheet (hosted by
+                        // WavePreviewView for the Same Squad chip)
+                        // can re-upsert session_roster + reload
+                        // the squad. sessionId matches what
+                        // lockRoster wrote; workoutId drives the
+                        // squad-scoped fetch.
+                        sessionId: viewModel.sessionId ?? sessionId,
+                        coachId: coachId,
+                        workoutId: workoutSets.first?.workoutId,
                         onStart: {
                             Task { @MainActor in
                                 let ok = await viewModel.startSession()
@@ -178,12 +189,17 @@ struct SessionStartView: View {
         }
         // ponytail: outer content fade-in on sheet/cover appear. Gating
         // by reduceMotion is the standard a11y pattern (matches d46c444,
-        // 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f). Only on the
-        // outer — nested VStacks own their own per-step motion.
+        // 0a90257, 06c6823, 61404f1, 1ffa02c, 19e0e9f). Only on
+        // the outer — nested VStacks own their own per-step motion.
         .opacity(animateIn ? 1.0 : 0.0)
         .scaleEffect(animateIn ? 1.0 : 0.98)
         .animation(reduceMotion ? nil : Animations.springSoft, value: animateIn)
         .onAppear { animateIn = true }
+        // V0.52 Slice 3 (2026-09-06): the Edit Attendees sheet
+        // for the Same Squad chip is hosted by WavePreviewView
+        // (the chip's actual host). SessionStartView no longer
+        // needs the sheet modifier — see the matching `.sheet`
+        // inside WavePreviewView.
     }
 }
 
@@ -529,12 +545,43 @@ struct WavePreviewView: View {
     @ObservedObject var viewModel: SessionStartViewModel
     let swimmerNames: [UUID: String]
     let workoutSets: [WorkoutSet]
+    // V0.52 Slice 3: sessionId threaded in so the Edit
+    // Attendees sheet (hosted by WavePreviewView) can re-upsert
+    // the same session row. Defaults to the VM's own
+    // `sessionId` for the picker path; the sessionId parameter
+    // is the canonical "what session are we editing?" answer.
+    let sessionId: String
+    // coachId for the Edit Attendees sheet's loadRoster
+    // refresh. Same defaults logic as sessionId.
+    let coachId: String?
+    // Workout id for the Edit Attendees sheet's loadRoster
+    // refresh (resolves the workout's group_id for the squad
+    // filter). Falls back to the first set's workoutId.
+    let workoutId: String?
     let onStart: () -> Void
 
     // V0.52 Slice 1: false = deck-brief sheet (default), true = editor.
     // The sheet is the green path; the editor is the yellow path (⚠
     // Close Finish banner tap or explicit "Adjust" affordance).
     @State private var showingEditor: Bool = false
+
+    // V0.52 Slice 3 (2026-09-06): the Edit Attendees sheet shown
+    // when the Same Squad chip on the read-only wave sheet is
+    // tapped. Reuses the V0.49 S1 edit-mode flow: presents a
+    // SessionStartView with `isEditMode = true` and the current
+    // `selectedSwimmerIds` as the pre-selection. On Done, the
+    // wave_allocator re-runs (inside the edit-mode branch of
+    // SessionStartViewModel.lockRoster) and the wave sheet
+    // re-renders with the fresh squad. State lives on
+    // WavePreviewView (the chip's host) — SessionStartView
+    // doesn't know the chip exists, and Edit Attendees is
+    // scoped to the wave-preview step anyway.
+    @State private var showEditAttendeesInline: Bool = false
+    // Capture the current selection at chip-tap time so the
+    // Edit sheet seeds from the same set the wave sheet just
+    // showed (avoids a stale `selectedSwimmerIds` if the user
+    // toggled a swimmer in the picker before tapping the chip).
+    @State private var preselectedAtChipTap: Set<UUID>? = nil
 
     /// Lane count is pool-specific (6, 8, 10 — varies by facility). Read from the
     /// session's `poolConfig` instead of hardcoding. Phase 2.5-b: removes the old
@@ -619,18 +666,40 @@ struct WavePreviewView: View {
                 // collisions exist — matches the locked
                 // constraint "no lane buttons" by hiding the
                 // slider entirely in the green path).
+                //
+                // V0.52 Slice 3 (2026-09-06): the Same Squad
+                // chip's tap opens the existing Edit Attendees
+                // sheet (V0.49 S1) so the coach can swap a
+                // swimmer without leaving the wave-confirmation
+                // flow. The picker path's Edit mode is a
+                // re-thread of the same SessionStartView with
+                // preselectedSwimmerIds — the sheet dismisses
+                // back to the wave confirmation with the
+                // refreshed roster visible (the wave_allocator
+                // re-runs in lockRoster's edit branch).
                 WaveSheetView(
                     viewModel: viewModel,
                     swimmerNames: swimmerNames,
                     workoutSets: workoutSets,
                     waveCollisions: waveCollisions,
                     closeFinishThresholdMs: closeFinishThresholdMs,
-                    // V0.52 Slice 3: chip wires to Edit Attendees
-                    // on tap. Slice 1 leaves it as a no-op stub —
-                    // Slice 3 will thread the showEditAttendees
-                    // callback through here.
                     onAdjustTapped: { showingEditor = true },
-                    onStartTapped: onStart
+                    onStartTapped: onStart,
+                    // V0.52 Slice 3: open the Edit Attendees
+                    // picker. The dismissal handler re-runs
+                    // the roster load (existing V0.49 onComplete
+                    // pattern) so the sheet re-renders the
+                    // fresh squad. The sheet does NOT dismiss
+                    // immediately — the coach sees the refreshed
+                    // squad and taps Start once.
+                    onSameSquadTapped: {
+                        // Snapshot the current selection so
+                        // Edit-mode's pre-seed is the squad
+                        // the wave sheet just rendered, not
+                        // whatever the picker left behind.
+                        preselectedAtChipTap = viewModel.selectedSwimmerIds
+                        showEditAttendeesInline = true
+                    }
                 )
             }
 
@@ -652,6 +721,38 @@ struct WavePreviewView: View {
                 startButton
                 doneButton  // V0.52 Slice 1: editor exit affordance
             }
+        }
+        // V0.52 Slice 3 (2026-09-06): Edit Attendees sheet for
+        // the Same Squad chip tap. Renders a nested
+        // SessionStartView in edit mode with the captured
+        // preselection. On Done, the parent's wave_allocator
+        // re-runs (SessionStartViewModel.lockRoster's edit
+        // branch) and the wave sheet re-renders with the fresh
+        // squad. The dismissal handler also re-runs
+        // loadRoster to refresh the available swimmer list.
+        .sheet(isPresented: $showEditAttendeesInline) {
+            SessionStartView(
+                sessionId: sessionId,
+                workoutSets: workoutSets,
+                isEditMode: true,
+                preselectedSwimmerIds: preselectedAtChipTap,
+                onComplete: { _, _ in
+                    showEditAttendeesInline = false
+                    // Refresh the wave sheet's swimmer name map
+                    // + available roster so any newly-added
+                    // swimmer renders correctly in the next
+                    // wave sheet render. Re-uses the existing
+                    // loadRoster path (no new round-trip).
+                    Task {
+                        await viewModel.loadRoster(
+                            coachId: coachId,
+                            workoutId: workoutId,
+                            isEditMode: false,
+                            preselectedSwimmerIds: nil
+                        )
+                    }
+                }
+            )
         }
     }
 

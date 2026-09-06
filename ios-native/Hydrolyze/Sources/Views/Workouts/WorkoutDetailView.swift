@@ -527,6 +527,18 @@ struct WorkoutDetailView: View {
         // (idempotent guard) + activate the timing cover. Tapping
         // Cancel → return to the workout list with no side
         // effects.
+        //
+        // V0.52 Slice 3 (2026-09-06): the Same Squad chip
+        // opens the existing Edit Attendees sheet so the coach
+        // can swap a swimmer without leaving the workout
+        // detail. The skip path uses the same V0.49 Edit flow
+        // (SessionStartView in edit mode with the cached
+        // roster pre-selected). Closing the Edit sheet
+        // re-fetches the latest roster snapshot so the
+        // fragment sheet's next render shows the fresh
+        // squad — the synthesized wave_assignments get rebuilt
+        // automatically on the next Start tap (V0.51
+        // synthesizer is idempotent).
         .sheet(item: $pendingSheetContext) { ctx in
             FragmentWaveSheetView(
                 context: ctx,
@@ -563,9 +575,28 @@ struct WorkoutDetailView: View {
                 onCancel: {
                     pendingSheetContext = nil
                 },
-                // V0.52 Slice 3: wire Edit Attendees here. Slice 2
-                // passes nil so the chip renders inert.
-                onEditAttendees: nil
+                // V0.52 Slice 3: open Edit Attendees using
+                // the cached roster. The Edit sheet dismisses
+                // via the existing .sheet(isPresented:
+                // $showEditAttendees) flow; its onComplete
+                // refreshes `latestRosterSnapshot` so the
+                // NEXT fragment tap's sheet shows the new
+                // squad. We intentionally DON'T dismiss the
+                // fragment sheet here — the coach may want
+                // to swap multiple swimmers or just check
+                // the squad without changing it. After Edit
+                // dismisses, the fragment sheet stays open
+                // and Start remains the next action.
+                onEditAttendees: {
+                    editAttendeesSessionId = ctx.sessionId
+                    editAttendeesPreselected = Set(
+                        ctx.entries.compactMap { entry in
+                            UUID(uuidString: entry.swimmerId)
+                        }
+                    )
+                    pendingSheetContext = nil
+                    showEditAttendees = true
+                }
             )
         }
         .task {
