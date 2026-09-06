@@ -1340,6 +1340,29 @@ function parseRepGroup(lineText: string): RepGroup | null {
   let text = lineText;
   let note: string | null = null;
 
+  // ponytail (autoresearch iter V0.52, 2026-09-06): rule (d) parenthetical
+  // rewrite. If the line ends in "(...)" and the BODY (text before that
+  // parenthetical) splits on "/" into N>=2 distance-bearing segments
+  // (e.g. "50 drill / 50 build (catch pause drill)"), rewrite the body
+  // into composite "1 x (a / b)" form so the existing fragment path
+  // handles it. The trailing parenthetical content is captured as the
+  // note text. sourceLine stays the original text — the rewrite is
+  // parser-internal.
+  {
+    const trailingParen = text.match(/\(([^)]+)\)\s*$/);
+    if (trailingParen) {
+      const tailNote = trailingParen[0];
+      const body = text.slice(0, text.length - tailNote.length).trim();
+      const segs = body.split(/\s*\/\s*/).filter((s) => /^\d/.test(s));
+      if (segs.length >= 2) {
+        const slashForm = segs.join(" / ");
+        text = "1 x (" + slashForm + ") " + tailNote;
+        // Pre-populate note so the composite-skip path still records it.
+        note = trailingParen[1].trim();
+      }
+    }
+  }
+
   // Composite-set detection runs FIRST — before extractInlineNote,
   // because extractInlineNote would strip the "(...)" content as a note,
   // leaving just the prefix "4 x". For composite sets we need the full text.
