@@ -510,11 +510,31 @@ struct SwimmerRowView: View {
 
 // MARK: - Wave Preview
 
+/// V0.52 Slice 1 (2026-09-06): the WavePreviewView now hosts TWO
+/// presentations — a read-only deck-brief sheet (the new default) and
+/// the existing drag-to-edit editor (reached only via the ⚠ Close
+/// Finish banner tap or the explicit "Adjust" affordance on the
+/// sheet). The split mirrors the spec: "Coach's job at session start
+/// becomes ASSENT, not data entry." The sheet shows wave + lane +
+/// predicted time in SEND-OFF ORDER (Wave 1 "on the zero", Wave 2
+/// "+10s", etc.) — the order the coach reads the lineup aloud. The
+/// editor view stays structurally unchanged below the switch.
+///
+/// `showingEditor` toggles between the two. Default is `false` (the
+/// sheet). Banner tap + Adjust both flip it true. A `Done` button on
+/// the editor flips it back. SessionStartViewModel.startSession and
+/// the wave-assignment persistence path are unchanged — this is a
+/// pure UI slice.
 struct WavePreviewView: View {
     @ObservedObject var viewModel: SessionStartViewModel
     let swimmerNames: [UUID: String]
     let workoutSets: [WorkoutSet]
     let onStart: () -> Void
+
+    // V0.52 Slice 1: false = deck-brief sheet (default), true = editor.
+    // The sheet is the green path; the editor is the yellow path (⚠
+    // Close Finish banner tap or explicit "Adjust" affordance).
+    @State private var showingEditor: Bool = false
 
     /// Lane count is pool-specific (6, 8, 10 — varies by facility). Read from the
     /// session's `poolConfig` instead of hardcoding. Phase 2.5-b: removes the old
@@ -584,11 +604,63 @@ struct WavePreviewView: View {
                 setSelector
             }
 
-            // Lane picker (Phase 2.5-c / 2.6): coach-configurable 1-10 lanes.
-            // Re-allocates waves on change using the existing predictions
-            // (no DB roundtrip — predictions were built once in lockRoster).
-            lanePicker
+            // V0.52 Slice 1: editor mode shows the existing
+            // lane-picker + drag-to-edit ScrollView. Sheet mode
+            // (default) shows the read-only deck-brief sheet.
+            // The toggle is the ⚠ Close Finish banner tap or the
+            // explicit "Adjust" affordance on the sheet.
+            if showingEditor {
+                lanePicker
+                editorContent
+            } else {
+                // V0.52 Slice 1: read-only deck brief. No
+                // lane-picker in this mode (lane count stays
+                // visible in the close-finish banner copy when
+                // collisions exist — matches the locked
+                // constraint "no lane buttons" by hiding the
+                // slider entirely in the green path).
+                WaveSheetView(
+                    viewModel: viewModel,
+                    swimmerNames: swimmerNames,
+                    workoutSets: workoutSets,
+                    waveCollisions: waveCollisions,
+                    closeFinishThresholdMs: closeFinishThresholdMs,
+                    // V0.52 Slice 3: chip wires to Edit Attendees
+                    // on tap. Slice 1 leaves it as a no-op stub —
+                    // Slice 3 will thread the showEditAttendees
+                    // callback through here.
+                    onAdjustTapped: { showingEditor = true },
+                    onStartTapped: onStart
+                )
+            }
 
+            if let error = viewModel.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(Color.statusError)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .multilineTextAlignment(.center)
+            }
+
+            // V0.52 Slice 1: editor mode keeps the existing
+            // reset + start buttons (bottom of the editor); the
+            // sheet mode renders its own start button at the
+            // bottom of the sheet (one tap, accent CTA).
+            if showingEditor {
+                resetButton
+                startButton
+                doneButton  // V0.52 Slice 1: editor exit affordance
+            }
+        }
+    }
+
+    // V0.52 Slice 1: editor body extracted from the old
+    // `body` so we can gate it on `showingEditor`. The
+    // contents are unchanged — lane columns, drag-to-move,
+    // close-finish banner, all preserved.
+    private var editorContent: some View {
+        Group {
             if !waveCollisions.isEmpty {
                 closeFinishBanner
             }
@@ -637,24 +709,19 @@ struct WavePreviewView: View {
                 }
                 .padding(.vertical, 16)
             }
-
-            if let error = viewModel.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundColor(Color.statusError)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                    .multilineTextAlignment(.center)
-            }
-
-            resetButton
-            startButton
         }
     }
 
     /// Per-wave close-finish banner. One row per wave that has any cross-lane
     /// collisions within `closeFinishThresholdMs`. Surfaces the problem before the
     /// coach starts the stopwatch — that's the whole point of the wave preview.
+    ///
+    /// V0.52 Slice 1: tap-to-adjust. The banner is the primary entry point
+    /// to the editor view per the spec ("Interaction appears ONLY on
+    /// exceptions: the existing ⚠ Close Finish banner expands to the
+    /// drag-to-fix view"). The whole banner row is tappable; tapping
+    /// flips `showingEditor = true`. Editor mode also re-renders the
+    /// banner above the lane columns for continuity.
     private var closeFinishBanner: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -664,6 +731,10 @@ struct WavePreviewView: View {
                 Text("CLOSE FINISHES — coach can't LAP < 0.5s")
                     .font(.eyebrow)
                     .tracking(0.8)
+                    .foregroundColor(Color.accentAmber)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.captionStrong)
                     .foregroundColor(Color.accentAmber)
             }
             ForEach(waveCollisions.keys.sorted(), id: \.self) { wave in
@@ -682,6 +753,16 @@ struct WavePreviewView: View {
                     }
                 }
             }
+            // V0.52 Slice 1: explicit "tap to adjust" caption —
+            // surface the affordance in the read copy so the coach
+            // doesn't have to guess the gesture. Quiet in editor
+            // mode (the editor is already open).
+            if !showingEditor {
+                Text("tap to adjust")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -690,6 +771,32 @@ struct WavePreviewView: View {
         .cornerRadius(8)
         .padding(.horizontal, 16)
         .padding(.top, 8)
+        // V0.52 Slice 1: whole banner is the tap target. Only
+        // tap-active in sheet mode (showingEditor = false); in
+        // editor mode the banner is informational.
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !showingEditor {
+                showingEditor = true
+            }
+        }
+    }
+
+    /// V0.52 Slice 1: exit affordance on the editor view. The
+    /// spec mandates the editor is reachable only from the ⚠
+    /// banner or the "Adjust" link on the sheet; an exit path is
+    /// implied (the coach goes back to the sheet to start the
+    /// session). "Done" matches the existing Edit Attendees
+    /// pattern (same word, same intent).
+    private var doneButton: some View {
+        Button {
+            showingEditor = false
+        } label: {
+            Text("Done")
+                .font(.caption)
+                .foregroundColor(Color.accentAction)
+        }
+        .padding(.bottom, 4)
     }
 
     private func hasTightGap(inLane lane: Int) -> Bool {
@@ -825,6 +932,437 @@ struct WavePreviewView: View {
         .disabled(viewModel.isLoading)
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
+    }
+}
+
+// MARK: - Wave Sheet (V0.52 Slice 1: read-only deck brief)
+
+/// V0.52 Slice 1 (2026-09-06): WaveSheetView — the read-only deck
+/// brief that replaces the drag-to-edit wave preview as the DEFAULT
+/// view after `lockRoster`. The spec describes it as "the coach's
+/// job becomes ASSENT, not data entry." Reads like a pool-deck
+/// announcement: each wave listed in SEND-OFF ORDER (Wave 1 "on the
+/// zero", Wave 2 "+10s", etc.), each swimmer with lane + predicted
+/// time.
+///
+/// The sheet has one primary action — Start Session — and one
+/// secondary affordance — Adjust (or the ⚠ Close Finish banner if
+/// collisions exist). The drag-to-edit editor is NEVER reached in
+/// the green path.
+///
+/// Visuals match the existing Theme tokens (no new color/font
+/// vocabulary): eyebrow labels via `Font.eyebrow`, predictions in
+/// mono via `Font.numeric`, surface backgrounds via `Color.bgDeep`
+/// / `Color.bgSelected`, amber for the warning banner.
+///
+/// Slice 3 (2026-09-06) adds the "Same squad" chip; Slice 1
+/// leaves the chip as a stub slot (no-op) so the layout is stable
+/// across both slices.
+struct WaveSheetView: View {
+    @ObservedObject var viewModel: SessionStartViewModel
+    let swimmerNames: [UUID: String]
+    let workoutSets: [WorkoutSet]
+    let waveCollisions: [Int: [WavePreviewView.CloseFinishPair]]
+    let closeFinishThresholdMs: Int
+    /// V0.52 Slice 1: tap → switch to the drag-to-edit editor.
+    /// The sheet binds this; the parent `WavePreviewView` flips
+    /// `showingEditor = true` when invoked.
+    let onAdjustTapped: () -> Void
+    /// V0.52 Slice 1: tap → call `viewModel.startSession()` →
+    /// write `wave_assignments` + dismiss the sheet + open
+    /// TimingView. Wired by the parent (`onStart` closure).
+    let onStartTapped: () -> Void
+
+    // V0.52 Slice 3: stub for the "same squad" chip. Slice 3
+    // threads the Edit Attendees presenter through here. Slice 1
+    // leaves the chip rendered but disabled so the layout is
+    // stable. The chip is wrapped below in a `sameSquadChip`
+    // private view so the Slice 3 patch is a one-line change.
+    let onSameSquadTapped: (() -> Void)?
+
+    init(
+        viewModel: SessionStartViewModel,
+        swimmerNames: [UUID: String],
+        workoutSets: [WorkoutSet],
+        waveCollisions: [Int: [WavePreviewView.CloseFinishPair]],
+        closeFinishThresholdMs: Int,
+        onAdjustTapped: @escaping () -> Void,
+        onStartTapped: @escaping () -> Void,
+        onSameSquadTapped: (() -> Void)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.swimmerNames = swimmerNames
+        self.workoutSets = workoutSets
+        self.waveCollisions = waveCollisions
+        self.closeFinishThresholdMs = closeFinishThresholdMs
+        self.onAdjustTapped = onAdjustTapped
+        self.onStartTapped = onStartTapped
+        self.onSameSquadTapped = onSameSquadTapped
+    }
+
+    /// Per-(set, swimmer) filtered to the currently-previewed set,
+    /// sorted send-off-first: Wave 1 (offset 0), Wave 2 (offset
+    /// sendOffIntervalMs), etc. Within each wave, swimmers sort by
+    /// lane (left → right) so the coach reads the lineup across
+    /// the pool, top-to-bottom.
+    private var sheetAssignments: [SheetWave] {
+        guard let setId = workoutSets[safe: viewModel.previewSetIndex]?.id else {
+            return []
+        }
+        let forSet = viewModel.waveAssignments.filter { $0.workoutSetId == setId }
+        let sendOffIntervalMs = viewModel.poolConfig.sendOffIntervalMs
+        let grouped = Dictionary(grouping: forSet) { $0.waveNumber }
+        let sortedWaves = grouped.keys.sorted()
+        return sortedWaves.map { waveNum in
+            // Within a wave, sort by lane ascending (left to right
+            // matches how the coach reads the lineup); tie-break
+            // by positionInLane to keep the order deterministic
+            // when lane indices collide (synthesized rows from V0.51).
+            let lanes = (grouped[waveNum] ?? []).sorted { lhs, rhs in
+                if lhs.lane != rhs.lane { return lhs.lane < rhs.lane }
+                return lhs.positionInLane < rhs.positionInLane
+            }
+            return SheetWave(
+                waveNumber: waveNum,
+                sendOffOffsetMs: waveNum * sendOffIntervalMs,
+                sendOffIntervalMs: sendOffIntervalMs,
+                lanes: lanes.map { assignment in
+                    SheetLane(
+                        lane: assignment.lane,
+                        swimmerName: name(for: assignment),
+                        predictedMs: assignment.predictedTouchMs
+                    )
+                }
+            )
+        }
+    }
+
+    private func name(for assignment: WaveAssignment) -> String {
+        guard let uuid = UUID(uuidString: assignment.swimmerId) else {
+            return assignment.swimmerId
+        }
+        return swimmerNames[uuid] ?? assignment.swimmerId
+    }
+
+    /// Set description for the sheet header. Mirrors the
+    /// `setSelector` formatting in the editor so the coach sees
+    /// the same wording regardless of mode.
+    private var currentSetLabel: String {
+        guard let currentSet = workoutSets[safe: viewModel.previewSetIndex] else {
+            return ""
+        }
+        let reps = currentSet.reps ?? 0
+        let distance = currentSet.distance ?? 0
+        let stroke = currentSet.stroke ?? ""
+        return "\(reps) × \(distance)m \(stroke)"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // V0.52 Slice 1: the close-finish banner stays the
+            // primary tap-to-adjust entry point. Render it FIRST
+            // when collisions exist so the coach sees the warning
+            // + the lineup in one read.
+            if !waveCollisions.isEmpty {
+                closeFinishBanner
+            }
+            sheetScroll
+            // V0.52 Slice 1: secondary affordance + start CTA.
+            // The "same squad" chip (Slice 3) sits adjacent to the
+            // start button; Slice 1 renders a placeholder so the
+            // layout is stable.
+            sameSquadChip
+            startButton
+        }
+    }
+
+    /// Scrollable read-only list of waves. Sends off in numeric
+    /// order. Lines wrap with a 2-column layout adapted to width
+    /// (text shows "L1 Name ~30.5s").
+    private var sheetScroll: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if sheetAssignments.isEmpty {
+                    // Cold-start / no allocations yet — show the
+                    // current set label + a quiet spinner so the
+                    // coach doesn't think the sheet is broken.
+                    HStack {
+                        Spacer()
+                        if viewModel.isLoading {
+                            ProgressView().tint(Color.textPrimary)
+                        } else {
+                            Text(currentSetLabel)
+                                .font(.caption)
+                                .foregroundColor(Color.textMuted)
+                        }
+                        Spacer()
+                    }
+                    .padding(.top, 32)
+                } else {
+                    ForEach(sheetAssignments) { wave in
+                        sheetWaveBlock(wave)
+                    }
+                }
+                // V0.52 Slice 1: quiet "Adjust" affordance. Lives
+                // BELOW the read-only sheet (not above) so it
+                // doesn't compete with the START CTA — the spec
+                // calls for "a quiet 'Adjust' affordance".
+                adjustLink
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+        }
+    }
+
+    private func sheetWaveBlock(_ wave: SheetWave) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Wave header — eyebrow + send-off chip. "Wave 1 — on
+            // the zero" / "Wave 2 — +10s" reads aloud exactly like
+            // a 20-year coach would say it.
+            HStack(spacing: 8) {
+                Text("WAVE \(wave.waveNumber + 1)")
+                    .font(.eyebrow)
+                    .tracking(1.0)
+                    .foregroundColor(Color.textFaint)
+                Text("—")
+                    .font(.eyebrow)
+                    .foregroundColor(Color.textFaint)
+                Text(wave.sendOffLabel)
+                    .font(.eyebrow)
+                    .tracking(0.8)
+                    .foregroundColor(Color.textMuted)
+                Spacer()
+            }
+            // 2-column lane grid. Falls through to a single
+            // column on narrow widths via `LazyVGrid` with
+            // `adaptive` columns.
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 150), spacing: 6)],
+                alignment: .leading,
+                spacing: 6
+            ) {
+                ForEach(wave.lanes) { line in
+                    HStack(spacing: 6) {
+                        Text("L\(line.lane)")
+                            .font(.numericSmall)
+                            .foregroundColor(Color.textFaint)
+                        Text(line.swimmerName)
+                            .font(.bodyEmphasis)
+                            .foregroundColor(Color.textPrimary)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(line.predictedLabel)
+                            .font(.numeric)
+                            .foregroundColor(Color.textMuted)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.bgDeep)
+                    .cornerRadius(8)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.bgRaised)
+        .cornerRadius(12)
+    }
+
+    /// Quiet "Adjust" link. Lives at the BOTTOM of the sheet (not
+    /// in the header) so it never competes with the START CTA.
+    /// Per spec: "an explicit quiet 'Adjust' affordance — never
+    /// forced in the green path."
+    private var adjustLink: some View {
+        HStack {
+            Spacer()
+            Button(action: onAdjustTapped) {
+                Text("Adjust waves & lanes")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+            }
+            Spacer()
+        }
+        .padding(.top, 4)
+    }
+
+    /// Per-wave close-finish banner (V0.52 Slice 1). Reuses the
+    /// parent's WavePreviewView.closeFinishBanner by being
+    /// identical in copy + tap target. The parent
+    /// WavePreviewView already wires the tap → onAdjustTapped,
+    /// so this view does NOT need its own gesture — when the
+    /// parent's banner is shown (because `waveCollisions` is
+    /// non-empty), tapping it opens the editor. To keep the
+    /// single source of truth, the sheet view embeds a banner
+    /// that mirrors the parent's logic.
+    private var closeFinishBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.eyebrow)
+                    .foregroundColor(Color.accentAmber)
+                Text("CLOSE FINISHES — coach can't LAP < 0.5s")
+                    .font(.eyebrow)
+                    .tracking(0.8)
+                    .foregroundColor(Color.accentAmber)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.captionStrong)
+                    .foregroundColor(Color.accentAmber)
+            }
+            ForEach(waveCollisions.keys.sorted(), id: \.self) { wave in
+                if let pairs = waveCollisions[wave] {
+                    HStack(spacing: 6) {
+                        Text("Wave \(wave + 1)")
+                            .font(.captionStrong)
+                            .foregroundColor(Color.textPrimary)
+                        Text("·")
+                            .foregroundColor(Color.textFaint)
+                        Text(pairs.map { "Lane \($0.laneA) ↔ Lane \($0.laneB) (gap \($0.gapMs)ms)" }
+                            .joined(separator: "  •  "))
+                            .font(.caption)
+                            .foregroundColor(Color.textMuted)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            Text("tap to adjust")
+                .font(.caption)
+                .foregroundColor(Color.textMuted)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentAmber.opacity(0.15))
+        .cornerRadius(8)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .contentShape(Rectangle())
+        .onTapGesture { onAdjustTapped() }
+    }
+
+    /// V0.52 Slice 3 placeholder: "same squad" chip. Slice 1
+    /// renders a quiet informational chip showing the current
+    /// roster size + the chip stroke. Slice 3 wires the tap
+    /// gesture to the Edit Attendees sheet via the
+    /// `onSameSquadTapped` closure. Always renders so the
+    /// layout is stable across slices.
+    private var sameSquadChip: some View {
+        HStack {
+            Spacer()
+            if let onTap = onSameSquadTapped {
+                Button(action: onTap) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.2.fill")
+                            .font(.captionStrong)
+                        Text("Same squad (\(viewModel.selectedSwimmerIds.count))")
+                            .font(.captionStrong)
+                        Image(systemName: "chevron.right")
+                            .font(.captionStrong)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.bgDeep)
+                    .foregroundColor(Color.textPrimary)
+                    .cornerRadius(8)
+                }
+            } else {
+                // V0.52 Slice 1: chip is present but inert. Shows
+                // the squad size so the coach sees who's in, but
+                // doesn't open anything. Slice 3 wires the gesture.
+                HStack(spacing: 6) {
+                    Image(systemName: "person.2.fill")
+                        .font(.captionStrong)
+                    Text("\(viewModel.selectedSwimmerIds.count) swimmers")
+                        .font(.captionStrong)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.bgDeep)
+                .foregroundColor(Color.textMuted)
+                .cornerRadius(8)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+
+    /// Primary CTA — "Start Session". Matches the existing
+    /// editor mode's start button styling (accent fill, full
+    /// width). One tap → `viewModel.startSession()` → write
+    /// wave_assignments → dismiss → open TimingView.
+    private var startButton: some View {
+        Button {
+            onStartTapped()
+        } label: {
+            HStack {
+                if viewModel.isLoading {
+                    ProgressView()
+                        .tint(Color.textOnAccent)
+                        .padding(.trailing, 8)
+                }
+                Text("Start Session")
+                    .font(.titleSmall)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(Color.accentAction)
+            .foregroundColor(Color.textOnAccent)
+            .cornerRadius(12)
+        }
+        .disabled(viewModel.isLoading)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+    }
+}
+
+/// V0.52 Slice 1: one wave's read-only presentation. waveNumber is
+/// 0-indexed to match the WaveAllocator output (so the display
+/// label is `waveNumber + 1`). sendOffOffsetMs is the absolute
+/// offset from session start; the label converts it to "+10s" /
+/// "+20s" / "on the zero".
+struct SheetWave: Identifiable {
+    let waveNumber: Int
+    let sendOffOffsetMs: Int
+    let sendOffIntervalMs: Int
+    let lanes: [SheetLane]
+
+    var id: Int { waveNumber }
+
+    /// Pool-deck wording: wave 0 = "on the zero", wave 1 = "+10s",
+    /// wave 2 = "+20s", etc. Matches the spec's example layout.
+    var sendOffLabel: String {
+        if sendOffOffsetMs <= 0 { return "on the zero" }
+        let seconds = sendOffOffsetMs / 1000
+        return "+\(seconds)s"
+    }
+}
+
+/// V0.52 Slice 1: one swimmer's lane line. predictedMs carries the
+/// absolute predicted touch from session start (matches
+/// `WaveAssignment.predictedTouchMs`); the label formats as ~M:SS.s
+/// for sub-minute and ~SS.S for the rest.
+struct SheetLane: Identifiable {
+    let lane: Int
+    let swimmerName: String
+    let predictedMs: Int
+
+    var id: Int { lane }
+
+    /// Pool-deck formatted predicted time. Sub-minute reads as
+    /// `~M:SS.s` (e.g. `~0:30.5`), the rest as `~SS.S` (e.g.
+    /// `~92.4s`). The "~" prefix marks the value as predicted so
+    /// the coach never confuses it with a recorded time.
+    var predictedLabel: String {
+        guard predictedMs > 0 else { return "—" }
+        let seconds = Double(predictedMs) / 1000.0
+        if seconds < 60 {
+            let mins = Int(seconds) / 60
+            let rest = seconds - Double(mins * 60)
+            return String(format: "~%d:%04.1f", mins, rest)
+        }
+        return String(format: "~%.1fs", seconds)
     }
 }
 

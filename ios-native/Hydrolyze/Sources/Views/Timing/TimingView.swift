@@ -402,6 +402,17 @@ struct TimingView: View {
             SwimmerPickerSheet(selectedId: $viewModel.selectedSwimmerId, selectedName: $viewModel.selectedSwimmerName)
         }
         .onAppear {
+            // V0.51 (2026-08-30): seed currentRoster from the init
+            // param synchronously here so the loadSessionContext
+            // call below sees the correct count (the .task at
+            // line ~283 fires asynchronously and may not have
+            // populated currentRoster before this onAppear runs).
+            // The .task block still runs as a fallback for any
+            // post-init roster mutation (e.g. Edit Attendees).
+            if currentRoster.isEmpty {
+                currentRoster = roster ?? []
+            }
+
             // Carry the sessionId into the VM so `stop()` can auto-save
             // for multi-swimmer sessions. nil for single-swimmer (prefill)
             // flows — `stop()` will leave the .finished view visible in
@@ -433,8 +444,20 @@ struct TimingView: View {
                 if let prefill = prefill, let fragments = prefill.fragmentContexts {
                     viewModel.fragmentContexts = fragments
                 }
+                // V0.51 (2026-08-30): pass the roster count so
+                // loadSessionContext can apply the §b solo-roster
+                // fallback when wave_assignments is empty (the
+                // skip-the-picker regression). Skip-the-picker
+                // launches set currentRoster from the snapshot;
+                // picker launches pass empty (the picker itself
+                // resolves the roster server-side via
+                // SessionStartViewModel.lockRoster).
+                let rosterCount = currentRoster.isEmpty ? nil : currentRoster.count
+                let soloSwimmerId = (currentRoster.count == 1) ? currentRoster.first?.swimmerId : nil
+                viewModel.currentRosterCount = rosterCount
+                viewModel.currentSoloSwimmerId = soloSwimmerId
                 Task {
-                    await viewModel.loadSessionContext(sessionId: sid)
+                    await viewModel.loadSessionContext(sessionId: sid, rosterCount: rosterCount)
                 }
             } else if let prefill = prefill {
                 viewModel.stroke = prefill.stroke

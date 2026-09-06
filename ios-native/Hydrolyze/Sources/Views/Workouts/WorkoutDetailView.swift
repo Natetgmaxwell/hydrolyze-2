@@ -8,7 +8,7 @@ final class WorkoutDetailViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var showDeleteConfirmation: Bool = false
 
-    private let workoutService = WorkoutService()
+    let workoutService = WorkoutService()
 
     /// V0.49 Slice 1 (2026-08-22): cached snapshot of the most-recent
     /// session roster for this workout, populated once in `.task` and
@@ -658,8 +658,9 @@ struct WorkoutDetailView: View {
                 // keyed by session id resolves pairing on the timing
                 // side without a second picker round-trip).
                 if let roster = viewModel.latestRosterSnapshot {
+                    let sessionId = roster.sessionId
                     activeSession = ActiveSession(
-                        id: roster.sessionId,
+                        id: sessionId,
                         workoutSetId: set.id,
                         // V0.49 Slice 2 (2026-08-22): populate
                         // the timing roster strip from the snapshot.
@@ -673,6 +674,18 @@ struct WorkoutDetailView: View {
                             )
                         }
                     )
+                    // V0.51 (2026-08-30): synthesize wave_assignments
+                    // for this (session, set) pair on first launch so
+                    // loadSessionContext + save() see the rows they need.
+                    // Idempotent (check-then-upsert) — safe on re-tap.
+                    Task {
+                        await viewModel.workoutService.synthesizeWaveAssignmentsIfMissing(
+                            sessionId: sessionId,
+                            workoutSetId: set.id,
+                            rosterEntries: roster.entries,
+                            coachId: authManager.coachId
+                        )
+                    }
                 } else {
                     pendingSessionId = UUID().uuidString
                     showSessionStart = true
@@ -874,8 +887,9 @@ struct WorkoutDetailView: View {
         // rows for that session id drive pairing on the timing
         // side, so reusing the id is the entire mechanism.
         if let roster = viewModel.latestRosterSnapshot {
+            let sessionId = roster.sessionId
             activeSession = ActiveSession(
-                id: roster.sessionId,
+                id: sessionId,
                 workoutSetId: parentSet?.id ?? "",
                 // V0.49 Slice 2 (2026-08-22): populate the
                 // strip from the cached snapshot. nil → strip
@@ -888,6 +902,18 @@ struct WorkoutDetailView: View {
                     )
                 }
             )
+            // V0.51 (2026-08-30): see setRow skip branch. Same
+            // idempotent upsert for the fragment path. `workoutSetId`
+            // is the parent set's id (composite fragments still key
+            // pairing on the parent set per V0.50 spec).
+            Task {
+                await viewModel.workoutService.synthesizeWaveAssignmentsIfMissing(
+                    sessionId: sessionId,
+                    workoutSetId: parentSet?.id ?? "",
+                    rosterEntries: roster.entries,
+                    coachId: authManager.coachId
+                )
+            }
         } else {
             // Fallback path: today's flow. The session id is fresh
             // because no roster exists yet for this workout — the

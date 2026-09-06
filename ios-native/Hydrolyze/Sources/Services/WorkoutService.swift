@@ -224,6 +224,109 @@ final class WorkoutService {
         return SessionRosterSnapshot(sessionId: session.id, entries: entries)
     }
 
+    /// V0.51 (2026-08-30): synthesize wave_assignments rows for the
+    /// skip-the-picker flow when the cached roster snapshot points
+    /// at a session with 0 wave_assignments rows. The V0.49 S1
+    /// skip-the-picker path reused `latestRosterSnapshot.sessionId`
+    /// without writing the wave_assignments that
+    /// `loadSessionContext(sessionId:)` and `save()` both rely on —
+    /// coach Nathan's stuck session `846f755e…` is the live
+    /// regression case (1 roster row, 0 wave_assignments, 0
+    /// recorded_times, manual STOP hard-failed).
+    ///
+    /// Idempotency: a single SELECT counts existing rows for
+    /// `(session_id, workout_set_id)`; non-zero → no upsert (re-entry
+    /// safety). Otherwise upsert one row per roster entry with
+    /// `onConflict: session_id,swimmer_id,workout_set_id`. The
+    /// synthesized `predicted_touch_ms` is a sane 150-free estimate
+    /// (150 000 ms) when the swimmer has no PB — overwritten by
+    /// PBService on the next picker round-trip, never a persistent
+    /// damage.
+    ///
+    /// Fail-open: any thrown error logs and returns — the skip
+    /// path's caller then opens TimingView with the same broken
+    /// state as today, but the next launch retries (V0.51 spec §d
+    /// accepts this; the orphan back-fill is the durable fix).
+    func synthesizeWaveAssignmentsIfMissing(
+        sessionId: String,
+        workoutSetId: String,
+        rosterEntries: [SessionRosterSnapshot.Entry],
+        coachId: String?
+    ) async {
+        guard !rosterEntries.isEmpty else { return }
+        do {
+            // Idempotency gate: any existing row for this (session, set)
+            // means the pairing engine can already see the data.
+            struct CountRow: Decodable { let id: String }
+            let existing = try await supabase.from("wave_assignments")
+                .select("id")
+                .eq("session_id", value: sessionId)
+                .eq("workout_set_id", value: workoutSetId)
+                .limit(1)
+                .execute()
+            let existingRows = try JSONDecoder().decode([CountRow].self, from: existing.data)
+            if !existingRows.isEmpty {
+                return
+            }
+
+            // Synthesize one row per roster entry. lane=1,
+            // position_in_lane=entry's snapshot value (nil-safe
+            // fallback to 1 — the snapshot may omit it for older
+            // sessions). wave_number=1, send_off_offset_ms=0.
+            struct SynthRow: Encodable {
+                let id: String
+                let sessionId: String
+                let swimmerId: String
+                let workoutSetId: String
+                let lane: Int
+                let positionInLane: Int
+                let predictedTouchMs: Int
+                let waveNumber: Int
+                let sendOffOffsetMs: Int
+                let coachId: String
+                let createdAt: String
+
+                enum CodingKeys: String, CodingKey {
+                    case id
+                    case sessionId = "session_id"
+                    case swimmerId = "swimmer_id"
+                    case workoutSetId = "workout_set_id"
+                    case lane
+                    case positionInLane = "position_in_lane"
+                    case predictedTouchMs = "predicted_touch_ms"
+                    case waveNumber = "wave_number"
+                    case sendOffOffsetMs = "send_off_offset_ms"
+                    case coachId = "coach_id"
+                    case createdAt = "created_at"
+                }
+            }
+            let isoNow = ISO8601DateFormatter().string(from: Date())
+            let resolvedCoachId = coachId ?? ""
+            let payload = rosterEntries.enumerated().map { (idx, entry) -> SynthRow in
+                SynthRow(
+                    id: UUID().uuidString,
+                    sessionId: sessionId,
+                    swimmerId: entry.swimmerId,
+                    workoutSetId: workoutSetId,
+                    lane: 1,
+                    positionInLane: entry.positionInLane ?? (idx + 1),
+                    predictedTouchMs: 150000,  // 150 free — coarse placeholder
+                    waveNumber: 1,
+                    sendOffOffsetMs: 0,
+                    coachId: resolvedCoachId,
+                    createdAt: isoNow
+                )
+            }
+
+            try await supabase.from("wave_assignments")
+                .upsert(payload)
+                .execute()
+        } catch {
+            print("[WorkoutService] synthesizeWaveAssignmentsIfMissing failed (skip-path continues): \(error.localizedDescription)")
+        }
+    }
+
+
     /// Fetch all sets for a workout.
     func fetchWorkoutSets(workoutId: String) async throws -> [WorkoutSet] {
         let response = try await supabase.from("workout_sets")

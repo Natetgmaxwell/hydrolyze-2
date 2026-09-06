@@ -214,4 +214,82 @@ final class TimingService {
             .insert(rows)
             .execute()
     }
+
+    /// V0.51 (2026-08-30) §c: save a solo-swimmer skip-the-picker
+    /// session as a paired-path row. The V0.49 S1 skip-the-picker
+    /// regression reuses a session id without writing
+    /// wave_assignments when the cached roster is stale; the
+    /// solo-roster fallback in TimingViewModel.save() calls this
+    /// helper to write each lap with `paired_swimmer_id = the solo
+    /// swimmer` (the chip-renderer join key per V0.48). Mirrors
+    /// `savePairedLaps` row shape with assignments collapsed to one
+    /// row per lap, all pointing at the same solo swimmer.
+    /// Idempotent caller-side (the VM gates on `currentRosterCount
+    /// == 1 && waveAssignments.isEmpty` before routing here).
+    func saveSoloPairedLaps(
+        sessionId: String,
+        swimmerId: String,
+        stroke: String,
+        distance: Int,
+        intensity: String,
+        gear: String?,
+        coachId: String?,
+        laps: [Lap],
+        fragment: FragmentContext?,
+        workoutSetId: String?
+    ) async throws {
+        struct SoloLapRow: Encodable {
+            let id: String
+            let session_id: String
+            let swimmer_id: String?       // nil until confirmed
+            let paired_swimmer_id: String  // solo swimmer — chip join key
+            let workout_set_id: String?
+            let time_ms: Int
+            let rep_index: Int
+            let intensity: String
+            let stroke: String
+            let pace_distance: Int?
+            let coach_id: String?
+            let gear: String?
+            let created_at: String
+            let confidence: Int
+            let assignment_confidence: Double
+            let lap_order: Int
+            let wave_number: Int
+            let fragment_id: String?
+            let distance_meters: Int?
+            let start_type: String?
+        }
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let rows = laps.map { lap in
+            SoloLapRow(
+                id: UUID().uuidString,
+                session_id: sessionId,
+                swimmer_id: nil,
+                paired_swimmer_id: swimmerId,
+                workout_set_id: workoutSetId,
+                time_ms: lap.elapsedMs,
+                rep_index: lap.lapNumber - 1,
+                intensity: intensity,
+                stroke: stroke,
+                pace_distance: distance,
+                coach_id: coachId,
+                gear: gear,
+                created_at: timestamp,
+                confidence: 100,
+                assignment_confidence: 1.0,
+                lap_order: lap.lapNumber,
+                wave_number: 1,
+                fragment_id: fragment?.fragmentId,
+                distance_meters: fragment?.distance,
+                start_type: fragment?.startType
+            )
+        }
+        guard !rows.isEmpty else { return }
+        try await supabase.from("recorded_times")
+            .insert(rows)
+            .execute()
+    }
 }
+
+

@@ -175,6 +175,11 @@ final class TimingViewModel: ObservableObject {
         return "\(swimmerId)|\(fragment.pairingKey)"
     }
     @Published var expectedLapCount: Int? // Auto-stop threshold
+    // V0.51 (2026-08-30): roster snapshot size threaded in from
+    // TimingView (the strip param). Drives the §b `loadSessionContext`
+    // fallback + the §c `save()` solo-swimmer paired path.
+    @Published var currentRosterCount: Int? = nil
+    @Published var currentSoloSwimmerId: String? = nil
 
     /// V0.38 Slice 4 (2026-08-16): true when the active set is a
     /// 3-minute all-out test (Piatrikova). Gates the timing-screen
@@ -1178,6 +1183,45 @@ final class TimingViewModel: ObservableObject {
                 // after the workoutSetId filter).
                 lastWaveAssignmentCount = waveAssignments.count
                 log("filtered to \(waveAssignments.count) wave_assignments for current set \(currentSetId.prefix(8))…)")
+                // V0.51 (2026-08-30) §c: solo-roster soft fallback.
+                // A solo swimmer's skip-the-picker session can land
+                // here with zero wave_assignments (orphan back-fill
+                // not yet run, or synthesizeWaveAssignmentsIfMissing
+                // failed). Pairing is meaningless with 1 swimmer —
+                // route to the single-swimmer paired branch (same
+                // chip-renderer join shape, `paired_swimmer_id =
+                // the solo swimmer`). Multi-swimmer + empty
+                // wave_assignments stays a hard error: that's real
+                // misconfiguration, not a skip-path side-effect.
+                let isSoloRosterFallback = waveAssignments.isEmpty
+                    && (self.currentRosterCount == 1)
+                    && (self.currentSoloSwimmerId != nil)
+                if isSoloRosterFallback, let soloSwimmerId = self.currentSoloSwimmerId {
+                    log("save() solo-roster fallback: routing 1-swimmer session to paired path (session=\(sid.prefix(8))…)")
+                    do {
+                        try await self.timingService.saveSoloPairedLaps(
+                            sessionId: sid,
+                            swimmerId: soloSwimmerId,
+                            stroke: self.stroke,
+                            distance: self.distance,
+                            intensity: self.intensityLabel ?? "race",
+                            gear: self.gear?.joined(separator: ","),
+                            coachId: self.coachId,
+                            laps: self.laps,
+                            fragment: self.fragmentContexts.first,
+                            workoutSetId: currentSetId
+                        )
+                        await MainActor.run {
+                            self.hasSavedPairedLaps = true
+                        }
+                        return  // success — bypass the multi-swimmer guard
+                    } catch {
+                        log("save() solo-roster fallback FAILED: \(error.localizedDescription) — surfacing as misconfigured")
+                        errorMessage = "Couldn't save solo session: \(error.localizedDescription)"
+                        state = .finished
+                        return
+                    }
+                }
                 guard !waveAssignments.isEmpty else {
                     log("save() FAILED: no wave_assignments for current set — session may be misconfigured")
                     errorMessage = "No wave assignments for this set. Did the session start correctly? Tap RETRY."
@@ -1636,7 +1680,12 @@ final class TimingViewModel: ObservableObject {
     /// (N_swimmers × N_sets), so a 4-swimmer × 2-set session gave expectedLapCount = 8
     /// and the auto-stop never fired on the first set. Now counts distinct swimmer_ids
     /// — the per-set expected lap count, regardless of how many sets are in the session.
-    func loadSessionContext(sessionId: String) async {
+    /// V0.51 (2026-08-30): `rosterCount` is the size of the
+    /// `latestRosterSnapshot.entries` that drove the skip-the-picker
+    /// launch. Used to compute the auto-stop fallback when the
+    /// skip path leaves `wave_assignments` empty (the V0.49 S1
+    /// regression — see V0.51_SPEC §b).
+    func loadSessionContext(sessionId: String, rosterCount: Int? = nil) async {
         do {
             let supabase = SupabaseService.shared.client
             let response = try await supabase.from("wave_assignments")
@@ -1656,7 +1705,33 @@ final class TimingViewModel: ObservableObject {
                 let count = uniqueSwimmerIds.count
                 if count > 0 {
                     await MainActor.run {
-                        self.expectedLapCount = count
+                        // V0.51 §b: max(wave_count, reps) so the auto-stop
+                        // gate matches the real work. A 4×100 with 1 wave
+                        // row still needs 4 laps per swimmer (16 total)
+                        // — but `expectedLapCount` is the per-swimmer
+                        // heuristic here, and `count` (unique swimmers)
+                        // underestimates for solo-roster skip paths that
+                        // only just wrote 1 wave row. Take max(unique,
+                        // reps) when reps > 0 — the swimmer's reps is
+                        // the minimum work they owe regardless of how
+                        // many waves the session has.
+                        let reps = self.reps ?? 0
+                        let fallback = (reps > 0) ? max(count, reps) : count
+                        self.expectedLapCount = fallback
+                    }
+                } else if let rosterCount, rosterCount == 1,
+                          let reps = self.reps, reps > 0 {
+                    // V0.51 §b: solo-roster + empty wave_assignments
+                    // (the skip-the-picker regression). Use reps as
+                    // the per-swimmer expected lap count — the swimmer
+                    // owes exactly `reps` laps and there's nothing to
+                    // pair. Defended: a multi-swimmer roster with empty
+                    // wave_assignments keeps `nil` (the current
+                    // behaviour), because that case is genuinely
+                    // misconfigured (a 4-roster set with 0 wave rows
+                    // needs pairing, not auto-stop at reps).
+                    await MainActor.run {
+                        self.expectedLapCount = reps
                     }
                 }
             }
