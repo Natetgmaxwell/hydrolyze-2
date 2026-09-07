@@ -14,6 +14,7 @@ import {
   PROGRESSION_TERMS as PROGRESSION_LABELS,
   PROGRESSION_SURFACE_FORMS,
   TIER2_ABBREVIATION_EXCLUSIONS,
+  TIER2_LLM_OVER_EMIT_EXCLUSIONS,
 } from "./_dialect-terms.ts";
 
 export interface CoachVocabularyEntry {
@@ -66,6 +67,12 @@ export const DEFAULT_RPE_BY_TERM: Readonly<Record<string, { low: number; high: n
   "threshold": { low: 8, high: 9 },
   // Race pace zone — industry term
   "race pace": { low: 8, high: 9 },
+  // V0.52 (2026-09-08): `race rhythm` resolves via rule 6 to
+  // race_pace. Without this entry the engine-side detector thinks
+  // `race rhythm` is a Tier-1 ask (it's in TIER1_TERMS) when the LLM
+  // emits it as `race rhythm` in unmapped_terms. Add it to the
+  // silent set so the dedup catches it.
+  "race rhythm": { low: 8, high: 9 },
   // Sprint — pure-sprint effort, no coach variance
   "sprint": { low: 9, high: 10 },
   "blast": { low: 9, high: 10 },
@@ -111,6 +118,7 @@ export const _PROGRESSION_LABEL_SET: ReadonlySet<string> = PROGRESSION_LABELS;
 export function extractUnmappedTerms(
   workoutText: string,
   vocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
+  parsed?: { sections?: ReadonlyArray<{ namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }> }> } | null,
 ): string[] {
   const lower = workoutText.toLowerCase();
   const mapped = new Set(
@@ -143,10 +151,107 @@ export function extractUnmappedTerms(
   // progression, the context block carries the RPE, the LLM uses it,
   // and the term is NOT in unmapped_terms — that's the never-ask-twice
   // invariant.
+  //
+  // V0.52.1 (2026-09-08): also skip when the parsed response ALREADY
+  // carries the progression type on a parent repGroup or fragment.
+  // The "Purposeful Threshold" audit surfaced `descend` in
+  // unmapped_terms even though every fragment had
+  // `intensity.type="descend"` — the term was already honored, the
+  // surface was just leaking through.
   for (const [re, label] of PROGRESSION_TERMS) {
     if (mapped.has(label)) continue;
-    if (re.test(scrubbed)) hits.add(label);
+    if (!re.test(scrubbed)) continue;
+    if (parsed && (label === "descend" || label === "build" || label === "progressive")) {
+      let honored = false;
+      for (const sec of parsed.sections ?? []) {
+        for (const ns of sec.namedSets ?? []) {
+          for (const rg of ns.repGroups ?? []) {
+            if (rg.intensity?.type === label) { honored = true; break; }
+            for (const f of rg.fragments ?? []) {
+              if (f.intensity?.type === label) { honored = true; break; }
+            }
+            if (honored) break;
+          }
+          if (honored) break;
+        }
+        if (honored) break;
+      }
+      if (honored) continue;
+    }
+    hits.add(label);
   }
 
   return [...hits];
+}
+
+// V0.52 (2026-09-08): second-pass scrub against the LLM's
+// reported unmapped_terms. The LLM sometimes over-emits
+// descriptive/kinematic words that look like Tier-1 but aren't
+// (breakout, genuine, velocity, etc.). Run AFTER
+// extractUnmappedTerms so we catch whatever the LLM reported
+// even when our own detector wouldn't have surfaced it.
+//
+// Pass in the raw `unmapped_terms` from the LLM response; returns
+// the cleaned list (Tier-1 + progressions that survived). Dedup
+// preserved.
+//
+// V0.52.1 (2026-09-08) — context-aware scrub: when the LLM emits a
+// progression term (descend/build/progressive) but the parsed response
+// already carries the matching intensity.type on a parent repGroup
+// OR fragment, drop it. The "Purposeful Threshold" audit surfaced
+// `descend` in unmapped_terms even though every fragment already
+// carried `intensity.type="descend"` — the LLM failed to suppress
+// the term in unmapped despite honoring it on the fragments. The
+// engine-side pass closes this gap regardless of what the LLM emits.
+export function scrubUnmappedTerms(
+  terms: ReadonlyArray<string>,
+  parsed?: { sections?: ReadonlyArray<{ namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }> }> } | null,
+): string[] {
+  if (!Array.isArray(terms)) return [];
+  const out = new Set<string>();
+  for (const raw of terms) {
+    const t = String(raw).toLowerCase().trim();
+    if (t.length === 0) continue;
+    // Reject multi-word phrases (any whitespace inside = reject).
+    if (/\s/.test(t)) continue;
+    let keep = true;
+    // V0.52 (2026-09-08): apply BOTH exclusion sets. The
+    // LLM-over-emit list catches descriptive words the LLM
+    // emits. The abbreviation list catches zone codes /
+    // shorthand / efficiency cues that the engine-side
+    // detector would have scrubbed from the workout text but
+    // the LLM still echoes back as unmapped_terms.
+    for (const re of TIER2_LLM_OVER_EMIT_EXCLUSIONS) {
+      if (re.test(t)) { keep = false; break; }
+    }
+    if (keep) {
+      for (const re of TIER2_ABBREVIATION_EXCLUSIONS) {
+        if (re.test(t)) { keep = false; break; }
+      }
+    }
+    // V0.52.1 (2026-09-08): context-aware progression suppression.
+    // If the LLM emits `descend`/`build`/`progressive` as an unmapped
+    // term AND the parsed response already carries that progression
+    // type on a parent repGroup OR on any fragment, the engine has
+    // honored it — drop the term from unmapped_terms.
+    if (keep && parsed && (t === "descend" || t === "build" || t === "progressive")) {
+      let honored = false;
+      for (const sec of parsed.sections ?? []) {
+        for (const ns of sec.namedSets ?? []) {
+          for (const rg of ns.repGroups ?? []) {
+            if (rg.intensity?.type === t) { honored = true; break; }
+            for (const f of rg.fragments ?? []) {
+              if (f.intensity?.type === t) { honored = true; break; }
+            }
+            if (honored) break;
+          }
+          if (honored) break;
+        }
+        if (honored) break;
+      }
+      if (honored) keep = false;
+    }
+    if (keep) out.add(t);
+  }
+  return [...out];
 }

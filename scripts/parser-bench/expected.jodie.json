@@ -1247,5 +1247,152 @@
       "progressive"
     ],
     "expectedSectionCountMin": 2
+  },
+  "commit-jodie-09-purposethreshold.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 4,
+        "distance": 150,
+        "interval": "2:20–2:30",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "percent_range"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "percent_range"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "percent_range"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": "1:35–1:40",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": "Drill",
+            "expectsIntensity": false
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "descend"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "descend"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "descend"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "descend"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 25,
+        "interval": ":40",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 13,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 13,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "race_pace"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      }
+    ],
+    "expectedUnmappedTerms": [],
+    "expectedSectionCountMin": 2
   }
 }

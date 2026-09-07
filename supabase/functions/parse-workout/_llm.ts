@@ -22,6 +22,13 @@
 const MINIMAX_URL = "https://api.minimax.io/v1/text/chatcompletion_v2";
 const MINIMAX_MODEL = Deno.env.get("MINIMAX_MODEL") || "MiniMax-M3";
 
+// V0.52 (2026-09-08): the engine-side unmapped-terms scrub helper lives
+// in `_dialect-detector.ts` (single source-of-truth alongside the
+// Tier-1 / DEFAULT_RPE_BY_TERM tables). Imported here so parseWithLLM
+// can run the LLM-reported unmapped_terms through the same scrub the
+// detector applies — keeps Tier-2 over-emits from leaking to iOS.
+import { extractUnmappedTerms, scrubUnmappedTerms } from "./_dialect-detector.ts";
+
 // ─── Types (output shape matches parseWorkoutV2's Workout) ─────────────────
 
 interface LLMFragment {
@@ -185,38 +192,55 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
    - **Per-fragment intensity completeness**: when a composite set's sub-segment text names an intensity word (e.g. "25 strong / 25 easy" or "15 m MAX + 35 m very easy" or "12.5 fast / 12.5 easy"), EVERY such fragment MUST carry its own intensity {type,label}. The validator does NOT silently backfill — your output is the pairing engine's signal. When a sub-segment's text contains no intensity word (e.g. "25 scull", "25 hold that rate", "25 perfect swimming", "300 settle", "50 tapping"), emit intensity: null.
    - **Per-fragment gear + start_type propagation**: gear and start_type apply to the SPECIFIC fragment whose text names them. When the text says "12.5 MAX Fly + easy" with an off-the-blocks context, the first fragment carries start_type "dive". When the parent's gear applies to all fragments ("4 × 50 with paddles: 25 strong + 25 easy"), emit gear on EVERY fragment. Otherwise (no gear/start on the segment) emit null.
 7. **Coach vocabulary (per-coach overrides)**: the system message at the top of this prompt carries a "COACH VOCABULARY" block listing this coach's own word→RPE mappings. For any term that appears in BOTH the workout text AND that block, use the block's RPE band literally — even when rule 6 above would have mapped it differently. For progressions (build/descend/desc/progressive) the block may use the form "start RPE N → end RPE M"; emit the fragment's intensity as { type: "build" or "descend", label: "start N → end M" }. For any term that appears in the workout text but is in NEITHER the COACH VOCABULARY block NOR the rule-6 general mapping, include its surface form in the response's unmapped_terms array — one entry per unique word (dedup, lowercased).
-   - **NEVER include in unmapped_terms**:
-     (a) zone codes: A1, A2, A3, Z1, Z2, Z3, Z4, Z5, EN1–3, SP1–3, MD1–3, IM1–3 (e.g. "200 A1 → 200 A2 → 200 strong A2" — A1/A2 are zone markers, not intensity words)
-     (b) training shorthand / abbreviations: `mod` (moderate), `fnt` (front), `dr` (drill), `pb` (pull buoy), `kbo` (kickboard)
-     (c) descriptive efficiency cues: `DPS` (distance per stroke), `BO` (breakout), `UW` (underwater), `LT` (lactate threshold — `threshold` itself is in DEFAULT_RPE and already silent), `SPS` (strokes per second)
-     (d) any word that resolves via the engine's DEFAULT_RPE_BY_TERM (easy, recovery, smooth, threshold, race pace, sprint, blast, max, fast, all-out, moderate, mod, strong, relaxed). These never ask — the engine already silently resolves them.
+   - **unmapped_terms is a STRICT single-word Tier-1 surface list — nothing else goes there.** Before emitting any word into unmapped_terms, run this exact checklist against the candidate word. If ANY of these is true, DO NOT emit it:
+     (1) Is it a single lowercase word? (Reject multi-word phrases like 'race rhythm', 'goal 200 pace', 'slightly faster than 200 pace', 'very easy', 'very relaxed', '200 rhythm' — these are constructions, not single words. If you find yourself wanting to emit a phrase, emit NOTHING for that phrase.)
+     (2) Is it one of these Tier-1 ONLY words: 'moderate', 'hard', 'steady', 'cruise', 'light', 'tough', 'maximal', 'race rhythm', 'faster than race pace'? (Anything outside this list of 9 words is NOT a Tier-1 word. Especially reject: acceleration, breakout, finish, finishing, genuine, max, velocity, turnover, controlled, shutdown, execution, order, rhythm, target, hold, settle, surge, pursuit, dog, fnt, dr, pb, kbo, dps, bo, uw, lt, sps, dps, mod, a1, a2, z1, z2, z3, z4, z5, en1, en2, en3, sp1, sp2, sp3, md1, md2, md3, im1, im2, im3, sub-1:10, very easy, very relaxed — NONE of these are Tier-1, NONE go in unmapped_terms.)
+     (3) Does the engine already resolve it via rule 6 or DEFAULT_RPE_BY_TERM? Reject if yes: easy, recovery, smooth, threshold, race pace, sprint, blast, max, fast, all-out, moderate, mod, strong, relaxed, build (progression path), descend (progression path), desc (progression path), progressive (progression path).
+     (4) Is it inside a section title (e.g. 'Activation set', 'Drill set', 'Aerobic finish', 'Race priming', 'Swim-down')? Reject — those are labels, not intensity words.
+     (5) Is it ONLY a sub-word of a phrase that rule 6 / rule 24 already resolves? Reject if yes: 'event' (part of 'event rhythm'), 'race' (part of 'race pace' / 'race rhythm'), 'pace' (part of '<NN> pace' / 'race pace'), 'rhythm' (part of 'event rhythm' / 'race rhythm'). When the phrase appears in the workout, the WHOLE phrase is the intensity; emit NOTHING into unmapped_terms for any sub-word.
+     (6) Is the word already honored as a set-level modifier on a parent repGroup? Reject if yes: 'descend' (when a repGroup's intensity.type is already 'descend', the parent already captures it — 'Descend: 1=70%, 2=75%...' is a per-rep ladder that the engine resolves via rule 22, not a Tier-1 ask). Same for 'build', 'progressive' when they appear as ladder headers.
    - **NEVER ask twice**: once the COACH VOCABULARY block carries an entry for a term, that term is resolved silently forever across re-parses. The iOS card asks once per coach, not once per workout.
-   - **NEVER emit unmapped_terms from a section title**: words like "Activation set", "Activation", "Drill set", "Aerobic finish", "Race priming", "Swim-down" are section labels — not intensity words. Do NOT surface them in unmapped_terms even if the bare word matches a Tier-1 regex.
 8. **Strokes**: free, back, breast, fly, IM, kick, drill, choice, pull. "uw" = underwater kick. "scull" = a drill. "drill/swim", "kick/swim", "scull/swim" = combo sets — stroke is the first (drill/kick/scull), the combo goes in the note. If multiple strokes, use the first mentioned.
 9. **Intervals**: Pass through exactly as written ("1.50", "1:30", ":40", "@ 30"). The validator normalizes.
 10. **Single swims**: "400 free" with no "x" is reps=1.
 11. **Section headers**: "Warm up", "Main Set", "Cool down" start new sections. Keep the full header as the title, including any em-dash distance ("Main set — 1,400m"). Append "(N rounds)" when the section has a round block.
 12. **Pattern shorthand (FBBF, FBF)**: F=Free, B=Back, K=Breast, R=Fly, I=IM, M=Medley. Set stroke to the FIRST letter, put the pattern in the note. "same as above" / "same" inherits the pattern.
-13. **Multi-swim lines**: A single line may contain multiple separate swims, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split on distance boundaries.
+13. **Multi-swim lines**: A single line may contain multiple separate swims concatenated without "x" or commas, like "400 kick for body/head position 100 free 100 back". These are THREE separate repGroups: (1) 400 kick, (2) 100 free, (3) 100 back. Split them on distance boundaries (a number followed by a stroke/keyword). **Equally important**: when CONSECUTIVE LINES under a parent section each look like a single swim (e.g. five lines — "50 easy", "25 scull", "25 Back", "25 sensory swimming", "25 long perfect swim." — five separate 1-rep sets, each its own rg), emit ONE repGroup per line. Do NOT collapse them into a single rg with reps=1, distance=50 and a long note. Each <distance> [stroke] [word...] on its own line is its own set. The "200-400 down-regulation" line is NOT a set — emit it as a section note, not as a zero-distance repGroup.
 14. **Start types**: "start or push", "push start", "from a dive", "off the blocks" describe the start. Keep in the note — the validator detects dive/push.
 15. **3-minute all-out test (3MT)**: when a set line contains "3MT", "3-MT", "3 MT", "3-min all-out", "3 min all out", "3-minute all-out", "3min all out", "3 min test", "3-minute test", or "3min test", emit a single repGroup with intensity { type: "3mt", label: "3-minute all-out" }, reps=1, distance=25 (the split distance the coach taps LAP at), and no interval — the 3:00 swim is continuous, not interval-based. Stroke parses from any remaining text (e.g. "3MT free" → Free); default is Free. The "3MT" marker wins over the generic "all-out" → sprint mapping. "all-out" alone is NOT a 3MT marker.
 16. **Composite fragment completeness (re-emphasis)**: when a set has 2+ fragments, EVERY fragment whose segment text names an intensity word carries its own intensity {type,label}. Do NOT collapse segments to a single shared intensity — the pairing engine keys on per-fragment intensity to predict per-swimmer pace targets. Examples that frequently get this wrong (verify each one):
     - "4 × 50 @ 1:00 — 25 strong / 25 easy" → fragments [{25, null→aerobic strong}, {25, easy}] — first fragment MUST carry intensity from "strong".
     - "12.5 power kick / 12.5 easy" → fragments [{12.5, intensity from "power"}, {12.5, easy}]. "power" is effortful-aerobic; map to {type:"aerobic", label:"power"}.
     - "25 strong / 25 easy" inside a kick set → fragments [{25, aerobic strong}, {25, easy}]. Don't drop the "strong".
-    - "25 mod / 25 tapping" (Jodie's shorthand) → fragments [{25, aerobic mod}, {25, null}]. "mod" is `moderate`, the engine silently maps.
+    - "25 mod / 25 tapping" (Jodie's shorthand) → fragments [{25, aerobic mod}, {25, null}]. 'mod' means 'moderate', the engine silently maps.
     - "50 surge / 50 settle" → fragments [{50, sprint (surge = sprint-class effort)}, {50, aerobic settle}].
 17. **Per-fragment gear + start_type propagation (re-emphasis)**: when a composite set's segments share a parent gear (e.g. "4 × 50 with paddles: 25 strong + 25 easy"), emit that gear on EVERY fragment. When a parent start_type applies ("4 × 50 Dive → 35 m race quality → shut down"), emit a single repGroup with dive=true; if instead the parent has 3 distinct sub-segments each with their own start ("15 m off blocks + 35 m from wall"), emit per-fragment start_type: [{15, dive}, {35, wall}]. Empty/unknown start on a segment → null, never inherit the parent's start_type.
-18. **Composite vs. per-rep-instruction boundary**: when a line under a set looks like `25 [word1] / 25 [word2] / 25 [word3]` (slash-separated sub-segments WITH a distance prefix on each segment), emit COMPOSITE fragments, NOT per-rep notes. The distinguishing signal is `N m + intensity/segment-word` patterns (e.g. `25 scull`, `25 build`, `25 DPS`, `25 perfect swimming`). Numbered list patterns (`1. fists / 2. catch-up`) are per-rep instructions and stay as notes. **The slash-separated distance-prefixed pattern is ALWAYS composite, regardless of whether the segments above are simple or compound words.** A common failure mode (Jodie 2026-09-08 audit): `4 × 100 / 25 scull / 25 DPS / 25 build / 25 easy` → must emit 4 fragments, not collapse to a single repGroup with the sub-list in `note`.
-19. **Multi-set summary lines**: lines that read like `400 [stroke] + 4 × 100 [stroke] + 4 × 50 [stroke]` (two or more rep-style expressions joined by `+` or `&`) are SECTION SUMMARIES — coaches use them as round totals. Do NOT emit a repGroup for them. Capture the line as a section-level note (or attach to the previous repGroup's note when the previous rg has the matching reps×distance). Examples: `400 swim + 4 × 100 pull + 4 × 50`, `100 easy + 4 × 50 strong`.
-20. **Inter-round / inter-rep directives**: lines like `Take [N] sec/min rest per rep`, `Take one additional minute between rounds`, `If athlete is flat → remove these`, `Then aerobic recovery.`, `Later in the macrocycle this session becomes...` are SET-LEVEL DIRECTIVES, not new sets. Preserve the text in the previous repGroup's `note` field or as a section note when no repGroup precedes. Do NOT create new repGroups from them.
-21. **Pace-target context disambiguation**: when a pace-target phrase is anchored to a distance qualifier (`faster than 800 pace`, `at 200 pace`, `400 pace`, `at 100m tempo`), the qualifier anchors the phrase to THAT race distance. Default `race_pace` (not sprint). Reserve `sprint` (and the `faster than race pace` Tier-1) for phrases with NO distance qualifier OR explicit `race pace` modifier. Examples:
+18. **Composite vs. per-rep-instruction boundary**: when a line under a set looks like '25 [word1] / 25 [word2] / 25 [word3]' (slash-separated sub-segments WITH a distance prefix on each segment), emit COMPOSITE fragments, NOT per-rep notes. The distinguishing signal is 'N m + intensity/segment-word' patterns (e.g. '25 scull', '25 build', '25 DPS', '25 perfect swimming'). Numbered list patterns ('1. fists / 2. catch-up') are per-rep instructions and stay as notes. **The slash-separated distance-prefixed pattern is ALWAYS composite, regardless of whether the segments above are simple or compound words.** A common failure mode (Jodie 2026-09-08 audit): '4 × 100 / 25 scull / 25 DPS / 25 build / 25 easy' → must emit 4 fragments, not collapse to a single repGroup with the sub-list in 'note'.
+19. **Multi-set summary lines**: lines that read like '400 [stroke] + 4 × 100 [stroke] + 4 × 50 [stroke]' (two or more rep-style expressions joined by '+' or '&') are SECTION SUMMARIES — coaches use them as round totals. Do NOT emit a repGroup for them. Capture the line as a section-level note (or attach to the previous repGroup's note when the previous rg has the matching reps×distance). Examples: '400 swim + 4 × 100 pull + 4 × 50', '100 easy + 4 × 50 strong'.
+20. **Inter-round / inter-rep directives**: lines like 'Take [N] sec/min rest per rep', 'Take one additional minute between rounds', 'If athlete is flat → remove these', 'Then aerobic recovery.', 'Later in the macrocycle this session becomes...' are SET-LEVEL DIRECTIVES, not new sets. Preserve the text in the previous repGroup's 'note' field or as a section note when no repGroup precedes. Do NOT create new repGroups from them.
+21. **Pace-target context disambiguation**: when a pace-target phrase is anchored to a distance qualifier ('faster than 800 pace', 'at 200 pace', '400 pace', 'at 100m tempo'), the qualifier anchors the phrase to THAT race distance. Default 'race_pace' (not sprint). Reserve 'sprint' (and the 'faster than race pace' Tier-1) for phrases with NO distance qualifier OR explicit 'race pace' modifier. Examples:
     - "4 × 50 faster than 800 pace" → race_pace (1–2% faster than 800m race pace; NOT sprint).
     - "3 × broken 100: 50 at 200 pace :10, 50 at or slightly faster than 200 pace" → race_pace race_pace.
-    - "75 @ 100 pace DIVE" → race_pace (the `cleanFragmentIntensity` validator already maps `@ NNN pace` to race_pace).
+    - "75 @ 100 pace DIVE" → race_pace (the 'cleanFragmentIntensity' validator already maps '@ NNN pace' to race_pace).
     - "50 at 200-race rhythm" → race_pace.
     - "8 × 25 @ 1:15 MAX velocity" → sprint (no distance qualifier, MAX is the intensity).
     - "faster than race pace" (no distance) → Tier-1 (engine default sprint / RPE 9-10).
+22. **Each:/Repeat:/Descend:/Build:/Wave:/Surge:/Pyramid:/Climb: ladder blocks**. When a line immediately following a set starts with one of these ladder keywords (any word ending in ':' followed by N numbered or sub-listed lines), the contents describe the composition of EVERY rep in the parent set. Two distinct sub-patterns:
+    - **(a) Per-rep intensity ladder** — 'Descend: 1 = 70% / 2 = 75% / 3 = 80% / 4 = ~85%', 'Build: 1 = 65% / 2 = 70% / 3 = 75%', 'Wave: 1 = 80% / 2 = 85% / 1 = 80%'. Each numbered line maps to ONE rep in the parent repGroup (1 → first rep, 2 → second rep, ...). **The ladder header word (Descend/Build/Wave/Surge/Pyramid/Climb) IS the intensity.type for both the parent repGroup AND every fragment in the ladder** — 'Descend:' → descend, 'Build:' → build, 'Wave:' → build (waves oscillate), 'Surge:' → build (final surge). The per-line percentages are the LABEL values, NOT a separate intensity. Emit on the parent repGroup: 'intensity: { type: "descend" or "build" (matches the ladder header), label: "<header> 1=N% 2=N% 3=N% ... (full ladder)" }'. Emit on each fragment: 'intensity: { type: same as parent, label: "rep{N} <percent>" }' with 'distance: parent.distance' and a 'note: "rep{N}"' to disambiguate. The set-level modifier captures the whole ladder so the iOS preview renders one tap-target, not N.
+    - **(b) Sub-segment composite ladder** — 'Each: 50 @ 65% / 50 @ 70% / 50 @ 75%', 'Each: 25 scull / 25 build / 25 easy', 'Repeat: 12.5 strong / 12.5 easy'. Each line is a SUB-SEGMENT of ONE rep (the ladder has L lines that together equal ONE rep, repeated N times). Emit ONE fragment per line on the parent repGroup with 'distance: <line distance>' and 'intensity' derived from the line's text ('50 @ 65%' → '{type:"percent_range", label:"65%"}'; '25 scull' → null; '25 build' → '{type:"build", label:"build"}'; '12.5 strong' → '{type:"aerobic", label:"strong"}'). Sub-segments sum to the parent's total rep distance (50 + 50 + 50 = 150 matches '4 × 150').
+    - **Distinguishing signal**: if the parent rg has 'reps: N' and the ladder has exactly N numbered entries ('1 = ... 2 = ... N = ...'), treat as (a) per-rep ladder. If the ladder entries contain explicit '=' percent syntax ('1 = 70%'), treat as (a) regardless of count. If the ladder entries carry a per-segment distance prefix summing to parent.distance (e.g. '50 @ 65% / 50 @ 70% / 50 @ 75%' under a '4 × 150' parent), treat as (b). Default ambiguous case → (a) (numbered form is Jodie's more common notation).
+23. **@ N%–M% percent-range intensity on header line**. When a repGroup header carries '@' followed by a PERCENT RANGE (e.g. '@ 80–85%', '@ 65-75%', '@ 90 %', '@ 80%'), the percent range is the set's GOVERNING INTENSITY — emit 'intensity: { type: "percent_range", label: "80–85%" }' on the repGroup. **The '@ N%–M%' syntax is NEVER an interval** (interval stays null unless a 'M:SS' form follows the '@'). The LLM must NEVER drop '@ N%–M%' into the note field — it always emits intensity. When BOTH '@ N%–M%' and '@ M:SS' appear in the same header (e.g. '4 × 100 @ 80% @ 1:30' or '8 × 50 @ 75% on 1:00'), the '%' is the intensity and the 'M:SS' / 'on M:SS' is the interval — emit both. Examples that frequently fail (verify each one):
+    - '4 × 100 @ 80–85%' → '{intensity: percent_range "80–85%", interval: null, note: null}' (no @-syntax goes in note; intensity is set).
+    - '8 × 50 @ 75% on 1:00' → '{intensity: percent_range "75%", interval: "1:00"}'.
+    - '4 × 50 @ 1:00' (no percent) → '{intensity: null, interval: "1:00"}'.
+    - '4 × 100 @ 1:30 @ 80%' → '{intensity: percent_range "80%", interval: "1:30"}' (interval precedes intensity — read both '@' clauses).
+    - '4 × 100 @ 80–85% on 3 rounds' → '{intensity: percent_range "80–85%", interval: null}' (the '3 rounds' is a SECTION directive, not a per-rg modifier).
+24. **Race rhythm / event rhythm / race pace / NN-pace intensity vocabulary**. All four are SYNONYMS for the same race_pace intensity tier:
+    - 'race rhythm' → '{type: "race_pace", label: "race rhythm"}'
+    - 'event rhythm' → '{type: "race_pace", label: "event rhythm"}'
+    - 'race pace' → '{type: "race_pace", label: "race pace"}'
+    - '200 pace' / '100 pace' / '800 pace' / '400 pace' / '50 pace' → '{type: "race_pace", label: "<distance> pace"}'
+    'event' alone is NOT an intensity word — it is part of 'event rhythm'. 'race' alone is NOT an intensity word — it is part of 'race pace' / 'race rhythm'. 'pace' alone is NOT an intensity word — it is part of '<NN> pace' / 'race pace'. 'rhythm' alone is NOT an intensity word — it is part of 'event rhythm' / 'race rhythm'. NONE of these sub-words go in unmapped_terms; the engine resolves the full phrase silently via rule 6/24. (See rule 7 exclusion (5).)
 
 ## Output shape (MUST follow exactly)
 
@@ -527,7 +551,7 @@ function parseIntensity(text: string): { type: string; label: string } | null {
   // not collapsed to `aerobic`.
   if (/\bstrong\b/i.test(text)) return { type: "aerobic", label: "strong" };
   if (/\b(?:sprint|all[\s-]?out|max(?:\s+effort)?|blast|atp|fast|maximal|breakout)\b/i.test(text)) return { type: "sprint", label: "ATP" };
-  if (/\b(?:race\s+pace|race\s+rhythm|r\.?p\.?|@?\s*\d+\s*(?:m|mtr)?\s*pace)\b/i.test(text)) return { type: "race_pace", label: "race pace" };
+  if (/\b(?:race\s+pace|race\s+rhythm|event\s+rhythm|r\.?p\.?|@?\s*\d+\s*(?:m|mtr)?\s*pace)\b/i.test(text)) return { type: "race_pace", label: "race pace" };
   if (/\b(?:threshold|css|t[\s-]?pace)\b/i.test(text)) return { type: "threshold", label: "threshold" };
   // V0.52: `mod` (Jodie's abbreviation for `moderate`) maps to aerobic,
   // matching the Tier-2 DEFAULT_RPE band. The `mod` label is preserved
@@ -597,7 +621,7 @@ function surfaceToIntensityType(term: string): string {
   if (lower === "progressive") return "build";  // V0.52: progressive is a progression shape, type=build
   if (lower === "negative split") return "negative_split";
   if (/^(sprint|all-out|max|atp|fast|maximal|breakout|blast)$/.test(lower)) return "sprint";
-  if (/^(race pace|race rhythm|r\.p\.)$/.test(lower)) return "race_pace";
+  if (/^(race pace|race rhythm|r\.p\.|event rhythm)$/.test(lower)) return "race_pace";
   if (/^(threshold|css|t-pace)$/.test(lower)) return "threshold";
   if (/^(easy|recovery|warm-?up|ez|relaxed)$/.test(lower)) return "easy";
   if (/^(aerobic|steady|cruise|moderate|smooth|mod|strong)$/.test(lower)) return "aerobic";
@@ -744,18 +768,31 @@ export async function parseWithLLM(
 ): Promise<Workout> {
   const llmOutput = await callMiniMax(workoutText, coachVocabulary);
   const validated = addIntensity(validateLLMOutput(llmOutput, coachVocabulary), coachVocabulary);
+  // V0.52 (2026-09-08): pass the LLM-reported unmapped terms through
+  // the scrub filter (catches descriptive over-emits like `breakout`,
+  // `genuine`, `velocity`, etc.) and merge with the engine-side
+  // detector so neither side misses anything the other catches.
+  const llmReported = Array.isArray(llmOutput.unmapped_terms)
+    ? llmOutput.unmapped_terms.map((t) => String(t).toLowerCase()).filter((t) => t.length > 0)
+    : [];
+  // V0.52.1 (2026-09-08): pass the validated response into the scrub
+  // so context-aware checks (progression term honored on a rg/fragment
+  // → drop the term) can run. The scrub also still handles the V0.52
+  // descriptive-over-emit exclusions.
+  const intermediate: LLMOutput = {
+    title: null,
+    sections: validated.map((s) => ({ title: s.title, repGroups: s.repGroups })),
+    unmapped_terms: llmReported,
+  };
+  const cleanedLlm = scrubUnmappedTerms(llmReported, intermediate);
+  const engineDetected = extractUnmappedTerms(workoutText, coachVocabulary, intermediate);
+  const merged = new Set<string>([...cleanedLlm, ...engineDetected]);
   return {
     title: null,
     sections: validated.map((s) => ({
       title: s.title,
       namedSets: [{ label: null, note: null, repGroups: s.repGroups }]
     })),
-    // V0.47 (2026-08-22): pass the LLM-reported unmapped terms straight
-    // through. index.ts defensively re-derives Tier-1 hits that the LLM
-    // missed (it sometimes returns unmapped_terms: [] for inputs that
-    // contain an unmapped Tier-1 word).
-    unmapped_terms: Array.isArray(llmOutput.unmapped_terms)
-      ? llmOutput.unmapped_terms.map((t) => String(t).toLowerCase()).filter((t) => t.length > 0)
-      : [],
+    unmapped_terms: [...merged].sort(),
   };
 }

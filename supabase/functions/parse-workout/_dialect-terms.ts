@@ -111,4 +111,31 @@ export const TIER2_ABBREVIATION_EXCLUSIONS: ReadonlyArray<RegExp> = [
   /\buw\b/i,         // underwater
   /\blt\b/i,         // lactate threshold (the word "threshold" IS in DEFAULT_RPE_BY_TERM)
   /\bsps\b/i,        // strokes per second
+  // Descriptive / kinematic words the LLM occasionally over-emits as
+  // Tier-1 (post-deploy audit 2026-09-08). These describe EFFORT
+  // QUALITY or a SEGMENT TYPE, not an intensity tier. The validator
+  // already attaches them to note/label when they appear in workout
+  // text — never ask the coach for an RPE band on them.
+  //
+  // IMPORTANT: these run as a SECOND scrub pass against the LLM's
+  // `unmapped_terms` output specifically (not against the workout
+  // text), because some of them appear INSIDE legitimate intensity
+  // contexts (e.g. "fast breakout" is a real intensity marker, "MAX
+  // velocity" is the sprint label). Scrubbing from text would erase
+  // real signal; scrubbing from unmapped_terms only removes the
+  // false-positive Tier-1 ask. See `scrubUnmappedTerms()` below.
+];
+
+// V0.52 (2026-09-08): Words the LLM over-emits into unmapped_terms
+// after the Tier-1/Tier-2 dedup. These describe EFFORT QUALITY or a
+// SEGMENT TYPE, not an intensity tier — coaches never get asked for an
+// RPE band on them. Applied as a SECOND scrub pass against the
+// LLM-reported unmapped_terms (after the engine-side dedup) to remove
+// false-positive asks without erasing legitimate intensity signal from
+// the workout text itself.
+export const TIER2_LLM_OVER_EMIT_EXCLUSIONS: ReadonlyArray<RegExp> = [
+  /\b(?:breakout|genuine|velocity|turnover|shutdown|finish(?:ing)?|controlled|pursuit|acceleration|execution|order|target|hold|settle|surge|rhythm|slightly)\b/i,
+  // "race" alone (without "rhythm"/"pace") isn't a tier-1 — it's a
+  // generic modifier.
+  /^\s*race\s*$/i,
 ];
