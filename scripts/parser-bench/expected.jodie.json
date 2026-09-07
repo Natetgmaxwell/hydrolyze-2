@@ -1,0 +1,1251 @@
+{
+  "commit-jodie-01-sep.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 4,
+        "distance": 150,
+        "interval": "2:30–2:45",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 50,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 25,
+        "interval": null,
+        "stroke": "Drill"
+      },
+      {
+        "reps": 1,
+        "distance": 25,
+        "interval": null,
+        "stroke": "Back"
+      },
+      {
+        "reps": 1,
+        "distance": 25,
+        "interval": null,
+        "stroke": "Choice"
+      },
+      {
+        "reps": 1,
+        "distance": 25,
+        "interval": null,
+        "stroke": "Choice"
+      },
+      {
+        "reps": 8,
+        "distance": 50,
+        "interval": "1:10",
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 8,
+        "distance": 50,
+        "interval": "1:05",
+        "stroke": null
+      },
+      {
+        "reps": 3,
+        "distance": 200,
+        "interval": "3:15–3:30",
+        "stroke": "Pull"
+      },
+      {
+        "reps": 8,
+        "distance": 25,
+        "interval": "1:00",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": null,
+        "exclude": true
+      }
+    ],
+    "expectedUnmappedTerms": [],
+    "expectedSectionCountMin": 1
+  },
+  "commit-jodie-02-sep.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": "kick",
+            "expectsIntensity": false
+          },
+          {
+            "distance": 25,
+            "stroke": "free",
+            "expectsIntensity": false
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 25,
+        "interval": null,
+        "stroke": "Kick"
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": "Kick"
+      },
+      {
+        "reps": 8,
+        "distance": 50,
+        "interval": "1:00–1:10",
+        "stroke": "Kick",
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": "kick",
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 25,
+            "stroke": "kick",
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          }
+        ]
+      },
+      {
+        "reps": 8,
+        "distance": 25,
+        "interval": "0:45–1:00",
+        "stroke": "Kick",
+        "fragments": [
+          {
+            "distance": 12.5,
+            "stroke": "kick",
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 12.5,
+            "stroke": "kick",
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 8,
+        "distance": 25,
+        "interval": "1:15",
+        "stroke": null
+      },
+      {
+        "reps": 6,
+        "distance": 50,
+        "interval": "2:00",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "race_pace"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "2:30",
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 2,
+        "distance": 25,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": "IM"
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": "Free"
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": "IM"
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 600,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      }
+    ],
+    "expectedUnmappedTerms": [
+      "build",
+      "descend"
+    ],
+    "expectedSectionCountMin": 5
+  },
+  "commit-jodie-03-sep.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 4,
+        "distance": 150,
+        "interval": "2:30",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": false
+          },
+          {
+            "distance": 25,
+            "stroke": "drill",
+            "expectsIntensity": false
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "descend"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": "1:40",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "build"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null
+      },
+      {
+        "reps": 8,
+        "distance": 50,
+        "interval": "1:30",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 15,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          },
+          {
+            "distance": 35,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "2:00",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 15,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "build"
+          },
+          {
+            "distance": 20,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          },
+          {
+            "distance": 15,
+            "stroke": null,
+            "expectsIntensity": false
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:30",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "race_pace"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:30",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 3,
+        "distance": 400,
+        "interval": "5:30–5:45",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 200,
+            "stroke": null,
+            "expectsIntensity": false
+          },
+          {
+            "distance": 200,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "negative_split"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": "1:30",
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "0:50–0:55",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": "1:40",
+        "stroke": null
+      },
+      {
+        "reps": 2,
+        "distance": 600,
+        "interval": "8:00–8:30",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 200,
+            "stroke": null,
+            "expectsIntensity": false
+          },
+          {
+            "distance": 200,
+            "stroke": null,
+            "expectsIntensity": false
+          },
+          {
+            "distance": 200,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": "1:25–1:30",
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "0:50",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": null,
+        "exclude": true
+      },
+      {
+        "reps": 2,
+        "distance": 600,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 200,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          },
+          {
+            "distance": 150,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          },
+          {
+            "distance": 100,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          }
+        ]
+      },
+      {
+        "reps": 6,
+        "distance": 50,
+        "interval": "1:30",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 35,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 15,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          }
+        ]
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": "Choice"
+      },
+      {
+        "reps": 2,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null
+      },
+      {
+        "reps": 2,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": "drill",
+            "expectsIntensity": false
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          }
+        ]
+      }
+    ],
+    "expectedUnmappedTerms": [
+      "build",
+      "descend",
+      "progressive"
+    ],
+    "expectedSectionCountMin": 4
+  },
+  "commit-jodie-04-sep.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": "Choice"
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": "1:35",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": "Drill",
+        "fragments": [
+          {
+            "distance": 50,
+            "stroke": "drill",
+            "expectsIntensity": false
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "build"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 25,
+        "interval": "0:45",
+        "stroke": "Kick"
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 2,
+        "distance": 50,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 200,
+        "interval": null,
+        "stroke": "Free"
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": "IM"
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          }
+        ]
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": null
+      }
+    ],
+    "expectedUnmappedTerms": [
+      "build",
+      "descend"
+    ],
+    "expectedSectionCountMin": 5
+  },
+  "commit-jodie-05-aug.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 1,
+        "distance": 300,
+        "interval": null,
+        "stroke": "Choice"
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": "1:40",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": "drill",
+            "expectsIntensity": false
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "build"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 25,
+        "interval": "0:45",
+        "stroke": null
+      },
+      {
+        "reps": 8,
+        "distance": 25,
+        "interval": "1:00",
+        "stroke": "Free"
+      },
+      {
+        "reps": 8,
+        "distance": 15,
+        "interval": "1:15–1:30",
+        "stroke": null
+      },
+      {
+        "reps": 6,
+        "distance": 50,
+        "interval": "2:00",
+        "stroke": null
+      },
+      {
+        "reps": 8,
+        "distance": 50,
+        "interval": "1:20–1:30",
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": "Fly",
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 25,
+            "stroke": "Free",
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 6,
+        "distance": 50,
+        "interval": "2:00",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": null,
+        "exclude": true
+      }
+    ],
+    "expectedUnmappedTerms": [
+      "build"
+    ],
+    "expectedSectionCountMin": 5
+  },
+  "commit-jodie-06-aug.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 1,
+        "distance": 600,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 200,
+            "stroke": "free",
+            "expectsIntensity": false
+          },
+          {
+            "distance": 200,
+            "stroke": "kick",
+            "expectsIntensity": false
+          },
+          {
+            "distance": 200,
+            "stroke": "drill",
+            "expectsIntensity": false
+          }
+        ]
+      },
+      {
+        "reps": 16,
+        "distance": 25,
+        "interval": null,
+        "stroke": "Fly"
+      },
+      {
+        "reps": 16,
+        "distance": 50,
+        "interval": null,
+        "stroke": "Kick"
+      },
+      {
+        "reps": 1,
+        "distance": 25,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 25,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 16,
+        "distance": 25,
+        "interval": null,
+        "stroke": null
+      }
+    ],
+    "expectedUnmappedTerms": [
+      "progressive"
+    ],
+    "expectedSectionCountMin": 1
+  },
+  "commit-jodie-07-aug.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": "Pull"
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": "Kick"
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "0:55",
+        "stroke": "Drill"
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 25,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 12.5,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "sprint"
+          },
+          {
+            "distance": 12.5,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "easy"
+          }
+        ]
+      },
+      {
+        "reps": 6,
+        "distance": 100,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": "1:00",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 25,
+        "interval": "2:00",
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 3,
+        "distance": 100,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "race_pace"
+          },
+          {
+            "distance": 50,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "race_pace"
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "race_pace"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "race_pace"
+          }
+        ]
+      },
+      {
+        "reps": 1,
+        "distance": 600,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 400,
+        "interval": null,
+        "stroke": "Kick"
+      }
+    ],
+    "expectedUnmappedTerms": [
+      "build"
+    ],
+    "expectedSectionCountMin": 8
+  },
+  "commit-jodie-08-aug.txt": {
+    "expectedRepGroups": [
+      {
+        "reps": 1,
+        "distance": 600,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 6,
+        "distance": 50,
+        "interval": "1:10",
+        "stroke": "Kick",
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": true,
+            "intensityType": "aerobic"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          }
+        ]
+      },
+      {
+        "reps": 4,
+        "distance": 50,
+        "interval": null,
+        "stroke": null,
+        "fragments": [
+          {
+            "distance": 25,
+            "stroke": "drill",
+            "expectsIntensity": true,
+            "intensityType": "build"
+          },
+          {
+            "distance": 25,
+            "stroke": null,
+            "expectsIntensity": false
+          }
+        ]
+      },
+      {
+        "reps": 1,
+        "distance": 800,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 200,
+        "interval": "3:00",
+        "stroke": null
+      },
+      {
+        "reps": 4,
+        "distance": 100,
+        "interval": "1:30",
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 200,
+        "interval": null,
+        "stroke": "Back"
+      },
+      {
+        "reps": 3,
+        "distance": 25,
+        "interval": null,
+        "stroke": null
+      },
+      {
+        "reps": 1,
+        "distance": 100,
+        "interval": null,
+        "stroke": null
+      }
+    ],
+    "expectedUnmappedTerms": [
+      "descend",
+      "progressive"
+    ],
+    "expectedSectionCountMin": 2
+  }
+}
