@@ -1751,147 +1751,134 @@ private struct PairRepGroupRow: View {
     let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // V0.53.1 Design A (2026-09-08, jodie-09 approved direction):
+        // the composite repGroup renders as N rep cards (N = reps,
+        // capped at 8 — beyond that one card + "×N" affordance). Each
+        // card is one swim; inside the card the segments are a single
+        // connected track — no dividers/borders, shared rounded
+        // background, proportional widths. The send-off lives at the
+        // card's trailing edge; the play affordance is the card itself,
+        // never the segments. Easy segments render muted and carry no
+        // tap affordance of their own. The header above (×N + parent
+        // distance) stays as the parent context; the per-rep breakdown
+        // is now visually inherent in the segment track, so the old
+        // "each as: 25 + 25 — continuous" caption is GONE — that's
+        // the show-not-tell fix the user asked for.
+        VStack(alignment: .leading, spacing: 6) {
             if reps != nil || fragments.count > 1 {
                 headerLine
             }
-            ForEach(Array(fragments.enumerated()), id: \.offset) { fIdx, f in
-                if fIdx > 0, let rest = fragments[fIdx - 1].restAfter, rest > 0 {
-                    // V0.53: inter-fragment rest annotation. Renders
-                    // "+ :NN rest" between two fragments when the
-                    // parser populated rest_after on the prior one.
-                    // nil/0 = continuous (skip — the parent annotation
-                    // covers it). Tells the coach "this is two parts
-                    // of one rep WITH rest between them" so the stopwatch
-                    // pacing can account for the break.
-                    HStack(spacing: 4) {
-                        Rectangle()
-                            .fill(Color.divider)
-                            .frame(width: 1, height: 10)
-                            .padding(.leading, 6)
-                        Text("+ :\(rest) rest")
-                            .font(.caption2)
-                            .foregroundColor(Color.textFaint)
-                            .italic()
-                    }
-                }
-                FragmentCTARow(
-                    fragment: f,
-                    // reps: nil → suppresses the "×N" prefix on the
-                    // child row. The PairRepGroupRow header above
-                    // owns the reps count.
-                    reps: nil,
+            // Design A: rep cards. For 4 reps → 4 cards. For 9+ reps →
+            // 1 card + "×N" affordance. The rep list is bounded by
+            // repCardCount so we never paginate.
+            let count = repCardCount(reps: reps)
+            let isCollapsed = count == 1 && (reps ?? 1) > 1
+            ForEach(0..<count, id: \.self) { repIdx in
+                let repNumber = repIdx + 1
+                RepCard(
+                    repNumber: repNumber,
+                    totalReps: reps ?? 1,
+                    parentDistance: parentDistance,
+                    fragments: fragments,
+                    // Send-off belongs to the whole rep (V0.53.1),
+                    // and Design A pins it to the card trailing edge
+                    // — never per segment. Single source of truth.
                     paceTargetText: paceTargetText,
-                    // V0.53.1 (2026-09-08, jodie-09 send-off-belong-to-rep):
-                    // parent header already owns the "@ 1:00" send-off
-                    // so the per-fragment copy is suppressed. Recorded-
-                    // time chips + confidence + start/gear badges still
-                    // render — only the @pace badge is hidden.
-                    showPaceBadge: false,
-                    recordedTimes: recordedTimesForFragment(f, in: recordedTimesByFragmentId),
-                    onTap: onFragmentTap.map { handler in
-                        { handler(fIdx, f) }
-                    },
+                    // Recorded times for the timable fragment of this
+                    // rep (always the first timable one — see
+                    // tapFragmentIndex). When ALL fragments are easy
+                    // the card has no play affordance; the recorded
+                    // chip would never appear because no timing
+                    // exists for an easy segment, so we read the
+                    // first fragment's recorded times defensively.
+                    recordedTimes: recordedTimesForFragment(
+                        fragments[tapFragmentIndex(fragments: fragments) ?? 0],
+                        in: recordedTimesByFragmentId
+                    ),
+                    // Card-level tap. Routes to the same onFragmentTap
+                    // machinery FragmentCTARow uses, keyed on the
+                    // timable fragment's id. nil = no play affordance
+                    // (all fragments easy).
+                    onTap: makeCardTapHandler(repIdx: repIdx),
                     onAggregateTap: { title, records in
                         onAggregateChipTap(title, records)
                     }
                 )
             }
+            if isCollapsed, let reps = reps {
+                // V0.53.1 Design A: the "×N" affordance that replaces
+                // the 9th-through-Nth rep cards. Same amber tint the
+                // ×N prefix uses elsewhere in the app — visual
+                // continuity with the header ×4. The coach reads
+                // "×12" and knows: one card shown, eleven more.
+                Text("× \(reps)")
+                    .font(.numeric)
+                    .foregroundColor(Color.accentAmber)
+                    .padding(.leading, 4)
+                    .accessibilityLabel("\(reps) reps")
+            }
         }
     }
 
-    // V0.53: header line. Always shows "4 × 50m [Stroke]"; when
-    // there's more than one fragment, appends the composite
-    // breakdown "each as: 25 X + 25 Y — continuous" (or "+ :NN rest
-    // between" when any inter-fragment rest exists). The breakdown
-    // is the explicit signal that this is ONE composite rep, not
-    // two independent swims.
+    // V0.53.1 Design A: card-level tap handler. When the rep card is
+    // tapped, route to onFragmentTap using the timable fragment's
+    // index. nil when no fragment is timable (no handler fires — the
+    // card is passive description only, mirroring the V0.53.1 easy
+    // gating but at the card level).
     //
-    // V0.53.1 (2026-09-08, jodie-09 send-off-belong-to-rep): when
-    // the parent rep group carries an interval (send-off / on-time),
-    // render it ONCE here as the MetadataBadge the fragment rows used
-    // to wear. The whole rep is on the minute, not each fragment.
-    // Mirrors shouldRenderFragmentPaceBadge so a nil/empty pace still
-    // produces no badge (e.g. sets written without a send-off cycle).
+    // repIdx parameter is reserved for future per-rep distinct
+    // behaviour; today every rep in the set keys on the same
+    // timable fragment index (the first timable one in the
+    // composite). The V0.53.1 captured-time machinery records per
+    // fragment.id, so the eventual "rep 2 time was X" view reads
+    // correctly when the recorded times land on the right id.
+    private func makeCardTapHandler(repIdx: Int) -> (() -> Void)? {
+        guard let onFragmentTap = onFragmentTap else { return nil }
+        guard let fIdx = tapFragmentIndex(fragments: fragments) else { return nil }
+        let fragment = fragments[fIdx]
+        return { onFragmentTap(fIdx, fragment) }
+    }
+
+    // V0.53: header line. Always shows "4 × 50m [Stroke]".
+    //
+    // V0.53.1 Design A (2026-09-08, jodie-09 approved direction):
+    // the send-off no longer lives here — it has moved to the
+    // trailing edge of each rep card (RepCard.swift). And the
+    // per-rep "each as: 25 + 25 — continuous" caption is GONE —
+    // the segment track inside each card carries that information
+    // visually. Header is now just ×N + parent distance + stroke —
+    // the parent context for the rep cards below. This is the
+    // show-not-tell fix the user asked for in jodie-09.
     private var headerLine: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Rectangle()
-                    .fill(Color.accentAmber)
-                    .frame(width: 2, height: 14)
-                if let reps = reps, reps > 1 {
-                    Text("\(reps)×")
-                        .font(.numeric)
-                        .foregroundColor(Color.accentAmber)
-                }
-                if let d = parentDistance {
-                    Text("\(d)m")
-                        .font(.numeric)
-                        .foregroundColor(Color.textPrimary)
-                }
-                if let s = parentStroke, !s.isEmpty {
-                    Text(s)
-                        .font(.body)
-                        .foregroundColor(Color.textPrimary)
-                }
-                // V0.53.1: send-off belongs to the whole rep. Same
-                // fog-on-inset chip the fragment rows used to wear;
-                // renders exactly once on the parent header.
-                if shouldRenderFragmentPaceBadge(showPaceBadge: true, paceTargetText: paceTargetText),
-                   let pace = paceTargetText {
-                    MetadataBadge(text: "@ \(pace)", color: Color.textMuted)
-                }
+        HStack(spacing: 6) {
+            Rectangle()
+                .fill(Color.accentAmber)
+                .frame(width: 2, height: 14)
+            if let reps = reps, reps > 1 {
+                Text("\(reps)×")
+                    .font(.numeric)
+                    .foregroundColor(Color.accentAmber)
             }
-            .padding(.leading, 2)
-
-            if fragments.count > 1 {
-                Text(compositeBreakdownText)
-                    .font(.caption)
-                    .foregroundColor(Color.textMuted)
-                    .italic()
-                    .padding(.leading, 8)
-                    .accessibilityLabel("Each rep as \(compositeBreakdownAccessibility)")
+            if let d = parentDistance {
+                Text("\(d)m")
+                    .font(.numeric)
+                    .foregroundColor(Color.textPrimary)
+            }
+            if let s = parentStroke, !s.isEmpty {
+                Text(s)
+                    .font(.body)
+                    .foregroundColor(Color.textPrimary)
             }
         }
+        .padding(.leading, 2)
     }
 
-    // "25 event rhythm + 25 easy — continuous" (or "+ :15 rest between"
-    // if any fragment carries restAfter > 0). Always ends with the
-    // "continuous" or "with rest" cue — that's the visual signal the
-    // user asked for.
-    private var compositeBreakdownText: String {
-        let hasAnyRest = fragments.dropLast().contains { f in
-            (f.restAfter ?? 0) > 0
-        }
-        let parts = fragments.map { f -> String in
-            let dist = f.distance.map { "\($0)" } ?? "?"
-            let label = f.intensity?.label
-                ?? f.intensityLabel
-                ?? f.descriptor
-                ?? f.instruction
-                ?? "swim"
-            return "\(dist) \(label)"
-        }
-        let joined = parts.joined(separator: " + ")
-        let tail = hasAnyRest ? "with rest between" : "continuous"
-        return "each as: \(joined) — \(tail)"
-    }
-
-    // Same content as compositeBreakdownText but with the "continuous"
-    // tail stripped so VoiceOver reads "Each rep as 25 event rhythm
-    // + 25 easy" without the redundant cue.
-    private var compositeBreakdownAccessibility: String {
-        let parts = fragments.map { f -> String in
-            let dist = f.distance.map { "\($0)" } ?? "?"
-            let label = f.intensity?.label
-                ?? f.intensityLabel
-                ?? f.descriptor
-                ?? f.instruction
-                ?? "swim"
-            return "\(dist) \(label)"
-        }
-        return parts.joined(separator: " plus ")
-    }
+    // V0.53.1 Design A: the "each as: 25 + 25 — continuous" text
+    // caption and its accessibility twin were removed when Design A
+    // landed. The show-not-tell segment track inside each RepCard
+    // carries the breakdown visually — no text caption needed. The
+    // helpers above (segmentLabel / cardAccessibilityLabel) build
+    // the same breakdown for VoiceOver.
 }
 
 // t_d59998d9 (2026-08-05): resolve recorded times for a fragment from the
@@ -1935,6 +1922,301 @@ private func compactOwnedTime(_ ms: Int) -> String {
         return String(format: "%d:%02d.%d", min, sec, tenths)
     }
     return String(format: "%02d.%02d", sec, cs)
+}
+
+// V0.53.1 Design A (2026-09-08, jodie-09 approved direction): one
+// rep card. Renders one rep of the composite repGroup as a single
+// connected bar split into horizontal proportional segments. The
+// whole bar is one visual unit = one swim. Send-off lives at the
+// trailing edge of the card (the rep's edge, not each segment).
+// Play affordance is the card itself — segments have no tap of
+// their own. Easy segments render muted (lower opacity, smaller
+// label). Recorded-time chip + play-or-retap icon both key on the
+// rep's timable fragment, so the existing fragment_id-keyed
+// captured-time machinery keeps working unchanged.
+//
+// Visual layout:
+//
+//   ┌────────────────────────────────────────────────────────┐
+//   │ 25 event rhythm │ 25 easy                       @ 1:00 ▶│
+//   └────────────────────────────────────────────────────────┘
+//
+// The two segments share one rounded background (no internal
+// dividers, no borders between them) — the proportional split is
+// carried by the GeometryReader width fraction and the segment
+// label positions itself inside the proportional area. Continuity
+// is inherent in the layout — nothing is labelled "continuous".
+private struct RepCard: View {
+    let repNumber: Int
+    let totalReps: Int
+    let parentDistance: Int?
+    let fragments: [ParsedFragment]
+    let paceTargetText: String?
+    let recordedTimes: [FragmentTimeRecord]?
+    let onTap: (() -> Void)?
+    let onAggregateTap: (String, [FragmentTimeRecord]) -> Void
+
+    // The rep's total distance drives the proportional split. Sum
+    // of fragments' distances — fall back to 1 if all fragments
+    // lack a distance (defensive; layout still renders at equal
+    // 0% per segment, which collapses the bar to the play button
+    // column — gracefully degraded).
+    private var totalDistance: Int {
+        let sum = fragments.reduce(0) { $0 + ($1.distance ?? 0) }
+        return sum > 0 ? sum : 1
+    }
+
+    // Whether the card shows a play affordance. True iff the
+    // handler is wired AND at least one segment is timable.
+    private var hasPlayAffordance: Bool {
+        onTap != nil && tapFragmentIndex(fragments: fragments) != nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 0) {
+                // V0.53.1 Design A: the connected segment track. One
+                // GeometryReader so each segment's width is proportional
+                // to its distance. No internal dividers/borders — the
+                // single rounded background carries the whole track as
+                // one visual unit. The accentAmber tint (the existing
+                // "data, not CTA" color token) marks the work segment;
+                // easy segments render muted (lower opacity + smaller
+                // label) so the coach sees the work visually dominant.
+                GeometryReader { geo in
+                    let trackWidth = geo.size.width
+                    // V0.53.1 Design A: segments are laid out in an
+                    // HStack inside the GeometryReader so each one
+                    // gets its proportional slice of the track.
+                    // The whole HStack is then drawn on top of the
+                    // shared rounded background so the track reads
+                    // as ONE connected container — no internal
+                    // dividers/borders. (The first attempt used a
+                    // ZStack which collapsed all segments to
+                    // x=0 because ZStack alignment is .leading;
+                    // segments then overlapped instead of
+                    // partitioning the width.)
+                    HStack(spacing: 0) {
+                        ForEach(Array(fragments.enumerated()), id: \.offset) { idx, f in
+                            let width = segmentWidth(fragmentDistance: f.distance, totalDistance: totalDistance) * trackWidth
+                            let isEasy = (f.intensity?.type == .easy)
+                            // V0.53.1 Design A: visual intensity gradient.
+                            // Timable segments (race_pace, threshold,
+                            // percent_range, sprint, etc.) tint with
+                            // accentAmber at 0.55 opacity. Easy
+                            // segments tint at 0.18 opacity so they
+                            // read as "the easy part" without
+                            // disappearing. nil intensity = assume
+                            // work (renders at full accentAmber
+                            // opacity, matching the timable-default
+                            // rule).
+                            let segmentFill: Color = {
+                                guard let type = f.intensity?.type else {
+                                    return Color.accentAmber.opacity(0.55)
+                                }
+                                return type == .easy
+                                    ? Color.textMuted.opacity(0.18)
+                                    : Color.accentAmber.opacity(0.55)
+                            }()
+                            Rectangle()
+                                .fill(segmentFill)
+                                .frame(width: width)
+                                // V0.53.1 Design A: each segment label
+                                // sits inside its proportional slice,
+                                // centred horizontally on the segment
+                                // midpoint. Easy labels render at smaller
+                                // font + lower opacity. Work labels
+                                // render at the row's primary type.
+                                //
+                                // Layout rule: the label is fixed-size
+                                // (single line, no wrap), then framed
+                                // to the segment width with centre
+                                // alignment, and clipped — so a label
+                                // wider than its segment ellipsizes
+                                // within the segment bounds instead of
+                                // bleeding into the next segment.
+                                .overlay(
+                                    GeometryReader { segGeo in
+                                        let label = segmentLabel(fragment: f)
+                                        Text(label)
+                                            .font(isEasy ? .caption2 : .caption)
+                                            .foregroundColor(
+                                                isEasy
+                                                    ? Color.textMuted.opacity(0.7)
+                                                    : Color.textPrimary
+                                            )
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                            .minimumScaleFactor(0.5)
+                                            .fixedSize(horizontal: true, vertical: false)
+                                            .frame(
+                                                width: segGeo.size.width,
+                                                alignment: .center
+                                            )
+                                            .clipped()
+                                    }
+                                )
+                        }
+                    }
+                    .background(
+                        // Single shared background drawn underneath
+                        // the HStack so the track reads as ONE
+                        // connected container. The HStack's segments
+                        // paint on top of this; the rounded corners
+                        // clip everything to a single rounded shape.
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.bgInset)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .frame(height: 28)
+
+                // V0.53.1 Design A: send-off lives at the card's
+                // trailing edge. Same fog-on-inset chip the old
+                // FragmentCTARow wore, but here it sits once per card
+                // — never per segment. The whole rep is on the minute,
+                // not each fragment.
+                if let pace = paceTargetText, !pace.isEmpty {
+                    MetadataBadge(text: "@ \(pace)", color: Color.textMuted)
+                        .padding(.leading, 6)
+                }
+
+                // V0.53.1 Design A: the play affordance. When the card
+                // is timable, show the play (or retap if a recording
+                // exists) icon. SF Symbol, same as FragmentCTARow uses.
+                // When ALL fragments are easy, no icon — the card is
+                // passive description.
+                if hasPlayAffordance {
+                    Image(systemName: recordedTimes != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
+                        .foregroundColor(recordedTimes != nil ? Color.textMuted : Color.textPrimary)
+                        .padding(.leading, 6)
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(Color.bgBase.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            // V0.53.1 Design A: recorded-time chip (V0.48 S1/S2
+            // semantic, 1-2 inline chips OR 3+ aggregate chip). Reads
+            // from the rep's timable fragment. Lives BELOW the track
+            // so it doesn't compete with the segment labels. Tapping
+            // the chip opens the aggregate sheet; tapping the rest of
+            // the card opens the stopwatch (when timable).
+            if hasPlayAffordance, let times = recordedTimes, !times.isEmpty {
+                recordedTimeChip(times: times)
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(cardAccessibilityLabel(
+            repNumber: repNumber,
+            totalReps: totalReps,
+            parentDistance: parentDistance,
+            segments: fragments,
+            interval: paceTargetText
+        ))
+        .accessibilityAddTraits(hasPlayAffordance ? .isButton : [])
+        .onTapGesture {
+            onTap?()
+        }
+    }
+
+    // V0.53.1 Design A: recorded-time chip rendered below the
+    // segment track. Mirrors the V0.48 S2 aggregate chip
+    // (count >= 3) and S1 inline chips (count 1-2) so the visual
+    // language is identical to the rest of the app.
+    @ViewBuilder
+    private func recordedTimeChip(times: [FragmentTimeRecord]) -> some View {
+        if times.count >= 3 {
+            Button(action: {
+                onAggregateTap(aggregateTitle(), times)
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(Color.statusSuccess)
+                    Text("\(times.count) saved")
+                        .font(.monoChip)
+                        .foregroundColor(Color.textPrimary)
+                    Text("▸")
+                        .font(.monoChip)
+                        .foregroundColor(Color.textPrimary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.bgInset)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color.divider, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(times.count) times saved for \(aggregateTitle()), tap for detail")
+        } else {
+            HStack(spacing: 8) {
+                ForEach(Array(times.enumerated()), id: \.offset) { _, record in
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundColor(Color.statusSuccess)
+                        Text(chipLabel(for: record))
+                            .font(record.hasOwner ? .numeric : .captionStrong)
+                            .foregroundColor(Color.statusSuccess)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(chipAccessibility(for: record))
+                }
+            }
+        }
+    }
+
+    // V0.48 S2 chip title for the aggregate sheet — uses the
+    // timable fragment's title (so "25m event rhythm" for the
+    // race_pace segment, not "Rep 1 of 4").
+    private func aggregateTitle() -> String {
+        guard let fIdx = tapFragmentIndex(fragments: fragments) else {
+            return fragmentChipTitle(fragment: fragments[0])
+        }
+        return fragmentChipTitle(fragment: fragments[fIdx])
+    }
+
+    // V0.48 S1 chip label for owned vs. unowned inline chips —
+    // shared with FragmentCTARow (defined below at the file-scope
+    // helper section).
+    private func chipLabel(for record: FragmentTimeRecord) -> String {
+        let time = formatStopwatchTime(record.timeMs)
+        if let name = record.swimmerName, !name.isEmpty {
+            return "\(name) \(compactOwnedTime(record.timeMs))"
+        }
+        return "Saved \(time)"
+    }
+
+    // V0.48 S3 accessibility label for the inline chip — mirrors
+    // FragmentCTARow's helper.
+    private func chipAccessibility(for record: FragmentTimeRecord) -> String {
+        if let name = record.swimmerName, !name.isEmpty {
+            return "\(name) \(compactOwnedTime(record.timeMs))"
+        }
+        return formatStopwatchTime(record.timeMs)
+    }
+
+    // V0.48 S2 chip title helper (shared with FragmentCTARow).
+    private func fragmentChipTitle(fragment: ParsedFragment) -> String {
+        var parts: [String] = []
+        if let d = fragment.distance { parts.append("\(d)m") }
+        if let s = fragment.stroke, !s.isEmpty { parts.append(s) }
+        if let label = fragment.intensity?.label, !label.isEmpty {
+            return parts.joined(separator: " ") + " @ " + label
+        }
+        if let desc = fragment.descriptor, !desc.isEmpty {
+            return parts.joined(separator: " ") + " · " + desc
+        }
+        if !parts.isEmpty { return parts.joined(separator: " ") }
+        return "Fragment"
+    }
 }
 
 // t_d59998d9 (2026-08-05): confidence badge for LLM-fallback fragments.

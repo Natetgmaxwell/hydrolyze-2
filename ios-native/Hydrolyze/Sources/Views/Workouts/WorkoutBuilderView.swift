@@ -67,6 +67,14 @@ struct WorkoutBuilderView: View {
                 viewModel.seedV46DemoParsedWorkout()
                 return
             }
+            // V0.53.1 Design A screenshot harness: seed the jodie-09
+            // Purposeful Threshold workout (including the
+            // 4×50 @ 1:00 / 25 event rhythm / 25 easy composite that
+            // Design A is built to render). Local seed, no network.
+            if ProcessInfo.processInfo.arguments.contains("-v0531-design-a-builder") {
+                viewModel.seedV0531DesignABuilder()
+                return
+            }
             #endif
 
             // Phase 2.7 performance: warm up the parse-workout Edge Function on
@@ -91,6 +99,27 @@ struct WorkoutBuilderView: View {
 
     @ViewBuilder
     private var scrollableContent: some View {
+        // V0.53.1 Design A verification: when launched with the
+        // screenshot-harness arg, render the preview column only.
+        // The screenshot harness has no way to scroll the iPhone
+        // ScrollView programmatically (simctl has no tap; CGEvent
+        // posts don't reach the sim runtime); showing the input
+        // column pushes the preview off-screen. Preview-only mode
+        // captures the entire RepCard layout in one screenshot.
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-v0531-design-a-builder") {
+            previewColumnContent
+                .padding(16)
+        } else {
+            scrollableContentBody
+        }
+        #else
+        scrollableContentBody
+        #endif
+    }
+
+    @ViewBuilder
+    private var scrollableContentBody: some View {
         if horizontalSizeClass == .regular {
             HStack(spacing: 16) {
                 inputColumn
@@ -652,6 +681,227 @@ final class WorkoutBuilderViewModel: ObservableObject {
     }
 
     #if DEBUG
+    /// V0.53.1 Design A screenshot harness (2026-09-08): seeds the
+    /// builder with the jodie-09 Purposeful Threshold workout —
+    /// including the 4×50 @ 1:00 / 25 event rhythm / 25 easy
+    /// composite that the user rejected for its "tag continuous
+    /// onto the instructions" feel. This seed reproduces the same
+    /// ParsedWorkout shape the live parse-workout edge function
+    /// returns (live curl confirmed at V0.53: 4 reps, dist 50,
+    /// interval 1:00, fragments=[{race_pace 25m}, {easy 25m}]),
+    /// so Design A's RepCard layout renders the exact bar the
+    /// user is approving.
+    ///
+    /// Triggered by `-v0531-design-a-builder`. Renders without
+    /// a server round-trip — preview is fed directly into the
+    /// parsedWorkout property and into the parse cache.
+    func seedV0531DesignABuilder() {
+        let text = """
+        Purposeful Threshold
+
+        Warm-Up — 1,200 m
+
+        4 × 150 @ 2:20–2:30
+        Each:
+        50 @ 65%
+        50 @ 70%
+        50 @ 75%
+
+        4 × 100 @ 1:35–1:40
+        25 scull
+        50 strong aerobic @ 75-80%
+        25 easy
+
+        4 × 50 @ 1:00
+        Descend:
+        1 = 70%
+        2 = 75%
+        3 = 80%
+        4 = ~85%
+
+        4 × 25 @ :40
+        12.5 strong + 12.5 easy.
+
+        100 easy
+
+        Main Set
+
+        50/100
+        3 rounds
+        4 × 100 @ 80–85%
+        200 easy
+        4 × 50 @ 1:00
+        25 event rhythm / 25 easy
+        """
+
+        // Section 1 — Warm-Up
+        let warmUp = ParsedSection(
+            title: "Warm-Up",
+            namedSets: [
+                ParsedNamedSet(label: "Build", note: nil, repGroups: [
+                    // 4 × 150 @ 2:20-2:30 — non-composite, single set
+                    ParsedRepGroup(reps: 4, distance: 150, stroke: "Free",
+                                   interval: "2:20-2:30", intensity: nil,
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil, note: "Each: 50 @ 65% / 50 @ 70% / 50 @ 75%",
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil, fragments: nil,
+                                   sourceLine: nil, zoneTerm: nil),
+                    // 4 × 100 @ 1:35-1:40 with fragments (25 scull / 50 strong / 25 easy).
+                    // Mirrors the live parse shape (live curl at V0.53.1):
+                    // frag0 {dist:25, intensity:null, instruction:"scull"},
+                    // frag1 {dist:50, intensity:{type:"percent_range", label:"75-80%"}, instruction:"strong aerobic @ 75-80%"},
+                    // frag2 {dist:25, intensity:{type:"easy", label:"easy"}, instruction:"easy"}
+                    ParsedRepGroup(reps: 4, distance: 100, stroke: nil,
+                                   interval: "1:35-1:40", intensity: nil,
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil, note: nil,
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil,
+                                   fragments: [
+                                       ParsedFragment(id: "frag-100-a", distance: 25, stroke: nil,
+                                                      instruction: "scull", intensity: nil,
+                                                      intensityType: nil, intensityLabel: nil,
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: nil, confidence: 1.0,
+                                                      restAfter: nil),
+                                       ParsedFragment(id: "frag-100-b", distance: 50, stroke: nil,
+                                                      instruction: "strong aerobic @ 75-80%",
+                                                      intensity: ParsedIntensity(type: .percent_range, label: "75-80%"),
+                                                      intensityType: "percent_range", intensityLabel: "75-80%",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: nil, confidence: 1.0,
+                                                      restAfter: nil),
+                                       ParsedFragment(id: "frag-100-c", distance: 25, stroke: nil,
+                                                      instruction: "easy",
+                                                      intensity: ParsedIntensity(type: .easy, label: "easy"),
+                                                      intensityType: "easy", intensityLabel: "easy",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: nil, confidence: 1.0,
+                                                      restAfter: nil),
+                                   ],
+                                   sourceLine: nil, zoneTerm: nil),
+                    // 4 × 50 @ 1:00 — Descend ladder (4 fragments each rep, but for
+                    // screenshot simplicity use a single non-composite repGroup
+                    // with descend="1-4" so the V0.46-style render kicks in.
+                    ParsedRepGroup(reps: 4, distance: 50, stroke: nil,
+                                   interval: "1:00", intensity: nil,
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil,
+                                   note: "Descend: 1 = 70% / 2 = 75% / 3 = 80% / 4 = ~85%",
+                                   gear: nil, gearOptional: false,
+                                   descend: "1-4", details: nil,
+                                   dive: false, suit: false, ambiguousTerm: nil,
+                                   fragments: nil, sourceLine: nil, zoneTerm: nil),
+                    // 4 × 25 @ :40 / 12.5 strong + 12.5 easy — composite with rest
+                    ParsedRepGroup(reps: 4, distance: 25, stroke: nil,
+                                   interval: "0:40", intensity: nil,
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil,
+                                   note: "12.5 strong + 12.5 easy",
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil,
+                                   fragments: [
+                                       ParsedFragment(id: "frag-25-a", distance: 13, stroke: nil,
+                                                      instruction: "strong",
+                                                      intensity: ParsedIntensity(type: .aerobic, label: "strong"),
+                                                      intensityType: "aerobic", intensityLabel: "strong",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: "strong", confidence: 1.0,
+                                                      restAfter: nil),
+                                       ParsedFragment(id: "frag-25-b", distance: 13, stroke: nil,
+                                                      instruction: "easy",
+                                                      intensity: ParsedIntensity(type: .easy, label: "easy"),
+                                                      intensityType: "easy", intensityLabel: "easy",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: "easy", confidence: 1.0,
+                                                      restAfter: nil),
+                                   ],
+                                   sourceLine: nil, zoneTerm: nil),
+                    ParsedRepGroup(reps: 1, distance: 100, stroke: nil,
+                                   interval: nil,
+                                   intensity: ParsedIntensity(type: .easy, label: "easy"),
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil, note: nil,
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil, fragments: nil,
+                                   sourceLine: nil, zoneTerm: "easy"),
+                ])
+            ]
+        )
+
+        // Section 2 — Main Set (this is where the user's 4 × 50 @ 1:00 / 25 event rhythm / 25 easy lives)
+        let mainSet = ParsedSection(
+            title: "Main Set",
+            namedSets: [
+                ParsedNamedSet(label: "Threshold", note: nil, repGroups: [
+                    ParsedRepGroup(reps: 4, distance: 100, stroke: nil,
+                                   interval: nil,
+                                   intensity: ParsedIntensity(type: .threshold, label: "80–85%"),
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil, note: nil,
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil, fragments: nil,
+                                   sourceLine: nil, zoneTerm: "threshold"),
+                    ParsedRepGroup(reps: 1, distance: 200, stroke: nil,
+                                   interval: nil,
+                                   intensity: ParsedIntensity(type: .easy, label: "easy"),
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil, note: nil,
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil, fragments: nil,
+                                   sourceLine: nil, zoneTerm: "easy"),
+                    // THE composite that Design A is built to render.
+                    // Live curl confirmed: reps=4, distance=50, interval='1:00',
+                    // fragments=[{race_pace 25m}, {easy 25m}].
+                    ParsedRepGroup(reps: 4, distance: 50, stroke: nil,
+                                   interval: "1:00", intensity: nil,
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil,
+                                   note: "25 event rhythm / 25 easy",
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil,
+                                   fragments: [
+                                       ParsedFragment(id: "frag-j09-a", distance: 25, stroke: nil,
+                                                      instruction: nil,
+                                                      intensity: ParsedIntensity(type: .race_pace, label: "event rhythm"),
+                                                      intensityType: "race_pace", intensityLabel: "event rhythm",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: "event rhythm", confidence: 1.0,
+                                                      restAfter: nil),
+                                       ParsedFragment(id: "frag-j09-b", distance: 25, stroke: nil,
+                                                      instruction: nil,
+                                                      intensity: ParsedIntensity(type: .easy, label: "easy"),
+                                                      intensityType: "easy", intensityLabel: "easy",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: "easy", confidence: 1.0,
+                                                      restAfter: nil),
+                                   ],
+                                   sourceLine: nil, zoneTerm: nil),
+                ])
+            ]
+        )
+
+        let parsed = ParsedWorkout(title: "Purposeful Threshold",
+                                   sections: [warmUp, mainSet],
+                                   degraded: nil, degradedReason: nil)
+
+        title = "Purposeful Threshold"
+        workoutText = text
+        parsedWorkout = parsed
+        parseSuccess = true
+        isPendingParse = false
+        cache[cacheKey(for: text)] = CachedParse(trimmedText: text, workout: parsed)
+        lastSentText = text
+    }
+
     /// V0.46 Slice 5: screenshot-harness seed. Fills the title, the
     /// practice text, and a hand-built ParsedWorkout — the preview
     /// renders without a server round-trip. The text is also seeded

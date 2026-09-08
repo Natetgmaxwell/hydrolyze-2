@@ -121,6 +121,21 @@ struct CoachLoginFlow: View {
     @State private var showSuccessAlert = false
     @State private var successMessage = ""
 
+    // V0.53.1 Design A verification (2026-09-08): debug-only auto-login
+    // hook. When launched with `-HYDROLYZE_AUTO_LOGIN_EMAIL <addr>` and
+    // `-HYDROLYZE_AUTO_LOGIN_PASSWORD <pw>` (e.g. via `xcrun simctl
+    // launch ... -HYDROLYZE_AUTO_LOGIN_EMAIL ...`), this prefills the
+    // credentials and submits them on appear. Gated on the env-arg
+    // being present so production launches are unaffected. Used by
+    // the build-verify pipeline to capture a screenshot of the
+    // authenticated workout preview without hand-typing credentials.
+    private var autoLoginEmail: String? {
+        ProcessInfo.processInfo.environment["HYDROLYZE_AUTO_LOGIN_EMAIL"]
+    }
+    private var autoLoginPassword: String? {
+        ProcessInfo.processInfo.environment["HYDROLYZE_AUTO_LOGIN_PASSWORD"]
+    }
+
     var body: some View {
         VStack(spacing: 24) {
             formSection
@@ -136,6 +151,19 @@ struct CoachLoginFlow: View {
             Button("OK") { }
         } message: {
             Text(successMessage)
+        }
+        .onAppear {
+            // V0.53.1 Design A verification: when the env-args are
+            // present, prefill + submit so the verification run can
+            // drive past login without a hand-typed credentials
+            // chain. The hook is gated on both env-vars being set;
+            // absent either, no auto-login fires.
+            if let e = autoLoginEmail, let p = autoLoginPassword,
+               !e.isEmpty, !p.isEmpty, !isLoading {
+                email = e
+                password = p
+                Task { await handleSubmit() }
+            }
         }
     }
 

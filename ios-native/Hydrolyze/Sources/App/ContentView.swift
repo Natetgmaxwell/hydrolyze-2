@@ -135,13 +135,24 @@ struct ContentView: View {
     /// args for the screenshot harness. Each case routes to the real view;
     /// the surface's `.task` seeds DEBUG state (see the per-view seed
     /// branches). `timing` keeps Slice 3's name for continuity.
+    /// V0.53.1 Design A: added `builderJodie09` which routes to the
+    /// builder with the jodie-09 Purposeful Threshold workout seeded
+    /// in (see `seedV0531DesignABuilder`).
     private enum V46DemoSurface: String, CaseIterable {
-        case today, timing, review, swimmers, workouts, builder, swimmer
+        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer
 
         static func detect() -> V46DemoSurface? {
             let args = ProcessInfo.processInfo.arguments
             for surface in allCases where args.contains("-v46-demo-\(surface.rawValue)") {
                 return surface
+            }
+            // V0.53.1 Design A: dedicated arg to seed the jodie-09
+            // workout into the builder without the v46-prefix
+            // collision (the existing `builder` surface keeps the
+            // Slice 5 demo, this one ships the user's actual
+            // Purposeful Threshold fixture).
+            if args.contains("-v0531-design-a-builder") {
+                return .builderJodie09
             }
             return nil
         }
@@ -156,6 +167,11 @@ struct ContentView: View {
         case .swimmers:  SwimmersListView()
         case .workouts:  WorkoutsListView()
         case .builder:   WorkoutBuilderView(workoutId: nil)
+        case .builderJodie09:
+            // V0.53.1 Design A: route to the same builder; the
+            // jodie-09 seed fires from the launch-arg branch in
+            // WorkoutBuilderView.task (gated on the arg).
+            WorkoutBuilderView(workoutId: nil)
         case .swimmer:
             SwimmerHomeView()
                 .environment(authManager)
