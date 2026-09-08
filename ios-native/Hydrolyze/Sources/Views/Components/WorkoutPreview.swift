@@ -379,6 +379,15 @@ private struct RepGroupRowView: View {
                     PairRepGroupRow(
                         fragments: fragments,
                         reps: rg.reps,
+                        // V0.53 (2026-09-08): forward parent distance
+                        // + stroke so the header reads "4 × 50m Free"
+                        // instead of just "4 ×". Without these, the
+                        // 50 (the actual rep distance) gets buried —
+                        // coach reads "two 25s" instead of "one 50 as
+                        // 25 + 25". Optional; legacy call sites that
+                        // don't pass them render as before.
+                        parentDistance: rg.distance,
+                        parentStroke: rg.stroke,
                         paceTargetText: rg.interval,
                         recordedTimesByFragmentId: recordedTimesByFragmentId,
                         onFragmentTap: onFragmentTap.map { handler in
@@ -1005,6 +1014,16 @@ struct ParsedFragment: Codable {
     // from the LLM fallback." nil = unknown (the LLM didn't
     // emit a value, treat as 1.0 for badge rendering).
     let confidence: Double?
+    // V0.53 (2026-09-08, user complaint on jodie-09 purposeful-threshold):
+    // seconds of rest AFTER this fragment, before the next fragment in
+    // the same composite rep. nil = continuous with the next fragment
+    // (no rest between — the 25 + 25 / 50 case). When set, the
+    // PairRepGroupRow renders a "+ :NN rest" annotation between
+    // fragments so the coach reads "this is one 50 done as 25 + 25"
+    // instead of two independent 25m swims. Server contract:
+    // parse-workout/index.ts Fragment.restAfter (line 86). Decoded as
+    // Int? for forward-compat with any future server shape change.
+    let restAfter: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, distance, stroke, instruction
@@ -1013,12 +1032,31 @@ struct ParsedFragment: Codable {
         case intensityLabel = "intensity_label"
         case startType = "start_type"
         case suit, gear, descriptor, confidence
+        case restAfter = "rest_after"
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id)
-        distance = try c.decodeIfPresent(Int.self, forKey: .distance)
+        // ponytail (2026-09-08): defensive decode for fragment.distance.
+        // The server may emit fractional meters (12.5, 37.5, 62.5, 87.5)
+        // for half-pool fragments parsed from coach input like
+        // `4 x 25: 12.5 fast / 12.5 easy`. The server's
+        // normalizeFragmentDistances (ios-native/supabase/functions/
+        // parse-workout/_decimal-distance-fix.ts) rounds these to the
+        // nearest integer before serialization, so on the wire they
+        // arrive as Int — but if a stale deploy, a regression in the
+        // helper, or a future engine change emits a float first, the
+        // original "decodeIfPresent(Int.self)" path threw
+        // `DecodingError.dataCorrupted("The given data was not valid
+        // JSON.")` — surfacing as "Server parse failed — using
+        // on-device fallback. The data couldn't be read because it is
+        // in the wrong format." on the coach's screen. Try Double
+        // first (handles 12.5), fall back to Int (handles 13), and
+        // round to the nearest integer for the projected Int?.
+        // See scripts/parser-bench/decimal-distance-fix.test.ts for the
+        // contract the server holds.
+        distance = decodeFlexibleInt(c, .distance)
         stroke = try c.decodeIfPresent(String.self, forKey: .stroke)
         instruction = try c.decodeIfPresent(String.self, forKey: .instruction)
         startType = try c.decodeIfPresent(String.self, forKey: .startType)
@@ -1041,6 +1079,12 @@ struct ParsedFragment: Codable {
         } else {
             intensity = nil
         }
+        // V0.53 (2026-09-08): decode rest_after if the server emits it.
+        // Older server versions (pre-restAfter) don't emit this field —
+        // decodeIfPresent returns nil, which PairRepGroupRow treats as
+        // "continuous" (the conservative default — fragments always
+        // belonged to a single rep; restAfter was an additive field).
+        restAfter = try c.decodeIfPresent(Int.self, forKey: .restAfter)
     }
 
     // Memberwise init for in-code construction (#Preview, future test
@@ -1057,7 +1101,8 @@ struct ParsedFragment: Codable {
         suit: Bool? = nil,
         gear: [String]? = nil,
         descriptor: String? = nil,
-        confidence: Double? = nil
+        confidence: Double? = nil,
+        restAfter: Int? = nil
     ) {
         self.id = id
         self.distance = distance
@@ -1071,6 +1116,7 @@ struct ParsedFragment: Codable {
         self.gear = gear
         self.descriptor = descriptor
         self.confidence = confidence
+        self.restAfter = restAfter
     }
 
     // ponytail (2026-08-04): human-readable summary used by the
@@ -1122,14 +1168,70 @@ struct ParsedWorkout: Codable {
     // WorkoutPreview at the top of the preview body, above the set
     // tree, when this array is non-empty.
     //
-    // decodeIfPresent because the Edge Function does NOT emit this
-    // field yet (server-side slice is a separate PR). When the field
-    // is absent, the iOS layer derives an equivalent list from each
-    // rep group's `ambiguousTerm` field minus terms already in the
-    // vocabulary cache — see `derivedUnmappedTerms` below. The
-    // derivation gives us the same UX today while the server catches
-    // up; when both paths agree, the user sees the same card.
+    // Server contract (V0.47, deployed 2026-08-22): `unmapped_terms`
+    // is a STRING ARRAY of lowercased, deduped surface forms — the
+    // server returns the term alone, not the row shape with
+    // source_line. We bridge here: decode `unmapped_terms` (string
+    // array) and map each entry into an UnmappedTerm with the source
+    // line left nil. When the server evolves to emit the richer
+    // {term, source_line} shape, the alternative CodingKey + nested
+    // decode below keeps the iOS side forward-compatible.
     var unmappedTerms: [UnmappedTerm]?
+
+    enum CodingKeys: String, CodingKey {
+        case title, sections
+        case degraded, degradedReason
+        // String-array shape (current server contract, V0.47 live).
+        case unmappedTerms = "unmapped_terms"
+        // Richer row shape (future server evolution — struct array).
+        case unmappedTermsObjects = "unmapped_terms_objects"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        sections = try c.decode([ParsedSection].self, forKey: .sections)
+        degraded = try c.decodeIfPresent(Bool.self, forKey: .degraded)
+        degradedReason = try c.decodeIfPresent(String.self, forKey: .degradedReason)
+
+        // Prefer the rich row shape if the server ever emits it; fall
+        // back to the string-array shape that's live as of V0.47. The
+        // string path is the current contract and the iOS derivedTerms
+        // fallback is never triggered when this succeeds.
+        if let rich = try c.decodeIfPresent([UnmappedTerm].self, forKey: .unmappedTermsObjects) {
+            unmappedTerms = rich.isEmpty ? nil : rich
+        } else if let terms = try c.decodeIfPresent([String].self, forKey: .unmappedTerms) {
+            unmappedTerms = terms.isEmpty
+                ? nil
+                : terms.map { UnmappedTerm(term: $0, sourceLine: nil) }
+        } else {
+            unmappedTerms = nil
+        }
+    }
+
+    // memberwise init kept so #Preview and tests can construct freely
+    init(
+        title: String? = nil,
+        sections: [ParsedSection],
+        degraded: Bool? = nil,
+        degradedReason: String? = nil,
+        unmappedTerms: [UnmappedTerm]? = nil
+    ) {
+        self.title = title
+        self.sections = sections
+        self.degraded = degraded
+        self.degradedReason = degradedReason
+        self.unmappedTerms = unmappedTerms
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(title, forKey: .title)
+        try c.encode(sections, forKey: .sections)
+        try c.encodeIfPresent(degraded, forKey: .degraded)
+        try c.encodeIfPresent(degradedReason, forKey: .degradedReason)
+        try c.encodeIfPresent(unmappedTerms, forKey: .unmappedTermsObjects)
+    }
 }
 
 /// V0.47 Slice 3 (2026-08-22): one unmapped term with the original
@@ -1474,9 +1576,24 @@ private struct FragmentCTARow: View {
 //   Each row is independently tappable to start a stopwatch scoped to
 //   that fragment; the recorded-ms check appears below the metadata
 //   once the stopwatch stops.
+// V0.53 (2026-09-08, jodie-09 purposeful-threshold complaint):
+// PairRepGroupRow now surfaces the parent rep distance + composite
+// breakdown so a coach reading `4 × 50 @ 1:00 — 25 event rhythm / 25
+// easy` sees the 50 FIRST, with the two 25s described as "each as:
+// 25 event rhythm + 25 easy — continuous". The previous render
+// buried the 50 (only showed `4×`) and the "2 fragments per rep"
+// caption read as jargon; a swimmer/parent read it as two
+// independent 25m swims. When the parser emits rest_after between
+// fragments, the breakdown renders "+ :15 rest" between the parts so
+// the coach sees "with rest between" vs "continuous".
 private struct PairRepGroupRow: View {
     let fragments: [ParsedFragment]
     let reps: Int?
+    // V0.53: parent rep group's distance + stroke, so the header
+    // shows "4 × 50m" instead of just "4 ×". Optional so legacy
+    // call sites that don't pass it degrade gracefully.
+    let parentDistance: Int?
+    let parentStroke: String?
     let paceTargetText: String?
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
     // V0.35 (2026-08-12): nil = static rows (builder preview).
@@ -1489,35 +1606,29 @@ private struct PairRepGroupRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let reps = reps, reps > 1 {
-                // Reps prefix appears once on the header — the
-                // FragmentCTARow children pass reps: nil so they don't
-                // re-emit the prefix.
-                HStack(spacing: 6) {
-                    Rectangle()
-                        .fill(Color.accentAmber)
-                        .frame(width: 2, height: 14)
-                    Text("\(reps)×")
-                        .font(.numeric)
-                        .foregroundColor(Color.accentAmber)
-                    if fragments.count > 1 {
-                        // Sub-pair annotation: makes the composite
-                        // structure explicit. e.g. "pair · 2 fragments"
-                        // for "75 fast / 25 easy". Suppressed when the
-                        // group has exactly one fragment (would be
-                        // redundant with the FragmentCTARow).
-                        Text("·")
-                            .font(.caption)
-                            .foregroundColor(Color.textFaint)
-                        Text("\(fragments.count) fragments per rep")
-                            .font(.caption)
+            if reps != nil || fragments.count > 1 {
+                headerLine
+            }
+            ForEach(Array(fragments.enumerated()), id: \.offset) { fIdx, f in
+                if fIdx > 0, let rest = fragments[fIdx - 1].restAfter, rest > 0 {
+                    // V0.53: inter-fragment rest annotation. Renders
+                    // "+ :NN rest" between two fragments when the
+                    // parser populated rest_after on the prior one.
+                    // nil/0 = continuous (skip — the parent annotation
+                    // covers it). Tells the coach "this is two parts
+                    // of one rep WITH rest between them" so the stopwatch
+                    // pacing can account for the break.
+                    HStack(spacing: 4) {
+                        Rectangle()
+                            .fill(Color.divider)
+                            .frame(width: 1, height: 10)
+                            .padding(.leading, 6)
+                        Text("+ :\(rest) rest")
+                            .font(.caption2)
                             .foregroundColor(Color.textFaint)
                             .italic()
                     }
                 }
-                .padding(.leading, 2)
-            }
-            ForEach(Array(fragments.enumerated()), id: \.offset) { fIdx, f in
                 FragmentCTARow(
                     fragment: f,
                     // reps: nil → suppresses the "×N" prefix on the
@@ -1535,6 +1646,85 @@ private struct PairRepGroupRow: View {
                 )
             }
         }
+    }
+
+    // V0.53: header line. Always shows "4 × 50m [Stroke]"; when
+    // there's more than one fragment, appends the composite
+    // breakdown "each as: 25 X + 25 Y — continuous" (or "+ :NN rest
+    // between" when any inter-fragment rest exists). The breakdown
+    // is the explicit signal that this is ONE composite rep, not
+    // two independent swims.
+    private var headerLine: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Rectangle()
+                    .fill(Color.accentAmber)
+                    .frame(width: 2, height: 14)
+                if let reps = reps, reps > 1 {
+                    Text("\(reps)×")
+                        .font(.numeric)
+                        .foregroundColor(Color.accentAmber)
+                }
+                if let d = parentDistance {
+                    Text("\(d)m")
+                        .font(.numeric)
+                        .foregroundColor(Color.textPrimary)
+                }
+                if let s = parentStroke, !s.isEmpty {
+                    Text(s)
+                        .font(.body)
+                        .foregroundColor(Color.textPrimary)
+                }
+            }
+            .padding(.leading, 2)
+
+            if fragments.count > 1 {
+                Text(compositeBreakdownText)
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .italic()
+                    .padding(.leading, 8)
+                    .accessibilityLabel("Each rep as \(compositeBreakdownAccessibility)")
+            }
+        }
+    }
+
+    // "25 event rhythm + 25 easy — continuous" (or "+ :15 rest between"
+    // if any fragment carries restAfter > 0). Always ends with the
+    // "continuous" or "with rest" cue — that's the visual signal the
+    // user asked for.
+    private var compositeBreakdownText: String {
+        let hasAnyRest = fragments.dropLast().contains { f in
+            (f.restAfter ?? 0) > 0
+        }
+        let parts = fragments.map { f -> String in
+            let dist = f.distance.map { "\($0)" } ?? "?"
+            let label = f.intensity?.label
+                ?? f.intensityLabel
+                ?? f.descriptor
+                ?? f.instruction
+                ?? "swim"
+            return "\(dist) \(label)"
+        }
+        let joined = parts.joined(separator: " + ")
+        let tail = hasAnyRest ? "with rest between" : "continuous"
+        return "each as: \(joined) — \(tail)"
+    }
+
+    // Same content as compositeBreakdownText but with the "continuous"
+    // tail stripped so VoiceOver reads "Each rep as 25 event rhythm
+    // + 25 easy" without the redundant cue.
+    private var compositeBreakdownAccessibility: String {
+        let parts = fragments.map { f -> String in
+            let dist = f.distance.map { "\($0)" } ?? "?"
+            let label = f.intensity?.label
+                ?? f.intensityLabel
+                ?? f.descriptor
+                ?? f.instruction
+                ?? "swim"
+            return "\(dist) \(label)"
+        }
+        return parts.joined(separator: " plus ")
     }
 }
 
@@ -1835,4 +2025,34 @@ private struct FragmentTimesSheetRow: View {
         }
         return formatStopwatchTime(record.timeMs)
     }
+}
+
+// ponytail (2026-09-08): tolerant numeric decoder for fragment.distance.
+// Try Double first (handles half-pool meters like 12.5 that the engine
+// emitted before normalizeFragmentDistances landed), fall back to Int
+// (handles 13), then string-form (handles "12" from any LLM-emitted
+// JSON-quirked variant). Returns nil when the key is absent or null.
+// Rounds the projected value via `Int(value.rounded())` so the public
+// `distance: Int?` keeps its type without forcing callers to migrate
+// to Double. Mirrors the rounding rule in the server's
+// normalizeFragmentDistances — both sides land on the same Int.
+private func decodeFlexibleInt<K: CodingKey>(
+    _ c: KeyedDecodingContainer<K>,
+    _ key: K
+) -> Int? {
+    if c.contains(key) {
+        let isNil = (try? c.decodeNil(forKey: key)) ?? false
+        if !isNil {
+            if let d = try? c.decode(Double.self, forKey: key) {
+                return Int(d.rounded())
+            }
+            if let i = try? c.decode(Int.self, forKey: key) {
+                return i
+            }
+            if let s = try? c.decode(String.self, forKey: key), let d = Double(s) {
+                return Int(d.rounded())
+            }
+        }
+    }
+    return nil
 }
