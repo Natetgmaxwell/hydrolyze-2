@@ -29,6 +29,30 @@ struct WorkoutPreview: View {
     /// fragmentIndex, fragment). Nil in contexts where the live stopwatch
     /// is not the next surface (e.g. read-only review).
     var onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)? = nil
+    /// V0.54 S2.1 (2026-09-08, jodie-09 user feedback): the top-level
+    /// `RepCardContext` flag — `.preview` keeps the zero-CTA invariant
+    /// (no play icons, no tap gestures on cards), `.live` is the
+    /// Console's LIVE state (play icons visible on timable cards), and
+    /// `.finished` is reserved for the POST summary (dimmed). Defaults
+    /// to `.preview` so pre-V0.54 call sites keep their behaviour and
+    /// the zero-CTA-in-preview contract continues to hold. The
+    /// Console's PRE + LIVE bodies both render the full workout
+    /// anatomy — only the interactive affordances narrow.
+    var context: RepCardContext = .preview
+    /// V0.54 S2.1 (2026-09-08): ordered set-id path identifying the
+    /// current set when `context == .live`. Forwarded to each
+    /// repGroup container so it can apply the "current" elevation
+    /// (border + scale + accent bg) only to that one set. Completed
+    /// sets (those before this set in `workout.sections[].namedSets
+    /// [].repGroups[]` order) render full detail at reduced opacity.
+    /// nil = no elevation (all sets render flat — the PRE / read-only
+    /// path).
+    var currentSetId: String? = nil
+    /// V0.54 S2.1 (2026-09-08): the set-ids whose reps have already
+    /// been timed (the COMPLETED set ids, in order). Each one renders
+    /// full detail at reduced opacity. nil or empty = no completed
+    /// sets yet (PRE / first LIVE rep).
+    var completedSetIds: [String] = []
     /// t_d59998d9 (2026-08-05): recorded-ms indexed by fragmentId, held
     /// in WorkoutDetailView's @State until persistence runs (t_be09a643).
     /// FragmentCTARow reads this to show "Saved 0:42.31" + a green check
@@ -98,6 +122,15 @@ struct WorkoutPreview: View {
                         onRemoveRepGroup: onRemoveRepGroup,
                         onFragmentTap: onFragmentTap,
                         recordedTimesByFragmentId: recordedTimesByFragmentId,
+                        // V0.54 S2.1: thread the context flag + current-set
+                        // pointer down to each repGroup container so the
+                        // LIVE body can elevate the active set + dim
+                        // completed ones. PRE (context == .preview)
+                        // ignores these — all sets render flat at full
+                        // opacity, the zero-CTA invariant.
+                        context: context,
+                        currentSetId: currentSetId,
+                        completedSetIds: completedSetIds,
                         onAggregateChipTap: { title, records in
                             Haptics.selection()
                             presentedFragment = PresentedFragmentTimes(
@@ -220,6 +253,14 @@ private struct SectionView: View {
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
     let onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)?
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    // V0.54 S2.1 (2026-09-08): the console state flag + set-elevation
+    // pointer, forwarded down from WorkoutPreview. SectionView ignores
+    // them itself (a section is a logical divider, not a set) — it
+    // just hands them to each RepGroupRowView so the container can
+    // apply elevation/dimming per set.
+    let context: RepCardContext
+    let currentSetId: String?
+    let completedSetIds: [String]
     // V0.48 Slice 2 (2026-08-22): forwarded up to WorkoutPreview, which
     // owns the `presentedFragment` sheet state. Parameters: the fragment's
     // title string (e.g. "75m @ fast") and the records to render in the
@@ -261,6 +302,15 @@ private struct SectionView: View {
                             onRemoveRepGroup: onRemoveRepGroup,
                             onFragmentTap: onFragmentTap,
                             recordedTimesByFragmentId: recordedTimesByFragmentId,
+                            // V0.54 S2.1: forward context + set-elevation
+                            // pointer to each rep group container so the
+                            // Console's LIVE body can render the active
+                            // set with elevation + completed sets dimmed.
+                            // PRE / read-only contexts default to
+                            // .preview + nil — all sets render flat.
+                            context: context,
+                            currentSetId: currentSetId,
+                            completedSetIds: completedSetIds,
                             onAggregateChipTap: onAggregateChipTap
                         )
                     }
@@ -280,12 +330,84 @@ private struct RepGroupRowView: View {
     let onRemoveRepGroup: ((Int, Int, Int) -> Void)?
     let onFragmentTap: ((Int, Int, Int, Int, ParsedFragment) -> Void)?
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    // V0.54 S2.1 (2026-09-08): console context flag + current-set
+    // pointer. RepGroupRowView is the elevation boundary: it owns
+    // the per-set container so the "current" set's visual
+    // treatment (border + scale + accent bg) lives here, not in
+    // each child row. Default .preview keeps pre-V0.54 callers
+    // (WorkoutDetailView, WorkoutBuilderView) rendering flat.
+    let context: RepCardContext
+    let currentSetId: String?
+    let completedSetIds: [String]
     // V0.48 Slice 2 (2026-08-22): forwarded from SectionView. Fires when
     // a fragment row needs to open the aggregate sheet (3+ records tier).
     let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
 
+    /// V0.54 S2.1 (2026-09-08): true iff this repGroup belongs to the
+    /// currently-active set in the Console's LIVE state. Drives the
+    /// elevation container (border + scale + accent bg). False for
+    /// PRE / read-only contexts (`currentSetId == nil`).
+    private var isCurrent: Bool {
+        guard let currentSetId else { return false }
+        return rg.setId == currentSetId
+    }
+
+    /// V0.54 S2.1 (2026-09-08): true iff this repGroup's reps have
+    /// already been timed. Drives the reduced-opacity container so
+    /// completed sets recede without collapsing to one-liners.
+    /// False for PRE / read-only contexts.
+    private var isCompleted: Bool {
+        guard let setId = rg.setId else { return false }
+        return completedSetIds.contains(setId)
+    }
+
+    /// V0.54 S2.1 (2026-09-08): opacity for the repGroup's container.
+    /// 1.0 for the current set; 0.35 for completed sets (strongly
+    /// dimmed so the user's eye lands on "what's next" without
+    /// losing the workout truth); 1.0 for upcoming sets.
+    /// The 0.35 value is below Apple's HIG-recommended 50% minimum
+    /// for "disabled" surfaces — but we WANT the set to read as
+    /// background context, not a disabled control. The text remains
+    /// legible for sighted coaches; VoiceOver still reads the
+    /// rep-card contents at full prominence regardless.
+    private var elevationOpacity: Double {
+        if isCurrent { return 1.0 }
+        if isCompleted { return 0.35 }
+        return 1.0
+    }
+
+    /// V0.54 S2.1 (2026-09-08): the elevation container for the
+    /// currently-active set. Border + scale + accent background so
+    /// the coach reads "this is the set on the stopwatch right now"
+    /// without scanning. Renders nothing for non-current sets so
+    /// PRE / read-only / upcoming sets stay flat.
+    @ViewBuilder
+    private var elevationBackground: some View {
+        if isCurrent {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.accentAmber.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.accentAmber.opacity(0.5), lineWidth: 1.5)
+                )
+        }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        // V0.54 S2.1 (2026-09-08): the elevation container.
+        //
+        // ZStack with `elevationBackground` behind so the border + accent
+        // background only paint behind the CURRENT set (zero-width when
+        // not current). Wrapped in `opacity(elevationOpacity)` so
+        // COMPLETED sets recede without collapsing to one-liners (the
+        // user's jodie-09 feedback). PRE / read-only contexts have
+        // `currentSetId == nil` + empty `completedSetIds`, so both
+        // elevationBackground and opacity pass-through — every set
+        // renders at full opacity on the flat background, exactly as
+        // before.
+        ZStack {
+            elevationBackground
+            VStack(alignment: .leading, spacing: 2) {
             // V0.35 (2026-08-12): when the parser emitted fragments, the
             // flat "4×100m Free" spine is redundant (and misleading — the
             // set is really 4 reps of 75 fast / 25 easy). The fragment
@@ -430,6 +552,12 @@ private struct RepGroupRowView: View {
                     parentStroke: rg.stroke,
                     paceTargetText: rg.interval,
                     recordedTimesByFragmentId: recordedTimesByFragmentId,
+                    // V0.54 S2.1: forward the context flag so the
+                    // composite card's tap gesture + play icon honor
+                    // the .preview zero-CTA contract. PRE / read-only
+                    // contexts keep their flat behaviour; LIVE
+                    // surfaces the play affordance.
+                    context: context,
                     onFragmentTap: onFragmentTap.map { handler in
                         { fIdx, f in
                             handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
@@ -454,6 +582,8 @@ private struct RepGroupRowView: View {
                     paceTargetText: rg.interval,
                     perRepTargets: perRepTargets(for: rg),
                     recordedTimesByFragmentId: recordedTimesByFragmentId,
+                    // V0.54 S2.1: same context forwarding as Mode 1.
+                    context: context,
                     onFragmentTap: onFragmentTap.map { handler in
                         { fIdx, f in
                             handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
@@ -474,6 +604,8 @@ private struct RepGroupRowView: View {
                     parentStroke: rg.stroke,
                     paceTargetText: rg.interval,
                     recordedTimesByFragmentId: recordedTimesByFragmentId,
+                    // V0.54 S2.1: context forwarding (Mode 2).
+                    context: context,
                     onFragmentTap: onFragmentTap.map { handler in
                         { fIdx, f in
                             handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
@@ -506,12 +638,20 @@ private struct RepGroupRowView: View {
                             paceTargetText: rg.interval,
                             showPaceBadge: true,
                             recordedTimes: recordedTimesForFragment(f, in: recordedTimesByFragmentId),
+                            // V0.54 S2.1: forward context to FragmentCTARow
+                            // (Mode 2 fallback). The card already honors
+                            // `context != .preview` for the play CTA,
+                            // so the explicit forward here closes the
+                            // chain — no behaviour drift between the
+                            // Mode 1/2/3 paths and the single-fragment
+                            // fallback.
                             onTap: onFragmentTap.map { handler in
                                 { handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f) }
                             },
                             onAggregateTap: { title, records in
                                 onAggregateChipTap(title, records)
-                            }
+                            },
+                            context: context
                         )
                     }
                 }
@@ -577,11 +717,12 @@ private struct RepGroupRowView: View {
                 }
             }
         }
+        }
+        // V0.54 S2.1: opacity pass-through. 1.0 for current + upcoming
+        // sets, 0.5 for completed sets, 1.0 for the PRE / read-only
+        // path (no completed, no current). See `elevationOpacity`.
+        .opacity(elevationOpacity)
     }
-
-    // V0.35 (2026-08-12): true when the parser emitted fragments for this
-    // rep group. When true, the flat spine is hidden and the fragment rows
-    // carry the display (they're the addressable timed units).
     private var hasFragments: Bool {
         guard let fragments = rg.fragments else { return false }
         return !fragments.isEmpty
@@ -996,6 +1137,16 @@ struct ParsedRepGroup: Codable {
     // range, or fall back to chevron-only render. Server contract:
     // decodeIfPresent — old payloads without this field decode clean.
     var perRepTargets: [String]?
+    // V0.54 S2.1 (2026-09-08, jodie-09 Console elevation): the parent
+    // WorkoutSet.id, used by the Session Console's LIVE state to
+    // identify which repGroup is the currently-active set (border +
+    // scale + accent bg) and which have already been timed
+    // (reduced opacity). Defaults to nil so the field is optional;
+    // when nil, the elevation logic falls back to identity-by-index
+    // (the order the repGroups appear in `section.namedSets[].repGroups[]`).
+    // Not part of the server contract — populated only by the
+    // `WorkoutPreviewBuilder.fromWorkoutAndSets` mapping from DB rows.
+    var setId: String?
 
     // ponytail: custom decoder that handles BOTH the regex parser's
     // response (which has every field) and the LLM's response (which
@@ -1090,7 +1241,8 @@ struct ParsedRepGroup: Codable {
         fragments: [ParsedFragment]? = nil,
         sourceLine: String? = nil,
         zoneTerm: String? = nil,
-        perRepTargets: [String]? = nil
+        perRepTargets: [String]? = nil,
+        setId: String? = nil
     ) {
         self.reps = reps
         self.distance = distance
@@ -1113,6 +1265,7 @@ struct ParsedRepGroup: Codable {
         self.sourceLine = sourceLine
         self.zoneTerm = zoneTerm
         self.perRepTargets = perRepTargets
+        self.setId = setId
     }
 
     // ponytail: explicit Encodable so the synthesized conformance survives
@@ -2206,6 +2359,12 @@ private struct PairRepGroupRow: View {
     let parentStroke: String?
     let paceTargetText: String?
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    // V0.54 S2.1 (2026-09-08): the console context flag.
+    // .preview hides the play icon + tap gesture on every
+    // composite card (zero-CTA invariant); .live/.finished
+    // surface them. Default .preview keeps pre-V0.54 call
+    // sites rendering flat.
+    var context: RepCardContext = .preview
     // V0.35 (2026-08-12): nil = static rows (builder preview).
     let onFragmentTap: ((Int, ParsedFragment) -> Void)?
     // V0.48 Slice 2 (2026-08-22): forwarded to each FragmentCTARow so
@@ -2272,6 +2431,12 @@ private struct PairRepGroupRow: View {
                     // timable fragment's id. nil = no play affordance
                     // (all fragments easy).
                     onTap: makeCardTapHandler(repIdx: repIdx),
+                    // V0.54 S2.1: forward context so RepCard's tap
+                    // gesture + play icon honor the .preview
+                    // zero-CTA contract. PRE / read-only contexts
+                    // default to .preview (no tap, no play icon);
+                    // LIVE surfaces both.
+                    context: context,
                     onAggregateTap: { title, records in
                         onAggregateChipTap(title, records)
                     }
@@ -2400,6 +2565,9 @@ private struct UniformRepGroupRow: View {
     let parentStroke: String?
     let paceTargetText: String?
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    // V0.54 S2.1 (2026-09-08): context flag forwarded to
+    // UniformRepCard. Same .preview/.live contract as PairRepGroupRow.
+    var context: RepCardContext = .preview
     let onFragmentTap: ((Int, ParsedFragment) -> Void)?
     let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
     let note: String?
@@ -2417,6 +2585,10 @@ private struct UniformRepGroupRow: View {
                     paceTargetText: paceTargetText,
                     recordedTimes: recordedTimesForFirstTimableFragment(in: fragments, map: recordedTimesByFragmentId),
                     onTap: makeCardTapHandler(repIdx: repIdx),
+                    // V0.54 S2.1: forward context to UniformRepCard so
+                    // the tap gesture + play icon honor .preview's
+                    // zero-CTA invariant.
+                    context: context,
                     onAggregateTap: { title, records in
                         onAggregateChipTap(title, records)
                     }
@@ -2480,10 +2652,13 @@ private struct UniformRepCard: View {
     let paceTargetText: String?
     let recordedTimes: [FragmentTimeRecord]?
     let onTap: (() -> Void)?
+    // V0.54 S2.1 (2026-09-08): context flag. .preview hides the tap
+    // gesture + play icon so the read-only surface stays zero-CTA.
+    var context: RepCardContext = .preview
     let onAggregateTap: (String, [FragmentTimeRecord]) -> Void
 
     private var hasPlayAffordance: Bool {
-        onTap != nil && tapFragmentIndex(fragments: fragments) != nil
+        onTap != nil && tapFragmentIndex(fragments: fragments) != nil && context != .preview
     }
 
     var body: some View {
@@ -2534,6 +2709,11 @@ private struct UniformRepCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(uniformRepAccessibilityLabel)
         .accessibilityAddTraits(hasPlayAffordance ? .isButton : [])
+        // V0.54 S2.1: tap gesture gated on context (zero-CTA
+        // invariant for .preview). The play icon above already
+        // vanishes in .preview via hasPlayAffordance, so this is
+        // the second half of the gate — without it the gesture
+        // would still fire even with no visible affordance.
         .onTapGesture { onTap?() }
     }
 
@@ -2589,6 +2769,10 @@ private struct ProgressionRepGroupRow: View {
     let paceTargetText: String?
     let perRepTargets: [String]?
     let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    // V0.54 S2.1 (2026-09-08): context flag forwarded to
+    // ProgressionRepCard. Same .preview/.live contract as the other
+    // row components.
+    var context: RepCardContext = .preview
     let onFragmentTap: ((Int, ParsedFragment) -> Void)?
     let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
     let note: String?
@@ -2622,6 +2806,10 @@ private struct ProgressionRepGroupRow: View {
                     perRepTarget: perRepTargets.flatMap { $0.indices.contains(repIdx) ? $0[repIdx] : nil },
                     recordedTimes: recordedTimesForFirstTimableFragment(in: fragments, map: recordedTimesByFragmentId),
                     onTap: makeCardTapHandler(repIdx: repIdx),
+                    // V0.54 S2.1: forward context so the per-rep
+                    // tap gesture + play icon honor .preview's
+                    // zero-CTA invariant.
+                    context: context,
                     onAggregateTap: { title, records in
                         onAggregateChipTap(title, records)
                     }
@@ -2715,10 +2903,13 @@ private struct ProgressionRepCard: View {
     let perRepTarget: String?
     let recordedTimes: [FragmentTimeRecord]?
     let onTap: (() -> Void)?
+    // V0.54 S2.1 (2026-09-08): context flag. Same .preview/.live
+    // contract as the other composite cards.
+    var context: RepCardContext = .preview
     let onAggregateTap: (String, [FragmentTimeRecord]) -> Void
 
     private var hasPlayAffordance: Bool {
-        onTap != nil && tapFragmentIndex(fragments: fragments) != nil
+        onTap != nil && tapFragmentIndex(fragments: fragments) != nil && context != .preview
     }
 
     var body: some View {
@@ -2790,6 +2981,9 @@ private struct ProgressionRepCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(progressionCardAccessibilityLabel)
         .accessibilityAddTraits(hasPlayAffordance ? .isButton : [])
+        // V0.54 S2.1: tap gesture gated on context. The play icon
+        // above vanishes in .preview via hasPlayAffordance; this
+        // is the second half of the zero-CTA gate.
         .onTapGesture { onTap?() }
     }
 
@@ -2911,6 +3105,9 @@ private struct RepCard: View {
     let paceTargetText: String?
     let recordedTimes: [FragmentTimeRecord]?
     let onTap: (() -> Void)?
+    // V0.54 S2.1 (2026-09-08): context flag. .preview hides the tap
+    // gesture + play icon — zero-CTA invariant. LIVE surfaces both.
+    var context: RepCardContext = .preview
     let onAggregateTap: (String, [FragmentTimeRecord]) -> Void
 
     // The rep's total distance drives the proportional split. Sum
@@ -2924,9 +3121,10 @@ private struct RepCard: View {
     }
 
     // Whether the card shows a play affordance. True iff the
-    // handler is wired AND at least one segment is timable.
+    // handler is wired AND at least one segment is timable AND
+    // the context isn't .preview (V0.54 S2.1 zero-CTA invariant).
     private var hasPlayAffordance: Bool {
-        onTap != nil && tapFragmentIndex(fragments: fragments) != nil
+        onTap != nil && tapFragmentIndex(fragments: fragments) != nil && context != .preview
     }
 
     var body: some View {
@@ -3074,6 +3272,11 @@ private struct RepCard: View {
             interval: paceTargetText
         ))
         .accessibilityAddTraits(hasPlayAffordance ? .isButton : [])
+        // V0.54 S2.1: tap gesture gated on context (zero-CTA
+        // invariant for .preview). The play icon above already
+        // vanishes in .preview via hasPlayAffordance, so this is
+        // the second half of the gate — without it the gesture
+        // would still fire even with no visible affordance.
         .onTapGesture {
             onTap?()
         }

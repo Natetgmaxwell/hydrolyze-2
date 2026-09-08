@@ -66,6 +66,7 @@
 		64D0C23101DC7F509AF5840D /* SwimmerDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */; };
 		673890D07BD3CE65E891D350 /* build_and_run_parserzone.sh in Resources */ = {isa = PBXBuildFile; fileRef = E695D2E4174F8C368AFB7740 /* build_and_run_parserzone.sh */; };
 		69F547FF1CC10BBC630D89BC /* build_and_run_attendance.sh in Resources */ = {isa = PBXBuildFile; fileRef = D4616F9A681BCD3987147C30 /* build_and_run_attendance.sh */; };
+		6B1D9207CBD7602E8D21B0DC /* WorkoutPreviewBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDFB5B2739D0F6DF48812557 /* WorkoutPreviewBuilder.swift */; };
 		6DDF4280727494101EDC0A1B /* RestCountdownModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84255110465547DF03C24360 /* RestCountdownModel.swift */; };
 		6E63D74A84935A1342953360 /* build_and_run.sh in Resources */ = {isa = PBXBuildFile; fileRef = 3AA843D052311070F8AEE466 /* build_and_run.sh */; };
 		6F46551F451E09AAE74C227A /* PersistRecordedTimeSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 798F96722FCDA27322E79C36 /* PersistRecordedTimeSmoke.swift */; };
@@ -308,6 +309,7 @@
 		E6229921666375F026D5209E /* FragmentTimeRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FragmentTimeRecord.swift; sourceTree = "<group>"; };
 		E695D2E4174F8C368AFB7740 /* build_and_run_parserzone.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_parserzone.sh; sourceTree = "<group>"; };
 		E8D42BD09217EC1098E3901C /* ChartDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartDataService.swift; sourceTree = "<group>"; };
+		EDFB5B2739D0F6DF48812557 /* WorkoutPreviewBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPreviewBuilder.swift; sourceTree = "<group>"; };
 		F0E11B7104A97D4F39692D1C /* SwimmerUpcomingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerUpcomingView.swift; sourceTree = "<group>"; };
 		F24A9DE7AED9F499FFF52E9C /* build_and_run_dropruledisplay.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_dropruledisplay.sh; sourceTree = "<group>"; };
 		F3A7F53BCEF145388CFDAEFF /* WorkoutParserZoneCLITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutParserZoneCLITest.swift; sourceTree = "<group>"; };
@@ -594,6 +596,7 @@
 				0FCE58F424FCFC70ABC5440C /* TickMarkCelebrationView.swift */,
 				78A12801C5B23FA82BFD6D52 /* VocabularyCardView.swift */,
 				BD85D4E3D3924B1DB74506FC /* WorkoutPreview.swift */,
+				EDFB5B2739D0F6DF48812557 /* WorkoutPreviewBuilder.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -962,6 +965,7 @@
 				49001D80567C85B979548EA9 /* WorkoutDetailView.swift in Sources */,
 				54B53CC34EDC25C4E355C112 /* WorkoutParser.swift in Sources */,
 				12D08494D187B8C9EC30FDF3 /* WorkoutPreview.swift in Sources */,
+				6B1D9207CBD7602E8D21B0DC /* WorkoutPreviewBuilder.swift in Sources */,
 				DB651C1FF1EDDB8D12D145B1 /* WorkoutRow.swift in Sources */,
 				9F68BCD7BEFAA7EBA37340D4 /* WorkoutService.swift in Sources */,
 				D371521F6997DB17EAFF3B82 /* WorkoutSetFragment.swift in Sources */,

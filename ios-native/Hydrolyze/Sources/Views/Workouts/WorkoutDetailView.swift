@@ -1111,81 +1111,14 @@ struct WorkoutDetailView: View {
         .padding(.horizontal, 16)
     }
 
+    // V0.54 S2.1 (2026-09-08, jodie-09): delegate to the shared
+    // `WorkoutPreviewBuilder.fromWorkoutAndSets(_:_:)` helper so the
+    // Session Console and the WorkoutDetailView read the parsed
+    // workout through the exact same code path. Before this slice,
+    // each view built its own mapping and the DB-row → ParsedRepGroup
+    // rules could drift (e.g. one adds a field, the other forgets).
     private func buildParsedWorkout(from workout: Workout, sets: [WorkoutSet]) -> ParsedWorkout {
-        ParsedWorkout(
-            title: workout.title,
-            sections: [
-                ParsedSection(
-                    title: nil,
-                    namedSets: [
-                        ParsedNamedSet(
-                            label: nil,
-                            note: nil,
-                            repGroups: sets.map { set in
-                                // t_d59998d9 (2026-08-05): map the
-                                // WorkoutSet's parsed leaf fragments into
-                                // the ParsedRepGroup so FragmentCTARow
-                                // renders. nil/empty fragments falls through
-                                // to the static label path (unchanged from
-                                // t_c74dffbc). The pace target reads from
-                                // the parent set's intervalText, which is
-                                // what the row's "pace target badge" wants.
-                                let parsedFragments: [ParsedFragment]? = set.fragments?.map { f in
-                                    let intensityType = ParsedIntensityType(rawValue: f.intensity) ?? .easy
-                                    let intensity: ParsedIntensity? = (f.intensity == "unknown" || f.intensity.isEmpty)
-                                        ? nil
-                                        : ParsedIntensity(type: intensityType, label: f.intensity)
-                                    return ParsedFragment(
-                                        id: f.id,
-                                        distance: f.distanceMeters,
-                                        stroke: set.stroke,
-                                        instruction: nil,
-                                        intensity: intensity,
-                                        intensityType: intensityType.rawValue,
-                                        intensityLabel: f.intensity == "unknown" ? nil : f.intensity,
-                                        startType: f.startType,
-                                        suit: nil,
-                                        gear: nil,
-                                        descriptor: nil,
-                                        confidence: f.confidence
-                                    )
-                                }
-                                return ParsedRepGroup(
-                                    reps: set.reps,
-                                    distance: set.distance,
-                                    stroke: set.stroke,
-                                    interval: set.intervalText,
-                                    intensity: set.intensityLabel.map {
-                                        ParsedIntensity(
-                                            type: ParsedIntensityType(rawValue: set.intensityType ?? "easy") ?? .easy,
-                                            label: $0
-                                        )
-                                    },
-                                    pacing: nil,
-                                    pattern: [],
-                                    patternType: nil,
-                                    connectors: nil,
-                                    note: nil,
-                                    gear: set.gear,
-                                    gearOptional: false,
-                                    descend: nil,
-                                    details: nil,
-                                    dive: set.dive,
-                                    suit: set.suit,
-                                    ambiguousTerm: nil,
-                                    fragments: parsedFragments,
-                                    // V0.41 (2026-08-18): round-trip the
-                                    // persisted set-level zone term so the
-                                    // builder preview (Slice 3) and timing
-                                    // flow (Slice 2) read it back.
-                                    zoneTerm: set.zoneTerm
-                                )
-                            }
-                        )
-                    ]
-                )
-            ]
-        )
+        WorkoutPreviewBuilder.fromWorkoutAndSets(workout, sets: sets)
     }
 
     private func formatDate(_ dateStr: String) -> String {

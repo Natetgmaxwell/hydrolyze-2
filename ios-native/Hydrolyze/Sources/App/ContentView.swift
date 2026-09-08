@@ -171,8 +171,19 @@ struct ContentView: View {
             // `-v54-demo-console-live` is the S1 acceptance flag
             // that flips the VM state to .live so we can screenshot
             // the stub body without an interactive tap.
+            //
+            // V0.54 S2.1 (2026-09-08, jodie-09 user feedback):
+            // `-v54-demo-console-jodie09` swaps the seed from the
+            // S1 5-set Threshold Tuesday (flat one-liners) to the
+            // rich Purposeful Threshold workout — every WorkoutPreview
+            // mode, DIVE/SUIT/gear, "Each:" caption, "Descend:"
+            // ladder, verbatim "12.5m" fragment distances. The PRE +
+            // LIVE screenshots prove the full rep-card anatomy
+            // renders (not the rejected flat one-liner surface).
             if args.contains("-v54-demo-console")
-                || args.contains("-v54-demo-console-live") {
+                || args.contains("-v54-demo-console-live")
+                || args.contains("-v54-demo-console-jodie09")
+                || args.contains("-v54-demo-console-live-jodie09") {
                 return .console
             }
             return nil

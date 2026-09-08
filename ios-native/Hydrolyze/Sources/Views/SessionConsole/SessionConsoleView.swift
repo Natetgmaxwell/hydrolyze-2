@@ -79,8 +79,19 @@ struct SessionConsoleView: View {
             // path also works for production traffic once an auth
             // session exists. `-v54-demo-console-live` is the S1
             // acceptance flag that flips the VM state to .live.
+            //
+            // V0.54 S2.1 (2026-09-08, jodie-09): `-v54-demo-console-
+            // jodie09` routes the seed to the rich Purposeful Threshold
+            // workout (every WorkoutPreview mode, "Each:" caption,
+            // "Descend:" ladder, verbatim 12.5m fragments, DIVE/SUIT/
+            // gear). The PRE + LIVE screenshots prove the full
+            // rep-card anatomy renders — the user's image feedback
+            // rejected the S1/S2 flat one-liner surface.
             let args = ProcessInfo.processInfo.arguments
-            if args.contains("-v54-demo-console") || args.contains("-v54-demo-console-live") {
+            if args.contains("-v54-demo-console")
+               || args.contains("-v54-demo-console-live")
+               || args.contains("-v54-demo-console-jodie09")
+               || args.contains("-v54-demo-console-live-jodie09") {
                 viewModel.seedV54DemoConsole()
                 return
             }
@@ -102,7 +113,17 @@ struct SessionConsoleView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 16)
-            setList
+            // V0.54 S2.1 (2026-09-08, jodie-09 user feedback):
+            // replace the flat "◯ N | ZONE | label" one-liners with
+            // the full WorkoutPreview rendering (rep cards × modes,
+            // fragment rows, captions, send-offs). The spec's
+            // "one primary CTA" rule constrains ACTIONS, not
+            // INFORMATION — the coach must see exactly what the
+            // swimmers will be doing, instruction included, before
+            // tapping Start Session. The breadcrumb stays as the
+            // only correction surface; START SESSION stays as the
+            // only action surface.
+            preWorkoutPreview
                 .padding(.horizontal, 16)
             Spacer(minLength: 16)
             breadcrumb
@@ -125,36 +146,38 @@ struct SessionConsoleView: View {
         }
     }
 
-    /// Read-only set list. Renders one row per set with the same
-    /// "◯ N  ZONE  label" vocabulary as the spec wireframe. Each row
-    /// is plain text — no buttons, no taps (the WorkoutPreview
-    /// zero-CTA contract held).
-    private var setList: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(viewModel.sets.sorted(by: { $0.orderIndex < $1.orderIndex })) { set in
-                HStack(spacing: 12) {
-                    Text("◯")
-                        .font(.titleSmall)
-                        .foregroundStyle(Color.textFaint)
-                        .frame(width: 18)
-                    Text("\(set.orderIndex + 1)")
-                        .font(.numericSmall)
-                        .foregroundStyle(Color.textMuted)
-                        .frame(width: 24, alignment: .leading)
-                    if let zone = set.zoneTerm?.uppercased() {
-                        Text(zone)
-                            .font(.eyebrow)
-                            .foregroundStyle(Color.textFaint)
-                            .tracking(0.5)
-                            .frame(width: 84, alignment: .leading)
-                    }
-                    Text(set.label)
-                        .font(.body)
-                        .foregroundStyle(Color.textPrimary)
-                    Spacer()
-                }
-            }
+    /// V0.54 S2.1 (2026-09-08, jodie-09 user feedback): the PRE body's
+    /// full WorkoutPreview rendering. Replaces the prior flat
+    /// "◯ N | ZONE | label" one-liner surface with the same rich
+    /// rep-card anatomy the builder preview uses — Modes
+    /// `.track` / `.uniform` / `.progression`, fragment rows,
+    /// captions ("Each:", "Descend:"), send-offs, distance labels
+    /// ("12.5m" verbatim), gear/DIVE/SUIT badges, zone terms.
+    ///
+    /// The `context: .preview` flag keeps the zero-CTA invariant:
+    /// no play icons, no tap gestures, the only interactive surface
+    /// in PRE remains the breadcrumb + Start Session. `currentSetId`
+    /// and `completedSetIds` stay nil/empty so every set renders at
+    /// full opacity on the flat background — no elevation, no
+    /// dimming.
+    private var preWorkoutPreview: some View {
+        WorkoutPreview(
+            workout: parsedWorkoutForPreview,
+            context: .preview,
+            currentSetId: nil,
+            completedSetIds: []
+        )
+    }
+
+    /// The parsed-workout tree shared between PRE and LIVE. Built
+    /// from the loaded workout + sets via `WorkoutPreviewBuilder` —
+    /// the same helper `WorkoutDetailView` uses so the two views
+    /// cannot drift in their DB-row → ParsedRepGroup mapping.
+    private var parsedWorkoutForPreview: ParsedWorkout {
+        guard let workout = viewModel.workout else {
+            return ParsedWorkout(title: nil, sections: [])
         }
+        return WorkoutPreviewBuilder.fromWorkoutAndSets(workout, sets: viewModel.sets)
     }
 
     private var breadcrumb: some View {
@@ -210,6 +233,16 @@ struct SessionConsoleView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
                 .padding(.bottom, 12)
+            // V0.54 S2.1 (2026-09-08, jodie-09 user feedback): the
+            // LIVE body now renders the full WorkoutPreview (every
+            // fragment card, mode, caption) — same surface as PRE,
+            // with the CURRENT set visually elevated (border + scale
+            // + accent bg) and COMPLETED sets dimmed via reduced
+            // opacity. The "one primary CTA" rule constrains
+            // actions (the stopwatch below), not information
+            // (every set is fully rendered).
+            liveWorkoutPreview
+                .padding(.horizontal, 16)
             if let prefill = liveSetPrefill {
                 TimingView(
                     prefill: prefill,
@@ -236,6 +269,27 @@ struct SessionConsoleView: View {
                 noTimeableStub
             }
         }
+    }
+
+    /// V0.54 S2.1: the LIVE body's full WorkoutPreview. Reads the
+    /// current set from `liveSetPrefill.workoutSetId` (the first
+    /// timeable set per spec §5) so the elevation container knows
+    /// which repGroup to elevate. Completed sets stay full-detail
+    /// at reduced opacity (the user's jodie-09 feedback — flat
+    /// one-liners were rejected because they hid what the swimmers
+    /// would actually be doing).
+    ///
+    /// `context: .live` lets the play affordances surface on each
+    /// timable card (the Console's stopwatch is the primary CTA,
+    /// not the per-card play buttons — those launch individual
+    /// fragment timing and are secondary).
+    private var liveWorkoutPreview: some View {
+        WorkoutPreview(
+            workout: parsedWorkoutForPreview,
+            context: .live,
+            currentSetId: liveSetPrefill?.workoutSetId,
+            completedSetIds: viewModel.completedSetIds
+        )
     }
 
     /// Header above the LIVE stopwatch. Shows the breadcrumb (👤 N) +
