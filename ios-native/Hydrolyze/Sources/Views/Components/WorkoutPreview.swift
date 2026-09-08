@@ -1314,16 +1314,11 @@ struct ParsedFragment: Codable {
 // `fragment.distance` now reads `fragmentDistanceText(fragment)`
 // instead. The wire type of distance stays Int? (V0.51 contract);
 // the label is the display-side fidelity layer.
-func fragmentDistanceText(_ fragment: ParsedFragment) -> String {
-    if let label = fragment.distanceLabel, !label.isEmpty {
-        return "\(label)m"
-    }
-    if let d = fragment.distance {
-        return "\(d)m"
-    }
-    return ""
-}
-
+//
+// (defined at file scope, after `struct ParsedFragment`, so all
+// callers — both inside ParsedFragment (via `Self.fragmentDistanceText`)
+// and outside it (via `fragmentDistanceText(fragment)`) — resolve.)
+//
 // ponytail (2026-08-04): human-readable summary used by the
     // per-fragment CTA. Format: "<distance> <stroke> <intensity>" with
     // the descriptor verbatim if present. The CTA is the row; tapping
@@ -1351,6 +1346,37 @@ struct ParsedNamedSet: Codable {
     var label: String?
     var note: String?
     var repGroups: [ParsedRepGroup]
+}
+
+// V0.53.3 (2026-09-08, jodie-09 display fidelity): file-scope helper
+// for the fragment-distance label chain. Returns the verbatim string
+// form when distance_label is set (e.g. "12.5m", "37.5m"), falls back
+// to the int distance ("25m", "100m"), and returns an empty string
+// when distance is unknown. The empty-string fallback matches the
+// prior `if let d = ... { "\(d)m" }` behaviour on nil — every render
+// site was already gated on distance, so the empty path is unreachable
+// in practice, but the helper keeps the contract explicit.
+//
+// (Why file-scope, not a ParsedFragment method: when this was declared
+// inside `struct ParsedFragment`, Swift treated `func fragmentDistanceText(_:)`
+// as an instance method, making the four external render-side call-sites
+// (FragmentCTARow, UniformRepCard, ProgressionRepCard, RepCard) fail to
+// resolve `fragmentDistanceText(fragment)`. Moving to file scope lets
+// both the internal call (from ParsedFragment.ctaLabel) and the four
+// external calls reach the helper with a single identifier.)
+//
+// Render-site usage: every site that previously read `\(d)m` from
+// `fragment.distance` now reads `fragmentDistanceText(fragment)`
+// instead. The wire type of distance stays Int? (V0.51 contract);
+// the label is the display-side fidelity layer.
+func fragmentDistanceText(_ fragment: ParsedFragment) -> String {
+    if let label = fragment.distanceLabel, !label.isEmpty {
+        return "\(label)m"
+    }
+    if let d = fragment.distance {
+        return "\(d)m"
+    }
+    return ""
 }
 
 struct ParsedSection: Codable {

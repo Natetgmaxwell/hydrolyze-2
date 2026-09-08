@@ -57,6 +57,7 @@
 		5CEF56078E75ACD6930869A5 /* AttendanceResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 476DE307B897395397132407 /* AttendanceResolver.swift */; };
 		5E4F38926EFB0B269DDF3E37 /* PairingHandoffSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AFBB3C756C66DF7C336101B /* PairingHandoffSmoke.swift */; };
 		5F0E844BEA9642908BE7C867 /* SquadManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E9A0EBD6BC8CF5C2D5BDBD0 /* SquadManagementView.swift */; };
+		61AA6BE0070D774DC72BD9F1 /* V0533FragmentDistanceLabelSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1649077A181309BB971AE569 /* V0533FragmentDistanceLabelSmoke.swift */; };
 		63BF728FDA5D95E0E6556692 /* RecordedTimeFragmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A402AB7C8D878D214E192EE /* RecordedTimeFragmentService.swift */; };
 		64833600ED0701686C6F395D /* SwimmerSheetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */; };
 		64D0C23101DC7F509AF5840D /* SwimmerDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5301BD976CAEEE9840E5F707 /* SwimmerDetailViewModel.swift */; };
@@ -175,6 +176,7 @@
 		0E9A0EBD6BC8CF5C2D5BDBD0 /* SquadManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquadManagementView.swift; sourceTree = "<group>"; };
 		0FCE58F424FCFC70ABC5440C /* TickMarkCelebrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickMarkCelebrationView.swift; sourceTree = "<group>"; };
 		1077B3502F7320E20680EDEB /* SwimmersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmersListView.swift; sourceTree = "<group>"; };
+		1649077A181309BB971AE569 /* V0533FragmentDistanceLabelSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V0533FragmentDistanceLabelSmoke.swift; sourceTree = "<group>"; };
 		16F2B9FC412EF150DB478F46 /* RPEParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPEParser.swift; sourceTree = "<group>"; };
 		1AC471F99C20332537B3B07C /* RecoverySignatureCLITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoverySignatureCLITest.swift; sourceTree = "<group>"; };
 		1D6419FC350D113A41F5979A /* AttendanceBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceBadge.swift; sourceTree = "<group>"; };
@@ -539,6 +541,7 @@
 				C0D4728A9610A4E3351488A2 /* V0531CompositeRepLayoutSmoke.swift */,
 				39EB36ADDE0560C444A699F6 /* V0531DesignARepCardLayoutSmoke.swift */,
 				B5C719107D86EF0CF21440DF /* V0532RepCardModeSelectionSmoke.swift */,
+				1649077A181309BB971AE569 /* V0533FragmentDistanceLabelSmoke.swift */,
 				EF69CCB3B0B19C51E8A84D20 /* CLI */,
 			);
 			name = Tests;
@@ -957,6 +960,7 @@
 				BF4546D04119F898D4561257 /* V0531CompositeRepLayoutSmoke.swift in Sources */,
 				AA55B3B7E1FE07CFD4EA45F5 /* V0531DesignARepCardLayoutSmoke.swift in Sources */,
 				E868BEBBF2D5280DDFDC52FA /* V0532RepCardModeSelectionSmoke.swift in Sources */,
+				61AA6BE0070D774DC72BD9F1 /* V0533FragmentDistanceLabelSmoke.swift in Sources */,
 				86D02092BD9FAA9D4FB2185F /* WorkoutParser3MTCLITest.swift in Sources */,
 				A655A7B13E6C0360C4808B68 /* WorkoutParserZoneCLITest.swift in Sources */,
 			);
