@@ -862,9 +862,22 @@ private struct MetadataBadge: View {
     let color: Color
 
     var body: some View {
+        // V0.54 S2.2 (2026-09-09, jodie-09 Console parse fidelity):
+        // .fixedSize(horizontal: true, vertical: false) stops the
+        // "Ea…" ellipsization Nathan saw on Sets 1/6 (zone chips
+        // Easy/Steady/Hard/Sprint). The badge lives in a parent
+        // HStack that competes for horizontal space with the ×N +
+        // parent-distance spine + stroke + intensity + interval
+        // text; without fixedSize, SwiftUI squeezes the chip first
+        // (the shortest non-essential element) and the zone word
+        // truncates to two characters. fixedSize claims the full
+        // natural width for the chip — siblings compress instead,
+        // which is the right trade for a zone marker the coach
+        // needs to read at a glance.
         Text(text)
             .font(.numericSmall)
             .foregroundColor(color)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(color.opacity(0.12))
@@ -1755,6 +1768,18 @@ func segmentLabel(fragment: ParsedFragment) -> String {
     var parts: [String] = []
     let dist = fragmentDistanceText(fragment)
     if !dist.isEmpty { parts.append(dist) }
+    // V0.54 S2.2 (2026-09-09, jodie-09 Console parse fidelity):
+    // prefer the coach's verbatim intensity word ("race rhythm",
+    // "easy", "strong") carried in `intensityLabel` over the parser
+    // type token ("race_pace") carried in `intensity.label`. The
+    // V0.53.1 contract hard-coded the type-token path; the new
+    // WorkoutSetFragment.intensityLabel field plumbs the verbatim
+    // word through WorkoutPreviewBuilder and onto every
+    // ParsedFragment. Render surfaces must read it first so the
+    // coach sees their own language, not parser internals.
+    if let verbatim = fragment.intensityLabel, !verbatim.isEmpty {
+        return parts.joined(separator: " ") + " " + verbatim
+    }
     if let label = fragment.intensity?.label, !label.isEmpty {
         return parts.joined(separator: " ") + " " + label
     }

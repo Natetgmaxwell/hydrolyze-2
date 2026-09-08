@@ -604,6 +604,16 @@ final class WorkoutService {
             let order_index: Int
             // V0.35 (2026-08-12): parsed leaf fragments, persisted as JSONB.
             let fragments: [WorkoutSetFragment]?
+            // V0.54 S2.2 (2026-09-09, jodie-09 Console parse fidelity):
+            // optional display-fidelity + Mode 3 ladder fields.
+            // Forwarded from the parsed RepGroup so the DB row carries
+            // the same information the live parser produced. Decoded
+            // optionally on the read side (WorkoutSet.note/descend/
+            // perRepTargets are nil-tolerant via the WorkoutSet CodingKeys)
+            // — existing rows without these fields decode clean.
+            let note: String?
+            let descend: String?
+            let per_rep_targets: [String]?
 
             enum CodingKeys: String, CodingKey {
                 case workout_id, reps, distance, stroke
@@ -611,6 +621,8 @@ final class WorkoutService {
                 case zone_term
                 case gear, dive, suit, start_type, order_index
                 case fragments
+                case note, descend
+                case per_rep_targets
             }
         }
 
@@ -648,7 +660,17 @@ final class WorkoutService {
                             // fragments default to push unless stated.
                             startType: f.startType ?? "push",
                             paceTargetSec: Self.paceTargetSeconds(from: group.interval),
-                            confidence: f.confidence
+                            confidence: f.confidence,
+                            // V0.54 S2.2 (2026-09-09, jodie-09 Console
+                            // parse fidelity): forward the verbatim
+                            // source-text distance + intensity word from
+                            // the ParsedFragment so the DB-row shape
+                            // carries the same display fidelity the
+                            // live parser did. Console reads these via
+                            // WorkoutPreviewBuilder — same contract as
+                            // the seed fixture.
+                            distanceLabel: f.distanceLabel,
+                            intensityLabel: f.intensityLabel
                         )
                     }
                     let row = SetRow(
@@ -666,7 +688,16 @@ final class WorkoutService {
                         // Derive start_type from dive flag: dive → 'dive', else default 'in_water'
                         start_type: dive ? "dive" : "in_water",
                         order_index: sortOrder,
-                        fragments: fragments
+                        fragments: fragments,
+                        // V0.54 S2.2 (2026-09-09, jodie-09 Console
+                        // parse fidelity): forward the verbatim
+                        // note / descend / per-rep targets so the
+                        // Console + WorkoutDetailView can render
+                        // build/descend ladders and "Each:" captions
+                        // from the DB row on subsequent loads.
+                        note: group.note,
+                        descend: group.descend,
+                        per_rep_targets: group.perRepTargets
                     )
                     sortOrder += 1
                     _ = try await supabase.from("workout_sets")

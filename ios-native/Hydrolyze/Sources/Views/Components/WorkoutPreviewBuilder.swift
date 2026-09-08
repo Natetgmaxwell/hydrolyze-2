@@ -51,14 +51,35 @@ enum WorkoutPreviewBuilder {
                                     let intensity: ParsedIntensity? = (f.intensity == "unknown" || f.intensity.isEmpty)
                                         ? nil
                                         : ParsedIntensity(type: intensityType, label: f.intensity)
+                                    // V0.54 S2.2 (2026-09-09, jodie-09
+                                    // Console parse fidelity): forward
+                                    // (a) `distance_label` verbatim
+                                    // source-text — round-trips the
+                                    // V0.53.3 server fix through the
+                                    // DB-row shape so the segment
+                                    // renders "12.5m" instead of "13m";
+                                    // (b) `intensity_label` (coach's
+                                    // verbatim word like "race rhythm")
+                                    // — overrides the type-token label
+                                    // ("race_pace") that
+                                    // `ParsedIntensity(label:)` carries.
                                     return ParsedFragment(
                                         id: f.id,
                                         distance: f.distanceMeters,
+                                        distanceLabel: f.distanceLabel,
                                         stroke: set.stroke,
                                         instruction: nil,
                                         intensity: intensity,
                                         intensityType: intensityType.rawValue,
-                                        intensityLabel: f.intensity == "unknown" ? nil : f.intensity,
+                                        // V0.54 S2.2: prefer the coach's
+                                        // verbatim word; fall back to the
+                                        // parser type token when the
+                                        // server didn't emit the verbatim
+                                        // label. The segment renderer
+                                        // (WorkoutPreview.segmentLabel)
+                                        // picks `intensityLabel` first
+                                        // when non-nil/non-empty.
+                                        intensityLabel: f.intensityLabel ?? (f.intensity == "unknown" ? nil : f.intensity),
                                         startType: f.startType,
                                         suit: nil,
                                         gear: nil,
@@ -81,10 +102,22 @@ enum WorkoutPreviewBuilder {
                                     pattern: [],
                                     patternType: nil,
                                     connectors: nil,
-                                    note: nil,
+                                    // V0.54 S2.2: forward the
+                                    // set-level note ("Each: 50 @
+                                    // 65% / 70% / 75%") — the existing
+                                    // WorkoutPreview header HStack
+                                    // renders it in italic at line 461
+                                    // once it lands.
+                                    note: set.note,
                                     gear: set.gear,
                                     gearOptional: false,
-                                    descend: nil,
+                                    // V0.54 S2.2: forward the build/
+                                    // descend descriptor and per-rep
+                                    // targets so the Mode 3
+                                    // ProgressionRepCard ladder fires
+                                    // (WorkoutPreview.swift:2882 + the
+                                    // `perRepTargets(for:)` helper).
+                                    descend: set.descend,
                                     details: nil,
                                     dive: set.dive,
                                     suit: set.suit,
@@ -95,6 +128,12 @@ enum WorkoutPreviewBuilder {
                                     // builder preview (Slice 3) and timing
                                     // flow (Slice 2) read it back.
                                     zoneTerm: set.zoneTerm,
+                                    // V0.54 S2.2: forward per-rep
+                                    // target labels so the Mode 3
+                                    // ProgressionRepCard ladder fires
+                                    // (WorkoutPreview.swift:2882 + the
+                                    // `perRepTargets(for:)` helper).
+                                    perRepTargets: set.perRepTargets,
                                     // V0.54 S2.1 (2026-09-08, jodie-09
                                     // Console elevation): forward the parent
                                     // WorkoutSet.id so the Session Console's

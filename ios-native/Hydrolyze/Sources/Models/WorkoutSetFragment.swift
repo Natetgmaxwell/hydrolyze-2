@@ -54,6 +54,22 @@ struct WorkoutSetFragment: Codable, Identifiable, Sendable, Hashable {
     let startType: String          // "dive" | "wall" | "push"  (FragmentStartType from parser-integration.ts)
     let paceTargetSec: Int?        // send-off in seconds, nil if open / multi-descending
     let confidence: Double?        // 1.0 = regex, <1.0 = LLM fallback; nil = unknown
+    // V0.54 S2.2 (2026-09-09, jodie-09 Console parse fidelity):
+    // verbatim source-text distance (e.g. "12.5", "37.5", "25") the
+    // server sets right before serialization. Display-only — the int
+    // `distanceMeters` is still the wire/timing value (V0.51 contract).
+    // nil-tolerant decode so old DB rows / pre-V0.53.3 server builds
+    // stay coherent; render surfaces fall back to int distance when
+    // nil. Same contract as `ParsedFragment.distanceLabel`.
+    let distanceLabel: String?
+    // V0.54 S2.2 (2026-09-09, jodie-09 Console parse fidelity):
+    // the coach's verbatim intensity word ("race rhythm", "easy",
+    // "strong") — what the segment label should render. Distinct from
+    // `intensity` (the parser type token like "race_pace" / "easy"
+    // that drives `isTimable` + the colour mapping). nil-tolerant
+    // decode so old rows keep working; the segment renderer falls
+    // back to `intensity` when nil.
+    let intensityLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -64,6 +80,59 @@ struct WorkoutSetFragment: Codable, Identifiable, Sendable, Hashable {
         // shape (migration comment) and the parser's start_type key.
         case startType = "start_type"
         case paceTargetSec = "pace_target_sec", confidence
+        // V0.54 S2.2: optional display-fidelity fields. Mirror the
+        // `ParsedFragment` snake_case keys so the WorkoutPreviewBuilder
+        // mapping is a straight pass-through (no rename, no fallback
+        // string-massaging at the boundary).
+        case distanceLabel = "distance_label"
+        case intensityLabel = "intensity_label"
+    }
+
+    // V0.54 S2.2: custom decoder so the new optional display-fidelity
+    // fields use decodeIfPresent and old DB rows (pre-V0.53.3 server,
+    // pre-S2.2 client) decode without throwing on missing keys. Swift's
+    // auto-synthesized init(from:) calls decode(_:forKey:) (not
+    // decodeIfPresent), which throws DecodingError.keyNotFound on any
+    // missing key — fatal for every WorkoutSetFragment without the new
+    // fields. Mirrors the defensive pattern `ParsedFragment` already
+    // uses for the same reason (see WorkoutPreview.swift:1379).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        orderIndex = try c.decode(Int.self, forKey: .orderIndex)
+        distanceMeters = try c.decode(Int.self, forKey: .distanceMeters)
+        reps = try c.decode(Int.self, forKey: .reps)
+        intensity = try c.decode(String.self, forKey: .intensity)
+        startType = try c.decode(String.self, forKey: .startType)
+        paceTargetSec = try c.decodeIfPresent(Int.self, forKey: .paceTargetSec)
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
+        distanceLabel = try c.decodeIfPresent(String.self, forKey: .distanceLabel)
+        intensityLabel = try c.decodeIfPresent(String.self, forKey: .intensityLabel)
+    }
+
+    // Memberwise init (default — required for seed fixtures + previews).
+    init(
+        id: String,
+        orderIndex: Int,
+        distanceMeters: Int,
+        reps: Int,
+        intensity: String,
+        startType: String,
+        paceTargetSec: Int?,
+        confidence: Double?,
+        distanceLabel: String? = nil,
+        intensityLabel: String? = nil
+    ) {
+        self.id = id
+        self.orderIndex = orderIndex
+        self.distanceMeters = distanceMeters
+        self.reps = reps
+        self.intensity = intensity
+        self.startType = startType
+        self.paceTargetSec = paceTargetSec
+        self.confidence = confidence
+        self.distanceLabel = distanceLabel
+        self.intensityLabel = intensityLabel
     }
 }
 

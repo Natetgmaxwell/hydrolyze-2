@@ -323,22 +323,18 @@ final class SessionConsoleViewModel: ObservableObject {
             updatedAt: nil,
             sessionType: nil
         )
-        // Fragment row helper — maps the V0.53.3 distance-text
-        // verbatim fidelity (V0533FragmentDistanceLabelSmoke.swift).
-        // The WorkoutSetFragment shape stores int meters; the
-        // verbatim "12.5m" label comes from `distanceLabel` on the
-        // ParsedFragment that `WorkoutPreviewBuilder.fromWorkoutAndSets`
-        // constructs (the int rounds to 13, but the source-text label
-        // is preserved through the builder's `f.distanceMeters`
-        // → `distanceLabel` mapping... actually since the DB-row
-        // shape doesn't carry `distanceLabel`, the verbatim label is
-        // preserved as `distance: 12` only when the int was 12.5
-        // rounded, and we instead emit 12 — same behaviour as a real
-        // WorkoutService.fetchWorkoutSets response). For our
-        // screenshot harness the visual fidelity is "shows the
-        // composite track with 12 + 12", which still demonstrates
-        // the Mode 1 segment track the user asked for.
-        func frag(_ id: String, _ orderIndex: Int, _ distance: Int, _ reps: Int, _ intensity: String, _ start: String) -> WorkoutSetFragment {
+        // Fragment row helper — V0.54 S2.2 (2026-09-09, jodie-09
+        // Console parse fidelity): carries the verbatim source-text
+        // `distanceLabel` ("12.5") AND the coach's verbatim
+        // intensity word (`intensityLabel` = "race rhythm" / "easy")
+        // alongside the int wire values. The WorkoutPreviewBuilder
+        // forwards both onto the ParsedFragment; the segment renderer
+        // prefers `distanceLabel` for distance ("12.5m" not "13m")
+        // and `intensityLabel` for the word ("race rhythm" not
+        // "race_pace"). The int distanceMeters stays the wire/timing
+        // key (V0.51 contract — Swift JSONDecoder rejects fractional
+        // JSON numbers, so the timing values remain Int).
+        func frag(_ id: String, _ orderIndex: Int, _ distance: Int, _ reps: Int, _ intensity: String, _ start: String, _ distanceLabel: String? = nil, _ intensityLabel: String? = nil) -> WorkoutSetFragment {
             WorkoutSetFragment(
                 id: id,
                 orderIndex: orderIndex,
@@ -347,7 +343,9 @@ final class SessionConsoleViewModel: ObservableObject {
                 intensity: intensity,
                 startType: start,
                 paceTargetSec: nil,
-                confidence: 0.97
+                confidence: 0.97,
+                distanceLabel: distanceLabel,
+                intensityLabel: intensityLabel
             )
         }
         // 0: 400 free easy — no fragments
@@ -367,26 +365,47 @@ final class SessionConsoleViewModel: ObservableObject {
             paceTargetDistance: nil, gear: ["pull"], suit: nil,
             startType: nil, dive: true,
             fragments: [
-                frag("f-set1-25e", 0, 25, 4, "race_pace", "dive"),
-                frag("f-set1-25z", 1, 25, 4, "easy", "push")
+                // V0.54 S2.2 (2026-09-09, jodie-09 Console parse
+                // fidelity): verbatim intensity word "race rhythm"
+                // — overrides the parser type token "race_pace"
+                // the segment renderer used to fall back to. The
+                // rendered segment reads "25m race rhythm" instead
+                // of "25m race_pace".
+                frag("f-set1-25e", 0, 25, 4, "race_pace", "dive", nil, "race rhythm"),
+                frag("f-set1-25z", 1, 25, 4, "easy", "push", nil, "easy")
             ],
             createdAt: now
         )
-        // 2: 4 × 50 — Mode 1 (track): 12.5 strong / 12.5 easy — verbatim 12.5
+        // 2: 4 × 25 — Mode 1 (track): 12.5 strong / 12.5 easy — verbatim 12.5
+        // V0.54 S2.2 (2026-09-09, jodie-09 Console parse fidelity):
+        // parent distance is 25 (not 50 — each rep = 12.5 + 12.5).
+        // The V0.53.3 server fix rounds 12.5 → 13 on the int wire,
+        // so fragment `distanceMeters` is 13 (timing value, V0.51
+        // contract); `distanceLabel: "12.5"` carries the verbatim
+        // source text. Render now reads "4 × 25m" header with
+        // "12.5m strong | 12.5m easy" segments — arithmetic visibly
+        // sums to 25, no rounding leak. Verbatim intensity words
+        // "strong" / "easy" override the parser type tokens
+        // "sprint" / "easy" so the coach's language wins.
         let set2 = WorkoutSet(
             id: "v54-jodie09-set-2", workoutId: workout?.id ?? "v54-jodie09-workout",
-            orderIndex: 2, reps: 4, distance: 50, stroke: "Free",
+            orderIndex: 2, reps: 4, distance: 25, stroke: "Free",
             intervalText: "1:00", intensityType: "sprint",
             intensityLabel: "strong", zoneTerm: "sprint",
             paceTargetDistance: nil, gear: nil, suit: true,
             startType: nil, dive: nil,
             fragments: [
-                frag("f-set2-125s", 0, 13, 4, "sprint", "dive"),
-                frag("f-set2-125z", 1, 13, 4, "easy", "push")
+                frag("f-set2-125s", 0, 13, 4, "sprint", "dive", "12.5", "strong"),
+                frag("f-set2-125z", 1, 13, 4, "easy", "push", "12.5", "easy")
             ],
             createdAt: now
         )
         // 3: 6 × 100 — Mode 2 (uniform) w/ Each: caption
+        // V0.54 S2.2: `note` carries the verbatim "Each: 50 @ 65%
+        // / 70% / 75%" caption that the parser emits from the
+        // source line "Each: 50 @ 65% / 70% / 75%". The header
+        // HStack (WorkoutPreview.swift:461) renders it in italic
+        // so the coach sees the per-set per-rep target structure.
         let set3 = WorkoutSet(
             id: "v54-jodie09-set-3", workoutId: workout?.id ?? "v54-jodie09-workout",
             orderIndex: 3, reps: 6, distance: 100, stroke: "Free",
@@ -395,9 +414,23 @@ final class SessionConsoleViewModel: ObservableObject {
             paceTargetDistance: nil, gear: ["pull"], suit: nil,
             startType: nil, dive: nil,
             fragments: nil, // parser collapses into a single rg w/ Each: note
+            // V0.54 S2.2: set-level Each: note — what the coach
+            // actually wrote, not the parser's percent-range
+            // shorthand. Renders as "(Each: 50 @ 65% / 70% / 75%)"
+            // under the "6×100m Free @ 65-75%" spine.
+            note: "Each: 50 @ 65% / 70% / 75%",
             createdAt: now
         )
         // 4: 4 × 50 Descend: 1-4 — Mode 3 (progression)
+        // V0.54 S2.2: `descend: "1-4"` + `perRepTargets: [...]`
+        // activate the ProgressionRepCard ladder. Without these,
+        // Mode 3 fires on the parser's `descend` heuristic in
+        // WorkoutPreview.swift:2882 BUT the per-rep target labels
+        // synthesise from the intensity percent range (70-85%) and
+        // the ladder collapses to four identical cards. With the
+        // explicit per-rep targets, each card carries its own
+        // chevron + percent label so the coach reads the build
+        // sequence visually.
         let set4 = WorkoutSet(
             id: "v54-jodie09-set-4", workoutId: workout?.id ?? "v54-jodie09-workout",
             orderIndex: 4, reps: 4, distance: 50, stroke: "Free",
@@ -406,6 +439,8 @@ final class SessionConsoleViewModel: ObservableObject {
             paceTargetDistance: nil, gear: ["pull"], suit: nil,
             startType: nil, dive: nil,
             fragments: nil,
+            descend: "1-4",
+            perRepTargets: ["70%", "75%", "80%", "85%"],
             createdAt: now
         )
         // 5: 8 × 25 free easy — no fragments (warm-down)
