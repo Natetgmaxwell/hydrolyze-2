@@ -745,6 +745,20 @@ function addIntensity(
       if (rg.fragments && rg.fragments.length > 0) continue;
       const text = [rg.note, rg.sourceLine].filter(Boolean).join(" ");
       let intensity = parseIntensity(text);
+      // V0.52.1 (2026-09-08): engine-side fallback for "@ N%–M%"
+      // percent-range intensity. The LLM sometimes drops the @-range
+      // into `note` instead of emitting `intensity.type="percent_range"`.
+      // The "Purposeful Threshold" audit surfaced
+      // `4 ×100 @ 80–85%` → intensity=null, note="@ 80–85%" — exactly
+      // this failure. Scan the rg's text for the percent-range pattern
+      // and lift it to intensity ONLY when intensity is currently null
+      // (never overwrite a meaningful set-level intensity).
+      if (!intensity) {
+        const pct = text.match(/@\s*(\d{1,3}\s*[–-]\s*\d{1,3}|\d{1,3})\s*%/);
+        if (pct) {
+          intensity = { type: "percent_range", label: pct[1].replace(/\s+/g, "") };
+        }
+      }
       if (intensity) {
         // V0.47 (2026-08-22): apply the coach's RPE band when the
         // surface form matches a coach_vocabulary row. Mirrors

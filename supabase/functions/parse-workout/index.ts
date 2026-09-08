@@ -17,6 +17,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { WORD_NUMBERS, SWIM_DISTANCES } from "../../hydrolyze-mobile/lib/constants/swim-constants.ts";
 import { LLMError, parseWithLLM, type CoachVocabularyEntry } from "./_llm.ts";
 import { extractUnmappedTerms } from "./_dialect-detector.ts";
+import { normalizeFragmentDistances } from "./_decimal-distance-fix.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -2607,9 +2608,30 @@ async function parseWithFallback(
   // plus whatever our local detector catches. The LLM sometimes
   // forgets — running both gates guarantees we never miss a Tier-1
   // word the coach actually wrote.
-  const localHits = extractUnmappedTerms(workoutText, coachVocabulary);
-  const mergeUnmapped = (llmTerms: string[] | undefined): string[] => {
-    const set = new Set<string>(localHits);
+  //
+  // V0.52.1 (2026-09-08): pre-LLM localHits is a safety net — the
+  // LLM-side scrub (parseWithLLM → scrubUnmappedTerms) is
+  // context-aware (drops `descend` when the rg/fragments carry
+  // intensity.type="descend"). When the LLM result is honored, we
+  // re-run local detection WITH the parsed response so the same
+  // context-aware suppression applies. Without this, localHits
+  // always re-adds `descend` even when the LLM correctly dropped it.
+  const localHitsPre = extractUnmappedTerms(workoutText, coachVocabulary);
+  const mergeUnmapped = (
+    llmTerms: string[] | undefined,
+    parsedForContext?: { sections?: ReadonlyArray<{ namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<Record<string, unknown>> }>; repGroups?: ReadonlyArray<Record<string, unknown>> }> } | null,
+  ): string[] => {
+    const set = new Set<string>();
+    // V0.52.1 (2026-09-08): when we have the parsed response, re-run
+    // local detection with it so context-aware suppression kicks in.
+    // Without this, raw localHitsPre re-adds `descend` even when the
+    // LLM scrub correctly dropped it.
+    if (parsedForContext) {
+      const contextAware = extractUnmappedTerms(workoutText, coachVocabulary, parsedForContext);
+      for (const t of contextAware) set.add(t);
+    } else {
+      for (const t of localHitsPre) set.add(t);
+    }
     for (const t of llmTerms || []) {
       const v = String(t).toLowerCase().trim();
       if (v.length > 0) set.add(v);
@@ -2630,7 +2652,10 @@ async function parseWithFallback(
       const stamped = stampFragmentIds(llmResult);
       return {
         ...stamped,
-        unmapped_terms: mergeUnmapped(llmResult.unmapped_terms),
+        // V0.52.1 (2026-09-08): pass the LLM's parsed response so the
+        // context-aware local detector suppresses `descend` (and other
+        // progression terms) when the rg/fragments already carry them.
+        unmapped_terms: mergeUnmapped(llmResult.unmapped_terms, llmResult),
       };
     }
     console.error(`[parse] LLM returned 0 repGroups, falling back to regex`);
@@ -2698,9 +2723,23 @@ serve(async (req) => {
     // V0.38 (2026-08-15): stamp the workout-level session type so the app
     // knows to route the 3MT timing flow. Additive top-level field — old
     // clients ignore it; Swift decodes it via decodeIfPresent in V0.38.
+    //
+    // ponytail (2026-09-08): normalizeFragmentDistances runs on the FINAL
+    // tree right before serialization. The LLM (and regex fallback) can
+    // emit half-pool fragment distances (12.5, 37.5, 62.5, 87.5) when the
+    // coach writes "12.5 fast / 12.5 easy" inside a 25m rep. iOS's
+    // ParsedFragment.distance is typed `Int?` and Swift's JSONDecoder
+    // throws DecodingError.dataCorrupted on a fractional number — the
+    // exact error Nathan hit on Jodie's threshold workout. The helper
+    // rounds each fragment.distance to the nearest integer via
+    // Math.round (12.5 → 13, 37.5 → 38) without touching the parent
+    // repGroup.distance (always int), the sourceLine (preserves the
+    // coach's exact wording), or non-composite repGroups (no fragments).
+    // Tests in scripts/parser-bench/decimal-distance-fix.test.ts.
+    const normalized = normalizeFragmentDistances(parsed);
     const response = {
-      ...parsed,
-      session_type: workoutIs3MT(parsed) ? "3mt" : "training",
+      ...normalized,
+      session_type: workoutIs3MT(normalized) ? "3mt" : "training",
     };
 
     return new Response(JSON.stringify(response), {

@@ -158,23 +158,37 @@ export function extractUnmappedTerms(
   // unmapped_terms even though every fragment had
   // `intensity.type="descend"` — the term was already honored, the
   // surface was just leaking through.
+  // Schema: rg carries flat `intensity_type`; fragments carry nested
+  // `intensity.type`. Check both shapes. Accept either the Workout
+  // shape (sections[].namedSets[].repGroups[]) or the LLMOutput /
+  // ValidatedSection shape (sections[].repGroups[]).
   for (const [re, label] of PROGRESSION_TERMS) {
     if (mapped.has(label)) continue;
     if (!re.test(scrubbed)) continue;
     if (parsed && (label === "descend" || label === "build" || label === "progressive")) {
       let honored = false;
+      const checkRg = (rg: Record<string, unknown>) => {
+        const rgType = (rg as { intensity_type?: string | null }).intensity_type;
+        const rgIntensity = (rg as { intensity?: { type?: string } | null }).intensity;
+        if (rgType === label || rgIntensity?.type === label) { honored = true; return; }
+        for (const f of (rg as { fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }).fragments ?? []) {
+          if (f.intensity?.type === label) { honored = true; return; }
+        }
+      };
       for (const sec of parsed.sections ?? []) {
-        for (const ns of sec.namedSets ?? []) {
+        if (honored) break;
+        for (const ns of (sec as { namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<Record<string, unknown>> }> }).namedSets ?? []) {
           for (const rg of ns.repGroups ?? []) {
-            if (rg.intensity?.type === label) { honored = true; break; }
-            for (const f of rg.fragments ?? []) {
-              if (f.intensity?.type === label) { honored = true; break; }
-            }
+            checkRg(rg);
             if (honored) break;
           }
           if (honored) break;
         }
         if (honored) break;
+        for (const rg of (sec as { repGroups?: ReadonlyArray<Record<string, unknown>> }).repGroups ?? []) {
+          checkRg(rg);
+          if (honored) break;
+        }
       }
       if (honored) continue;
     }
@@ -205,7 +219,7 @@ export function extractUnmappedTerms(
 // engine-side pass closes this gap regardless of what the LLM emits.
 export function scrubUnmappedTerms(
   terms: ReadonlyArray<string>,
-  parsed?: { sections?: ReadonlyArray<{ namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }> }> } | null,
+  parsed?: { sections?: ReadonlyArray<{ namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }>; repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; intensity_type?: string | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }> } | null,
 ): string[] {
   if (!Array.isArray(terms)) return [];
   const out = new Set<string>();
@@ -234,20 +248,42 @@ export function scrubUnmappedTerms(
     // term AND the parsed response already carries that progression
     // type on a parent repGroup OR on any fragment, the engine has
     // honored it — drop the term from unmapped_terms.
+    // Schema note (ValidatedRepGroup vs ValidatedFragment): the rg
+    // carries intensity as flat `intensity_type` / `intensity_label`
+    // (top-level keys); fragments carry it as nested
+    // `intensity: { type, label }`. The scrub checks both shapes so
+    // either path triggers the suppression.
+    //
+    // The `parsed` argument may be in either the LLMOutput shape
+    // (`sections[].repGroups[]`) or the Workout shape
+    // (`sections[].namedSets[].repGroups[]`) — both are accepted so the
+    // function works at every call site.
     if (keep && parsed && (t === "descend" || t === "build" || t === "progressive")) {
       let honored = false;
+      const checkRg = (rg: Record<string, unknown>) => {
+        const rgType = (rg as { intensity_type?: string | null }).intensity_type;
+        const rgIntensity = (rg as { intensity?: { type?: string } | null }).intensity;
+        if (rgType === t || rgIntensity?.type === t) { honored = true; return; }
+        for (const f of (rg as { fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }).fragments ?? []) {
+          if (f.intensity?.type === t) { honored = true; return; }
+        }
+      };
       for (const sec of parsed.sections ?? []) {
-        for (const ns of sec.namedSets ?? []) {
+        if (honored) break;
+        // Workout shape: sections[].namedSets[].repGroups[]
+        for (const ns of (sec as { namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<Record<string, unknown>> }> }).namedSets ?? []) {
           for (const rg of ns.repGroups ?? []) {
-            if (rg.intensity?.type === t) { honored = true; break; }
-            for (const f of rg.fragments ?? []) {
-              if (f.intensity?.type === t) { honored = true; break; }
-            }
+            checkRg(rg);
             if (honored) break;
           }
           if (honored) break;
         }
         if (honored) break;
+        // LLMOutput / ValidatedSection shape: sections[].repGroups[]
+        for (const rg of (sec as { repGroups?: ReadonlyArray<Record<string, unknown>> }).repGroups ?? []) {
+          checkRg(rg);
+          if (honored) break;
+        }
       }
       if (honored) keep = false;
     }

@@ -411,4 +411,67 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
     expectedUnmappedTerms: ["descend", "progressive"],
     expectedSectionCountMin: 2,
   },
+
+  // commit-jodie-09-purposethreshold.txt — V0.52.1 (2026-09-08).
+  // The user's own failing workout: the centerpiece of the Jodie audit.
+  // Covers Rules 22 (Each:/Descend: ladders), 23 (@ N%–M% intensity on
+  // header), 24 (event rhythm → race_pace mapping), and the unmapped_terms
+  // exclusions (5)+(6) for 'descend' as a ladder header and 'event' as
+  // part of 'event rhythm'.
+  //
+  // The "50/100 / 3 rounds" section IS the second section. The
+  // `4 × 100 @ 80–85%` inside it carries intensity=percent_range per
+  // rule 23 (was int=None in the pre-V0.52.1 parse).
+  "commit-jodie-09-purposethreshold.txt": {
+    expectedRepGroups: [
+      // === Section 1: Warm-Up — 1,200 m ===
+      { reps: 4, distance: 150, interval: "2:20–2:30", stroke: null, fragments: [
+        // Each: 50 @ 65% / 50 @ 70% / 50 @ 75% — rule 22(b) sub-segment
+        // composite. Fragment text `50 @ 65%` carries its own intensity
+        // (percent_range).
+        { distance: 50, stroke: null, expectsIntensity: true, intensityType: "percent_range" },
+        { distance: 50, stroke: null, expectsIntensity: true, intensityType: "percent_range" },
+        { distance: 50, stroke: null, expectsIntensity: true, intensityType: "percent_range" },
+      ]},
+      { reps: 4, distance: 100, interval: "1:35–1:40", stroke: null, fragments: [
+        { distance: 25, stroke: "Drill", expectsIntensity: false }, // scull — no intensity word
+        { distance: 50, stroke: null, expectsIntensity: true, intensityType: "aerobic" }, // strong aerobic → aerobic
+        { distance: 25, stroke: null, expectsIntensity: true, intensityType: "easy" }, // easy
+      ]},
+      // Descend: 1 = 70% / 2 = 75% / 3 = 80% / 4 = ~85% — rule 22(a)
+      // per-rep intensity ladder. 4 reps, 4 fragments, each intensity is
+      // a descend-type (the LLM keeps the parent intensity.type="descend"
+      // AND emits per-fragment descend with the rep-N percent label).
+      { reps: 4, distance: 50, interval: "1:00", stroke: null, fragments: [
+        { distance: 50, stroke: null, expectsIntensity: true, intensityType: "descend" },
+        { distance: 50, stroke: null, expectsIntensity: true, intensityType: "descend" },
+        { distance: 50, stroke: null, expectsIntensity: true, intensityType: "descend" },
+        { distance: 50, stroke: null, expectsIntensity: true, intensityType: "descend" },
+      ]},
+      // 4 × 25 @ :40 with 12.5 strong + 12.5 easy — composite (round to 13/13 by the
+      // _decimal-distance-fix.ts post-pass; assertion uses the ROUNDED integer).
+      { reps: 4, distance: 25, interval: ":40", stroke: null, fragments: [
+        { distance: 13, stroke: null, expectsIntensity: true, intensityType: "aerobic" }, // strong
+        { distance: 13, stroke: null, expectsIntensity: true, intensityType: "easy" },
+      ]},
+      { reps: 1, distance: 100, interval: null, stroke: null }, // 100 easy
+
+      // === Section 2: 50/100 (3 rounds) ===
+      // Rule 23: 4 × 100 @ 80–85% — @ N%–M% is the governing intensity
+      // (percent_range), NOT an interval. interval stays null.
+      { reps: 4, distance: 100, interval: null, stroke: null },
+      { reps: 1, distance: 200, interval: null, stroke: null }, // 200 easy
+      // Rule 24: 25 event rhythm / 25 easy — event rhythm maps to race_pace.
+      { reps: 4, distance: 50, interval: "1:00", stroke: null, fragments: [
+        { distance: 25, stroke: null, expectsIntensity: true, intensityType: "race_pace" },
+        { distance: 25, stroke: null, expectsIntensity: true, intensityType: "easy" },
+      ]},
+    ],
+    // 'descend' is honored as the parent repGroup's intensity.type —
+    // rule 7 exclusion (6) removes it from unmapped_terms. 'event'
+    // is part of 'event rhythm' which rule 24 maps to race_pace —
+    // rule 7 exclusion (5) removes it. Net: clean.
+    expectedUnmappedTerms: [],
+    expectedSectionCountMin: 2,
+  },
 };
