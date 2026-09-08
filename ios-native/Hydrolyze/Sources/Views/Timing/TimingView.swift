@@ -80,13 +80,25 @@ struct TimingView: View {
         sessionId: String? = nil,
         workoutSetId: String? = nil,
         roster: [RosterEntryLite]? = nil,
-        onRecord: ((StopwatchCapturePayload) -> Void)? = nil
+        onRecord: ((StopwatchCapturePayload) -> Void)? = nil,
+        /// V0.54 (2026-09-08): `.standalone` (default) is the
+        /// unchanged V0.49 TodayView / WorkoutDetailView path.
+        /// `.console` is the V0.54 SessionConsoleView's LIVE state
+        /// (decision 12 — wrapper-not-rewrite). The mode flag
+        /// is the only difference: the stopwatch, save flow, and
+        /// state machine are identical.
+        mode: TimingMode = .standalone
     ) {
         self.prefill = prefill
         self.sessionId = sessionId
         self.workoutSetId = workoutSetId
         self.onRecord = onRecord
         self.roster = roster
+        // V0.54 (2026-09-08): thread the mode flag into the VM on
+        // construction so `lap()` can branch on it. Additive — the
+        // VM's default is `.standalone`, so non-Console callers are
+        // unaffected.
+        self.viewModel.mode = mode
     }
 
     @State private var showSwimmerPicker = false

@@ -820,6 +820,23 @@ enum RepCardMode: Equatable {
     case progression
 }
 
+/// V0.54 (2026-09-08): the spec's `RepCard.mode` context flag.
+/// Three cases — `.preview` (read-only, no play icon), `.live`
+/// (Console LIVE state — expanded rep card with stopwatch + rep
+/// data), `.finished` (collapsed one-line summary at the top of
+/// the LIVE screen for completed reps).
+///
+/// Named `RepCardContext` (not `RepCardMode`) to avoid collision
+/// with the existing V0.53.2 `RepCardMode` above (visual layout:
+/// `.track | .uniform | .progression`). The two enums are
+/// orthogonal — `context` says where the row lives; `mode` says
+/// how the row looks. See the S2 report's "spec deltas".
+enum RepCardContext: Equatable {
+    case preview
+    case live
+    case finished
+}
+
 struct ParsedIntensity: Codable {
     let type: ParsedIntensityType
     let label: String
@@ -1807,6 +1824,30 @@ private struct FragmentCTARow: View {
     // the sheet. Haptics.selection() is fired by WorkoutPreview when
     // this callback runs (one place, not duplicated at each row).
     let onAggregateTap: ((String, [FragmentTimeRecord]) -> Void)?
+    /// V0.54 (2026-09-08): context flag (spec §4, decision 9).
+    /// `.preview` is the read-only context — WorkoutDetailView's
+    /// post-session review, the builder preview, the TodayView
+    /// card; no play icon, no timing affordance. `.live` is the
+    /// V0.54 SessionConsoleView's LIVE state — the rep card
+    /// expands with the stopwatch + rep data. `.finished` is the
+    /// collapsed one-line summary at the top of the LIVE screen
+    /// (completed reps).
+    ///
+    /// Default `.preview` matches the V0.53 zero-CTA contract for
+    /// WorkoutPreview — pre-V0.54 call sites keep the existing
+    /// zero-CTA behaviour without opt-in. The Console's LIVE body
+    /// (S2) and any future surface that opts into the new mode
+    /// flag will pass `.live` or `.finished` explicitly.
+    ///
+    /// NOTE: this is `RepCardContext` (a NEW V0.54 enum), NOT the
+    /// existing V0.53.2 `RepCardMode` at line 809 (`.track |
+    /// .uniform | .progression`, a visual-layout choice that's
+    /// orthogonal to this context flag). The spec's
+    /// `RepCard.mode: RepCardMode` text was a slight collision with
+    /// the existing name; the S2 additive change uses
+    /// `RepCardContext` to avoid that collision. See the report's
+    /// "spec deltas" section.
+    var context: RepCardContext = .preview
 
     // V0.53.1: true unless the fragment's intensity is the canonical
     // "easy" type. Easy fragments are feel-based — coaches don't time
@@ -1970,7 +2011,7 @@ private struct FragmentCTARow: View {
             // no Button wrap below. Recorded-time chips above still
             // render so any previously-captured times remain visible
             // as a read-only history signal.
-            if onTap != nil, isTimable {
+            if onTap != nil, isTimable, context != .preview {
                 Image(systemName: recordedTimes != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
                     .foregroundColor(recordedTimes != nil ? Color.textMuted : Color.textPrimary)
             }
@@ -1986,7 +2027,15 @@ private struct FragmentCTARow: View {
         // which would still launch timing for easy fragments even
         // though no play icon shows — breaking the "passive description"
         // guarantee.
-        if let onTap, isTimable {
+        //
+        // V0.54 (2026-09-08): add `mode != .preview` to the gate so the
+        // V0.54 spec §4 / decision 9 zero-CTA-in-preview contract
+        // holds even when the parent view wires an `onTap` (the
+        // WorkoutDetailView review path passes `onFragmentTap`; in
+        // `.preview` mode we want the row static). This is additive —
+        // pre-V0.54 call sites default to `.preview` and keep the
+        // existing behaviour.
+        if let onTap, isTimable, context != .preview {
             Button(action: onTap) { content }
                 .buttonStyle(.plain)
         } else {

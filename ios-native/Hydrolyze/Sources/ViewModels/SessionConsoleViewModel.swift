@@ -40,6 +40,16 @@ final class SessionConsoleViewModel: ObservableObject {
     /// V0.49 `AttendanceBadge` 1:1. Updated on every `preTickRoster`
     /// call (initial load + S5 retry).
     @Published private(set) var attendanceEntries: [CoachAttendanceEntry] = []
+    /// S2 (2026-09-08): per-rep recorded-ms (indexed by rep index)
+    /// for the LIVE body's compressed one-liner summary. Mirrors the
+    /// TimingView's `lap()` writes (via `mode == .console` branch)
+    /// and the `handleRecordedPayload` path. S5 will thread this
+    /// into `recorded_times` row construction.
+    @Published private(set) var repsByRepIndex: [Int: Int] = [:]
+    /// S2 (2026-09-08): the rep index the LIVE body is currently
+    /// focused on (0-based). Used to decide which rep card is
+    /// expanded vs collapsed. nil until the first LAP fires.
+    @Published private(set) var currentRepIndex: Int? = nil
 
     /// The workout's full set list. Loaded alongside `preTickRoster`
     /// so `firstTimeableRepIndex()` has the data it needs.
@@ -153,6 +163,29 @@ final class SessionConsoleViewModel: ObservableObject {
         state = .pre
     }
 
+    /// S2 (2026-09-08): wire the TimingView's `onRecord` callback
+    /// into the Console's rep summary. The TimingView emits the
+    /// stopwatch capture (per `StopwatchCapturePayload`) when the
+    /// stopwatch stops; we feed the recorded ms into
+    /// `repsByRepIndex[lastRepIndex]` and advance `currentRepIndex`
+    /// so the LIVE body can render the one-liner at the top of the
+    /// screen. The TimingView's own `lap()` already mirrors into
+    /// the VM (`@Published var repsByRepIndex`) during the
+    /// `.running → .finished` transition — this path is for the
+    /// single-swimmer `.finished` save flow (no LAPS — just one
+    /// capture).
+    func handleRecordedPayload(_ payload: StopwatchCapturePayload, reps: Int) {
+        let totalReps = max(reps, 1)
+        for i in 0..<totalReps {
+            // Distribute the capture evenly across the rep count;
+            // the TimingView's per-LAP path is authoritative when
+            // it fires; this path is the fallback for the
+            // single-capture single-swimmer case.
+            repsByRepIndex[i] = payload.recordedTimeMs / totalReps
+        }
+        currentRepIndex = totalReps - 1
+    }
+
     // MARK: - S1 firstTimeableRepIndex (acceptance test surface)
 
     /// S1 (2026-09-08): DEBUG-only seed for the screenshot harness. The
@@ -212,7 +245,36 @@ final class SessionConsoleViewModel: ObservableObject {
         ]
         attendingCount = 14
         totalCount = 14
-        attendanceEntries = []
+        // V0.49 RosterStripView requires names — seed three swimmers so
+        // the strip renders in the S2 LIVE harness. Full squad of 14
+        // is beyond RosterStripView's display-three + "+N" pattern,
+        // so seeding three is enough to verify the strip paints.
+        attendanceEntries = [
+            CoachAttendanceEntry(
+                swimmerId: "v54-swimmer-1",
+                swimmerName: "Jack",
+                intent: "in",
+                markedAt: now,
+                isAttending: true,
+                reason: .explicitIn
+            ),
+            CoachAttendanceEntry(
+                swimmerId: "v54-swimmer-2",
+                swimmerName: "Ariana",
+                intent: "in",
+                markedAt: now,
+                isAttending: true,
+                reason: .explicitIn
+            ),
+            CoachAttendanceEntry(
+                swimmerId: "v54-swimmer-3",
+                swimmerName: "Sofie",
+                intent: nil,
+                markedAt: nil,
+                isAttending: true,
+                reason: .standingSlot
+            )
+        ]
         rosterFetchFailed = false
         // S1 acceptance: the -v54-demo-console-live harness flag proves
         // the state-machine advance (PRE → LIVE on Start Session tap)

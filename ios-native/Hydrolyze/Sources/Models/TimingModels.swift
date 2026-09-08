@@ -111,3 +111,20 @@ enum TimingState: Sendable {
     case finished  // review + save/discard (single-swimmer flow, or save-failure fallback)
     case saving   // Phase 2.5-c: auto-saving for multi-swimmer session, navigates to pairing on success
 }
+
+/// TimingMode — drives the V0.54 Session Console's wrapper vs the
+/// existing standalone timing flow. Additive in V0.54 S2; the
+/// `.standalone` path is the unchanged TodayView / WorkoutDetailView
+/// entry. `.console` is the SessionConsoleView's LIVE state (decision
+/// 12 — wrapper-not-rewrite). The mode flag is the only difference:
+/// the stopwatch, save flow, and state machine are identical.
+///
+/// S1 ships the Console's PRE state only. S2 wires `.console`: the
+/// Console constructs a `SetPrefill` from the first timeable set
+/// (per spec §5) and renders the existing `TimingView` directly,
+/// observing its `viewModel.state` to drive the LIVE/BETWEEN
+/// sub-state distinction.
+enum TimingMode: Sendable {
+    case standalone
+    case console
+}

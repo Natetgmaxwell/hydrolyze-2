@@ -13,6 +13,30 @@ import Combine
 @MainActor
 final class TimingViewModel: ObservableObject {
     @Published var state: TimingState = .setup
+    /// V0.54 (2026-09-08): how this VM was launched. `.standalone`
+    /// (default) is the V0.49 TodayView / WorkoutDetailView path —
+    /// unchanged. `.console` is the V0.54 SessionConsoleView's LIVE
+    /// state (decision 12 — wrapper-not-rewrite). Additive; the
+    /// state machine, save flow, and stopwatch are identical
+    /// between modes. S2 wires `.console` by constructing a
+    /// `SetPrefill` from the first timeable set.
+    @Published var mode: TimingMode = .standalone
+    /// V0.54 (2026-09-08): the rep index the Console is currently
+    /// focused on (0-based). Populated by `lapRecorded()` after the
+    /// stopwatch LAP fires. nil before the first LAP. Used by the
+    /// Console's LIVE body to render the compressed one-liner
+    /// summary at the top of the screen.
+    @Published var currentRepIndex: Int? = nil
+    /// V0.54 (2026-09-08): the set orderIndex the Console is
+    /// currently focused on. Populated by `SessionConsoleViewModel`
+    /// when LIVE enters. Used by the LIVE body to render the
+    /// "rep N / reps × distance @ send-off" header.
+    @Published var currentSetIndex: Int? = nil
+    /// V0.54 (2026-09-08): per-rep recorded-ms (indexed by rep
+    /// index) for the compressed summary at the top of the LIVE
+    /// screen. Fed by `lapRecorded()`. nil for reps not yet
+    /// completed.
+    @Published var repsByRepIndex: [Int: Int] = [:]
     @Published var elapsedMs: Int = 0           // live running total
     @Published var laps: [Lap] = []              // newest at end
     @Published var selectedSwimmerId: String?     // set in .setup
@@ -728,6 +752,18 @@ final class TimingViewModel: ObservableObject {
             splitMs: split
         )
         laps.append(newLap)
+
+        // V0.54 (2026-09-08): in `.console` mode, mirror the rep
+        // count into `repsByRepIndex` for the compressed one-liner
+        // summary at the top of the LIVE screen, and advance
+        // `currentRepIndex` so the Console's LIVE body knows which
+        // rep card is now expanded. Additive — non-`.console` paths
+        // leave the new fields at their default nil/[:].
+        if mode == .console {
+            let justCompletedRep = laps.count - 1  // 0-based
+            repsByRepIndex[justCompletedRep] = lapElapsed
+            currentRepIndex = justCompletedRep
+        }
 
         // Trigger visual flash in the UI
         lapFlashTrigger = UUID()

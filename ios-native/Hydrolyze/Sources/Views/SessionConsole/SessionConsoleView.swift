@@ -2,8 +2,9 @@ import SwiftUI
 
 /// SessionConsoleView — top-level container for the V0.54 Session
 /// Console. Renders one of four state bodies per the spec's PRE/LIVE/
-/// BETWEEN/POST graph. S1 ships only PRE; S2/S3/S4 add the rest in
-/// dependency order.
+/// BETWEEN/POST graph. S1 ships PRE; S2 ships LIVE (via TimingView
+/// wrapper, decision 12). S3/S4 add BETWEEN + POST in dependency
+/// order.
 ///
 /// Opened from:
 ///   - `TodayView.WorkoutCard.onStartSession` (replaces the V0.49
@@ -13,10 +14,11 @@ import SwiftUI
 ///     `WorkoutDetailView`).
 ///
 /// Decision 12: `SessionConsoleView` owns lifecycle. LIVE/BETWEEN/POST
-/// delegate to `TimingView.timingBody` (S2 — the 1300-line TimingView
-/// is wrapped, not rewritten). S1's PRE body is the only screen that
-/// ships today; the `state` switch returns a stub for the other three
-/// so the compiler is happy and S2 can fill them in.
+/// delegate to `TimingView.timingBody` (the 1300-line TimingView is
+/// wrapped, not rewritten). LIVE renders the existing
+/// `TimingView(mode: .console, prefill: SetPrefill(from: firstTimeable))`
+/// directly — the spec's "Start Session → first timeable rep's
+/// `.ready`" (decision 10). BETWEEN/POST are stub bodies for S3/S4.
 struct SessionConsoleView: View {
     let workoutId: String
     @StateObject private var viewModel = SessionConsoleViewModel()
@@ -29,11 +31,15 @@ struct SessionConsoleView: View {
             case .pre:
                 preBody
             case .live, .between, .post:
-                // S1 ships only PRE. Other states land in S2/S3/S4.
-                // Render a one-line placeholder so the compiler is happy
-                // and the debug harness can verify the state advance
-                // (PRE → LIVE on Start Session tap).
-                stubBody(for: viewModel.state)
+                // S2 (2026-09-08): LIVE renders the existing
+                // TimingView (decision 12 — wrapper-not-rewrite),
+                // seeded with a SetPrefill from the first timeable
+                // set per spec §5. BETWEEN is derived from the
+                // TimingView's elapsed time vs the set's intervalText
+                // (S3 wires the countdown). POST is the stopwatch's
+                // `.finished`/`.saving` summary (S4 wires the
+                // unmatched-gap rows).
+                liveBody
             }
         }
         .toolbar {
@@ -189,7 +195,119 @@ struct SessionConsoleView: View {
         .accessibilityLabel("Start session")
     }
 
-    // MARK: - Stubs (S2/S3/S4 fill these in)
+    // MARK: - S2 LIVE body
+    //
+    // Per spec §6 / decision 12: render the existing TimingView
+    // (mode: .console) with a SetPrefill constructed from the first
+    // timeable set (spec §5 — lowest orderIndex with distance > 0
+    // and intensityType != easy OR a timable fragment). The
+    // RosterStripView renders above the stopwatch with the
+    // preTickRoster entries (V0.49 S2 reuse).
+
+    private var liveBody: some View {
+        VStack(spacing: 0) {
+            liveHeader
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+            if let prefill = liveSetPrefill {
+                TimingView(
+                    prefill: prefill,
+                    sessionId: viewModel.sessionId,
+                    workoutSetId: prefill.workoutSetId,
+                    // Suppress TimingView's internal `RosterStripView`
+                    // in `.console` mode — the Console's own header
+                    // strip (rendered above) is the canonical "who's
+                    // in" surface. Per spec §6 ("RosterStripView
+                    // ... sits at the top of the LIVE screen,
+                    // same as today") the Console owns the strip, not
+                    // TimingView. Passing nil here means TimingView
+                    // renders no strip.
+                    roster: nil,
+                    onRecord: { payload in
+                        viewModel.handleRecordedPayload(payload, reps: prefill.reps ?? 0)
+                    },
+                    mode: .console
+                )
+            } else {
+                // Spec §5 fallback: no timeable set → POST (S4 wires
+                // the summary). S2 ships a stub explaining why LIVE
+                // didn't render.
+                noTimeableStub
+            }
+        }
+    }
+
+    /// Header above the LIVE stopwatch. Shows the breadcrumb (👤 N) +
+    /// the set/rep context ("rep N / reps × distance @ send-off").
+    /// S2 ships the breadcrumb + set context; S3 swaps in the
+    /// BETWEEN send-off countdown.
+    private var liveHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Roster strip — V0.49 reuse. Hidden when the roster is
+            // empty (V0.49 contract held per spec §11).
+            if !liveRoster.isEmpty {
+                RosterStripView(roster: liveRoster)
+            }
+            if let prefill = liveSetPrefill {
+                Text("SET \(prefillSetLabel(prefill))")
+                    .font(.eyebrow)
+                    .tracking(0.5)
+                    .foregroundStyle(Color.textFaint)
+            }
+        }
+    }
+
+    private var liveRoster: [RosterEntryLite] {
+        viewModel.attendanceEntries.map { entry in
+            RosterEntryLite(
+                swimmerId: entry.swimmerId,
+                firstName: nil,
+                lastName: entry.swimmerName
+            )
+        }
+    }
+
+    /// Build a `SetPrefill` from the first timeable set per spec §5.
+    /// Returns nil when no set is timeable (the LIVE body renders
+    /// `noTimeableStub` instead, and S4 wires POST).
+    private var liveSetPrefill: SetPrefill? {
+        guard let orderIndex = viewModel.firstTimeableRepIndex() else { return nil }
+        let set = viewModel.sets.first(where: { $0.orderIndex == orderIndex })
+        guard let set else { return nil }
+        return SetPrefill(
+            stroke: set.stroke ?? "Free",
+            distance: set.distance ?? 50,
+            reps: set.reps,
+            interval: set.intervalText,
+            intensityLabel: set.intensityLabel,
+            workoutSetId: set.id,
+            intensityType: set.intensityType,
+            zoneTerm: set.zoneTerm,
+            fragmentContexts: nil,
+            gear: set.gear
+        )
+    }
+
+    private func prefillSetLabel(_ prefill: SetPrefill) -> String {
+        prefill.displayLabel
+    }
+
+    private var noTimeableStub: some View {
+        VStack(spacing: 16) {
+            Text("No timeable sets in this workout")
+                .font(.titleSmall)
+                .foregroundStyle(Color.textPrimary)
+            Text("Every set is easy / has no distance / has no fragments. Spec §5 fallback: PRE → POST.")
+                .font(.caption)
+                .foregroundStyle(Color.textMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Stubs (S3/S4 fill these in)
 
     @ViewBuilder
     private func stubBody(for state: ConsoleState) -> some View {
