@@ -24,6 +24,8 @@
 		1ABCAFB7D02DF7BA0F79695D /* IntentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61B714324DFDFAFA4C1086B7 /* IntentService.swift */; };
 		1BA25E29296FAFF24DCF3F78 /* SwimmerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 616DD04CE0DFD317A57C2C92 /* SwimmerService.swift */; };
 		1E5DBBA12F462445DE6F596D /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C73AE0B5301A9952C2397D /* AuthService.swift */; };
+		21AD0727A2CA1438258E8767 /* SessionConsoleViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8B491C0D0FC3951603FA87 /* SessionConsoleViewModel.swift */; };
+		224151B76D2D7CDF38983DEC /* AttendanceBreadcrumb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 440B045FCE0E8B5689D67EB7 /* AttendanceBreadcrumb.swift */; };
 		2403597805F7B9CA9DC90E92 /* PrimaryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29BD96FB2DB50C6DCC993BC8 /* PrimaryButton.swift */; };
 		26536DFA9FD82838F59E442C /* CalibrationFactors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B57DEE2C8841CB1436A3D30 /* CalibrationFactors.swift */; };
 		28CD62954E1118D3DC040D67 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 77654CFD8C1B0DF21907935A /* Supabase */; };
@@ -46,6 +48,7 @@
 		49636A4AD8B6BA6A7BF17B23 /* HungarianMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4232B41EF6194E1C779B28A8 /* HungarianMatching.swift */; };
 		497C3DC1F2BAF8402869E77C /* SessionStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB7C1706AD3C037674651AD /* SessionStartView.swift */; };
 		4B46F4955337282308CE1D26 /* VocabularyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B754DDC1D6F4548B1611C4B6 /* VocabularyService.swift */; };
+		4B9A611012E4CC4F6AA27AE0 /* SessionConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68572AE70FBB109091D94F2 /* SessionConsoleView.swift */; };
 		4BED39CD2EEF1833AC3A96A9 /* MyScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF122EA41003564C5520C06 /* MyScheduleView.swift */; };
 		4E4C788802BF1959ABFC99A2 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = B785FD52B8AAC2796EF6C35B /* Color+Hex.swift */; };
 		4FFDB32855E9F9462D291774 /* build_and_run_recoverysignature.sh in Resources */ = {isa = PBXBuildFile; fileRef = F4843BBD2FEF6AF58952FAB7 /* build_and_run_recoverysignature.sh */; };
@@ -99,6 +102,7 @@
 		A655A7B13E6C0360C4808B68 /* WorkoutParserZoneCLITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A7F53BCEF145388CFDAEFF /* WorkoutParserZoneCLITest.swift */; };
 		A668CB0BE3BD1F1B5236A9BB /* build_and_run_resolver.sh in Resources */ = {isa = PBXBuildFile; fileRef = 6FEE165FD6BF32A1E9DDC8F6 /* build_and_run_resolver.sh */; };
 		A71AE8C077E296C7E6FAF9DB /* PhasedProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E9DBEDA7BD10A912DF675D1 /* PhasedProgressView.swift */; };
+		A7BE4AE1B2862EE3AC317093 /* ConsoleState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F931F6C4D39974D09CC7EA0D /* ConsoleState.swift */; };
 		A81250405E32626E83026239 /* AttendanceBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6419FC350D113A41F5979A /* AttendanceBadge.swift */; };
 		AA55B3B7E1FE07CFD4EA45F5 /* V0531DesignARepCardLayoutSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39EB36ADDE0560C444A699F6 /* V0531DesignARepCardLayoutSmoke.swift */; };
 		AE95ECADBA2F3754F7785556 /* SwimmerAnalyticsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7389A8D8FFD1E6F799D53DF6 /* SwimmerAnalyticsViewModel.swift */; };
@@ -209,9 +213,11 @@
 		4232B41EF6194E1C779B28A8 /* HungarianMatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HungarianMatching.swift; sourceTree = "<group>"; };
 		425417DFAF0A9A64A6374435 /* ThreeMTReviewSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreeMTReviewSupport.swift; sourceTree = "<group>"; };
 		4355EC298F9F720ABFE4603A /* Bundle+AppInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bundle+AppInfo.swift"; sourceTree = "<group>"; };
+		440B045FCE0E8B5689D67EB7 /* AttendanceBreadcrumb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceBreadcrumb.swift; sourceTree = "<group>"; };
 		4511E979EA8A02DFAA772CE6 /* TimingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimingService.swift; sourceTree = "<group>"; };
 		476DE307B897395397132407 /* AttendanceResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceResolver.swift; sourceTree = "<group>"; };
 		481474A86010D3AE00A5B895 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		4C8B491C0D0FC3951603FA87 /* SessionConsoleViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionConsoleViewModel.swift; sourceTree = "<group>"; };
 		4CF122EA41003564C5520C06 /* MyScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyScheduleView.swift; sourceTree = "<group>"; };
 		5065A6652185CAF66D219529 /* build_and_run_3mtsave.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_3mtsave.sh; sourceTree = "<group>"; };
 		5183D5E2B80817F518F1218D /* PairingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingEngine.swift; sourceTree = "<group>"; };
@@ -263,6 +269,7 @@
 		9B560C80F4FA1D136883DDAB /* SpeedCurveChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedCurveChart.swift; sourceTree = "<group>"; };
 		9BCC2E5E797656F432A0858C /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		9ED58B38E311216828F53455 /* SwimmerHomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerHomeViewModel.swift; sourceTree = "<group>"; };
+		A68572AE70FBB109091D94F2 /* SessionConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionConsoleView.swift; sourceTree = "<group>"; };
 		A6B560FA423DF14C8AF6DADD /* FragmentContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FragmentContext.swift; sourceTree = "<group>"; };
 		A882ABF77A943AB7D9D175C0 /* build_and_run_parser3mt.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_parser3mt.sh; sourceTree = "<group>"; };
 		A9B8CB893521F12CBAC32325 /* PBAddSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PBAddSheet.swift; sourceTree = "<group>"; };
@@ -308,6 +315,7 @@
 		F5AE6EFB263311E2B8CB0878 /* SessionRosterSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRosterSnapshot.swift; sourceTree = "<group>"; };
 		F61147CDFCC03EC205F60066 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		F878ABFE69673781F1A025A3 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
+		F931F6C4D39974D09CC7EA0D /* ConsoleState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleState.swift; sourceTree = "<group>"; };
 		FF5DBAF6EEDA31CAA214AE38 /* HydrolyzeType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrolyzeType.swift; sourceTree = "<group>"; };
 		FFEA7C247218656325E481BA /* SwimmerSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerSheetView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -348,6 +356,14 @@
 			path = Features;
 			sourceTree = "<group>";
 		};
+		1297FC2DF6D49C631A9995F3 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				440B045FCE0E8B5689D67EB7 /* AttendanceBreadcrumb.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
 		147A922A0C2CD5DC44DC1E29 /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -356,6 +372,7 @@
 				5388C101C163E38A9AC2BE43 /* Coach */,
 				914953693C6534D1873F6A89 /* Components */,
 				0A5E71D227B4916EE183E5F3 /* Profile */,
+				7DF876ED0931BD52736E41FE /* SessionConsole */,
 				FB8B97AD8101090DFA8E05E8 /* SessionReview */,
 				5214195FEFEE4AC1EA4B6542 /* SessionStart */,
 				60C627FB0AF40BCCE04D01E0 /* Swimmer */,
@@ -402,6 +419,7 @@
 		2A31FC1A8D7E265A57704073 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				4C8B491C0D0FC3951603FA87 /* SessionConsoleViewModel.swift */,
 				D353FF572767DA374F6433AF /* SessionReviewViewModel.swift */,
 				953FDAF57842AEC0AF43B76F /* SessionStartViewModel.swift */,
 				C0833FE39DE5E5FB0B9744F0 /* SquadManagementViewModel.swift */,
@@ -528,6 +546,15 @@
 				2F640022CFB684ADD67C1B9C /* WorkoutRow.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		7DF876ED0931BD52736E41FE /* SessionConsole */ = {
+			isa = PBXGroup;
+			children = (
+				A68572AE70FBB109091D94F2 /* SessionConsoleView.swift */,
+				1297FC2DF6D49C631A9995F3 /* Components */,
+			);
+			path = SessionConsole;
 			sourceTree = "<group>";
 		};
 		81CEE202305FF45C63AE64C6 /* Tests */ = {
@@ -684,6 +711,7 @@
 			children = (
 				E054B0B3F7353601DA86C879 /* Coach.swift */,
 				5A9DDFCB5E521A95C7B7910E /* CoachPreferences.swift */,
+				F931F6C4D39974D09CC7EA0D /* ConsoleState.swift */,
 				066524AA52E1B4A8C140F20D /* Enums.swift */,
 				A6B560FA423DF14C8AF6DADD /* FragmentContext.swift */,
 				E6229921666375F026D5209E /* FragmentTimeRecord.swift */,
@@ -833,6 +861,7 @@
 				19B6D9CB42E8BA1848E37FD2 /* AnalyticsTabView.swift in Sources */,
 				C6B2D23B2DCA3E9DEA4B8720 /* Animations.swift in Sources */,
 				A81250405E32626E83026239 /* AttendanceBadge.swift in Sources */,
+				224151B76D2D7CDF38983DEC /* AttendanceBreadcrumb.swift in Sources */,
 				5CEF56078E75ACD6930869A5 /* AttendanceResolver.swift in Sources */,
 				52097E02FF93302A145F9E4F /* AuthManager.swift in Sources */,
 				1E5DBBA12F462445DE6F596D /* AuthService.swift in Sources */,
@@ -844,6 +873,7 @@
 				C2DE335170EA51F7EF1DE083 /* CoachIntentService.swift in Sources */,
 				405BE8EA1458591790096EF7 /* CoachPreferences.swift in Sources */,
 				4E4C788802BF1959ABFC99A2 /* Color+Hex.swift in Sources */,
+				A7BE4AE1B2862EE3AC317093 /* ConsoleState.swift in Sources */,
 				458305DF20F9BC416630941A /* ContentView.swift in Sources */,
 				D6638C677F23361A23C0B633 /* EmptyStateView.swift in Sources */,
 				CDCD6C2C307A57FD86A728E4 /* Enums.swift in Sources */,
@@ -879,6 +909,8 @@
 				7C41B031975D58A05EB8D438 /* RecoverySignature.swift in Sources */,
 				6DDF4280727494101EDC0A1B /* RestCountdownModel.swift in Sources */,
 				803EB3E88699B30BBFBA0E40 /* ScheduleService.swift in Sources */,
+				4B9A611012E4CC4F6AA27AE0 /* SessionConsoleView.swift in Sources */,
+				21AD0727A2CA1438258E8767 /* SessionConsoleViewModel.swift in Sources */,
 				4438DAF750326B995BF375F6 /* SessionReviewView.swift in Sources */,
 				98D0936CCB3BE6463B5A0ECE /* SessionReviewViewModel.swift in Sources */,
 				5A1452567E8CA830C09B85FC /* SessionRosterSnapshot.swift in Sources */,

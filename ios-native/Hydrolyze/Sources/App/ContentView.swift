@@ -139,7 +139,7 @@ struct ContentView: View {
     /// builder with the jodie-09 Purposeful Threshold workout seeded
     /// in (see `seedV0531DesignABuilder`).
     private enum V46DemoSurface: String, CaseIterable {
-        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer
+        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer, console
 
         static func detect() -> V46DemoSurface? {
             let args = ProcessInfo.processInfo.arguments
@@ -163,6 +163,18 @@ struct ContentView: View {
                 || args.contains("-v0532-mode-progression") {
                 return .builderJodie09
             }
+            // V0.54 (2026-09-08): dedicated harness for the
+            // Session Console's PRE state — the SessionConsoleView
+            // itself reads `-v54-demo-console` for its seeded
+            // breadcrumb (matches TodayView's `-v46-demo-today`
+            // pattern, no AuthManager sign-in required).
+            // `-v54-demo-console-live` is the S1 acceptance flag
+            // that flips the VM state to .live so we can screenshot
+            // the stub body without an interactive tap.
+            if args.contains("-v54-demo-console")
+                || args.contains("-v54-demo-console-live") {
+                return .console
+            }
             return nil
         }
     }
@@ -185,6 +197,14 @@ struct ContentView: View {
             SwimmerHomeView()
                 .environment(authManager)
                 .task { authManager.seedV46DemoStateIfNeeded() }
+        case .console:
+            // V0.54 S1: route straight into the SessionConsoleView's
+            // PRE state with the seed branch in the view's `.task`.
+            // No auth required; the seed populates workout + sets +
+            // breadcrumb.
+            NavigationStack {
+                SessionConsoleView(workoutId: "v54-demo-workout")
+            }
         }
     }
 

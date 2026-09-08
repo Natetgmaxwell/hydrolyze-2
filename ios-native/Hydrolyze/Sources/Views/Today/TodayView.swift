@@ -6,6 +6,14 @@ struct TimingNavItem: Hashable {
 }
 
 /// Identifiable wrapper for `.fullScreenCover(item:)` so the cover can drive on a String id.
+///
+/// V0.54 (2026-09-08): the bare-start `TimingView` cover at line 58-60
+/// is REACHABLE via `WorkoutCard → SessionStartView → onComplete →
+/// activeSession`. Per Nathan's Q1 ruling, we route it through the
+/// `SessionConsoleView` instead — the Console subsumes the post-picker
+/// path. The `ActiveTimingSession` envelope is kept (still used by the
+/// post-Console flow when LIVE hands off to TimingView in S2) but the
+/// `SessionStartView` cover is replaced.
 struct ActiveTimingSession: Identifiable, Hashable {
     let id: String
     // Phase 2.6 v1.6.1 fix: workoutSetId is the set the coach picked in
@@ -20,13 +28,24 @@ struct ActiveTimingSession: Identifiable, Hashable {
 
 /// TodayView — real coach home screen. Fetches today's scheduled workout on appear
 /// and on pull-to-refresh. Uses @StateObject for the view model (owns the data fetch).
+///
+/// V0.54 (2026-09-08): the `WorkoutCard.onStartSession` handler now
+/// routes through `SessionConsoleView` (was `SessionStartView`).
+/// `SessionStartView` is deleted as an entry; the Console subsumes the
+/// post-picker path. The bare-start `fullScreenCover(item:)` for
+/// `ActiveTimingSession` is REACHABLE in V0.49+ via `WorkoutCard →
+/// SessionStartView → onComplete → activeSession → TimingView` —
+/// Nathan's Q1 ruling routes it through the Console. The `activeSession`
+/// state is kept because S2 will re-use it for the LIVE → TimingView
+/// handoff, but the cover body now also points at the Console.
 struct TodayView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel = TodayViewModel()
     @State private var animateIn: Bool = false
-    @State private var showSessionStart = false
+    @State private var showConsole = false
+    @State private var consoleWorkoutId: String?
     @State private var activeSession: ActiveTimingSession?
     @State private var attendanceEntries: [CoachAttendanceEntry] = []
     @State private var showAttendancePopover = false
@@ -43,19 +62,30 @@ struct TodayView: View {
                 phoneLayout
             }
         }
-        .fullScreenCover(isPresented: $showSessionStart) {
-            SessionStartView(
-                sessionId: UUID().uuidString,
-                workoutSets: viewModel.todayWorkoutSets,
-                onComplete: { sessionId, workoutSetId in
-                    activeSession = ActiveTimingSession(
-                        id: sessionId,
-                        workoutSetId: workoutSetId
-                    )
+        // V0.54 (2026-09-08): `SessionConsoleView` replaces `SessionStartView`
+        // as the entry from the WorkoutCard handler. The Console's PRE state
+        // hosts the breadcrumb + Start Session CTA; tapping Start advances
+        // to LIVE (S1 stub). The Console is presented as a full-screen
+        // cover with its own NavigationStack so the toolbar End ✕ closes
+        // it cleanly via @Environment(\.dismiss).
+        .fullScreenCover(isPresented: $showConsole, onDismiss: {
+            consoleWorkoutId = nil
+        }) {
+            if let id = consoleWorkoutId {
+                NavigationStack {
+                    SessionConsoleView(workoutId: id)
                 }
-            )
+            }
         }
         .fullScreenCover(item: $activeSession) { session in
+            // V0.54 Q1 ruling: this codepath was reachable in V0.49+ via
+            // WorkoutCard → SessionStartView → onComplete → activeSession.
+            // SessionStartView is no longer an entry (deleted-as-entry per
+            // spec §6). The activeSession envelope is kept for S2's
+            // LIVE → TimingView handoff. For S1, the cover still opens a
+            // TimingView directly as a safety net (no SessionStartView
+            // route left) — S2 retires this whole cover by routing LIVE
+            // from inside the Console.
             TimingView(sessionId: session.id, workoutSetId: session.workoutSetId)
         }
         .onAppear { animateIn = true }
@@ -89,7 +119,10 @@ struct TodayView: View {
                                     workout: workout,
                                     setCount: viewModel.setCount,
                                     swimmerCount: viewModel.swimmerCount,
-                                    onStartSession: { showSessionStart = true }
+                                    onStartSession: {
+                                        consoleWorkoutId = workout.id
+                                        showConsole = true
+                                    }
                                 )
                                 // Attendance badge — non-intrusive,
                                 // tap to open the inline popover.
@@ -157,7 +190,10 @@ struct TodayView: View {
                                 workout: workout,
                                 setCount: viewModel.setCount,
                                 swimmerCount: viewModel.swimmerCount,
-                                onStartSession: { showSessionStart = true }
+                                onStartSession: {
+                                    consoleWorkoutId = workout.id
+                                    showConsole = true
+                                }
                             )
                             AttendanceBadge(
                                 attendingCount: attendingCount,
@@ -196,7 +232,10 @@ struct TodayView: View {
                                 icon: "play.fill",
                                 color: Color.accentAction
                             ) {
-                                showSessionStart = true
+                                if let workout = viewModel.todayWorkout {
+                                    consoleWorkoutId = workout.id
+                                    showConsole = true
+                                }
                             }
                         } else {
                             quickActionRow(

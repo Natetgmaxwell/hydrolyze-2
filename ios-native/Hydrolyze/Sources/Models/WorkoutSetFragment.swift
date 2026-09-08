@@ -66,3 +66,18 @@ struct WorkoutSetFragment: Codable, Identifiable, Sendable, Hashable {
         case paceTargetSec = "pace_target_sec", confidence
     }
 }
+
+extension WorkoutSetFragment {
+    /// V0.54 (2026-09-08): mirror of the V0.53.1 `isTimableFragment(_:)`
+    /// predicate (WorkoutPreview.swift:1519) for the DB-row shape.
+    /// The parser maps `easy | recovery | warm-up | ez | relaxed`
+    /// → `intensity = "easy"` at _llm.ts:560, so any non-easy value
+    /// means the fragment is timable. nil intensity (drills / hold
+    /// rates / descriptors without a parsed intensity) stays timable
+    /// as in the existing FragmentCTARow contract — coaches time
+    /// drills by the clock, not by feel.
+    var isTimable: Bool {
+        guard !intensity.isEmpty else { return true }
+        return intensity.lowercased() != "easy"
+    }
+}

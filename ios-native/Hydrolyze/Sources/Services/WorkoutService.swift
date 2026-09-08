@@ -337,6 +337,22 @@ final class WorkoutService {
         return try JSONDecoder().decode([WorkoutSet].self, from: response.data)
     }
 
+    /// V0.54 (2026-09-08) — pre-tick the breadcrumb count for the
+    /// Console's PRE state. Wraps `CoachIntentService.fetchResolvedAttendance`
+    /// (the same path `AttendanceBadge` uses today, V0.49) so the
+    /// Console and the badge cannot drift on what counts as "attending"
+    /// for the same workout.
+    ///
+    /// Returns `(attending, total)`. Caller treats `total == 0` as the
+    /// empty-squad case per spec §2 ("👤 0", Start Session stays
+    /// enabled). Failures propagate so the ViewModel can surface
+    /// "👤 ?" + a retry tap (S5 wires the retry button).
+    func preTickRoster(forWorkoutId workoutId: String) async throws -> (attending: Int, total: Int) {
+        let resolved = try await CoachIntentService().fetchResolvedAttendance(forWorkoutId: workoutId)
+        let attending = resolved.entries.filter(\.isAttending).count
+        return (attending, resolved.entries.count)
+    }
+
     /// Create a new workout with optional sets.
     /// V0.45 (2026-08-18): sessionType parameter added — lets the
     /// template entry point tag a newly-created workout as "3mt" so

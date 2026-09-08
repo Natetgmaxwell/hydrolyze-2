@@ -324,7 +324,13 @@ struct WorkoutsListView: View {
             ForEach(groupedWorkouts.keys.sorted(by: { $0 > $1 }), id: \.self) { dateKey in
                 Section {
                     ForEach(groupedWorkouts[dateKey] ?? []) { workout in
-                        NavigationLink(destination: WorkoutDetailView(workoutId: workout.id)) {
+                        // V0.54 (2026-09-08): status-branched entry. Per
+                        // decision 15, the Console is the entry for
+                        // `.scheduled` / `.inProgress`; `.draft` and
+                        // `.complete` keep `WorkoutDetailView` (the
+                        // post-session review path). A draft has no
+                        // timing yet; a complete one is read-only.
+                        NavigationLink(destination: destinationView(for: workout)) {
                             WorkoutRowView(workout: workout, onDelete: {})
                                 .padding(.vertical, 6)
                         }
@@ -398,6 +404,20 @@ struct WorkoutsListView: View {
                 return formatter.string(from: date)
             }
             return "UNSCHEDULED"
+        }
+    }
+
+    /// V0.54 (2026-09-08): status-branched destination. `.scheduled` and
+    /// `.inProgress` open the Console (coach is going to time it);
+    /// `.draft` and `.complete` open `WorkoutDetailView` (drafts need
+    /// editing, completes are review-only). Spec decision 15.
+    @ViewBuilder
+    private func destinationView(for workout: WorkoutRowData) -> some View {
+        switch workout.status {
+        case .scheduled, .inProgress:
+            SessionConsoleView(workoutId: workout.id)
+        case .draft, .complete:
+            WorkoutDetailView(workoutId: workout.id)
         }
     }
 
