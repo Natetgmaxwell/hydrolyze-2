@@ -1274,10 +1274,128 @@ struct UnmappedTerm: Codable, Hashable {
 // it once on the header). When rendered standalone (single-fragment rep
 // groups) the prefix still appears so the flat-row surface reads
 // "4× 75m @ fast" exactly as before.
+// V0.53.1 (2026-09-08): file-scope helper for FragmentCTARow's timing
+// gate. Returns false when the fragment's intensity is the canonical
+// "easy" type (engine maps `easy | recovery | warm-up | ez | relaxed`
+// → type:"easy" at _llm.ts:560). nil intensity = assume timable —
+// drills, hold rates, and descriptors don't carry an easy type and
+// stay timable as before. Mirrors the contract asserted in
+// ios-native/Hydrolyze/Tests/V0531CompositeRepLayoutSmoke.swift.
+func isTimableFragment(_ fragment: ParsedFragment) -> Bool {
+    guard let intensity = fragment.intensity else { return true }
+    return intensity.type != .easy
+}
+
+// V0.53.1 (2026-09-08): file-scope helper for the per-fragment pace
+// badge. When the row lives inside a PairRepGroupRow, the parent header
+// already owns the "@ 1:00" send-off, so the per-fragment badge is
+// redundant. The composite call site passes `showPaceBadge: false`;
+// the single-fragment call site uses the default (true). nil/empty
+// `paceTargetText` → no badge even when allowed. Mirrors the contract
+// in V0531CompositeRepLayoutSmoke.swift.
+func shouldRenderFragmentPaceBadge(showPaceBadge: Bool, paceTargetText: String?) -> Bool {
+    guard showPaceBadge else { return false }
+    guard let pace = paceTargetText, !pace.isEmpty else { return false }
+    return true
+}
+
+// V0.53.1 Design A (2026-09-08, jodie-09 approved direction): how
+// many rep cards to render for a composite repGroup. 4 reps → 4
+// cards (coach's call). 8 reps → 8 cards (cap). 9+ reps → 1 card +
+// "×N" repetition affordance — never paginate, never render 0
+// cards. nil/0 reps → 1 card (defensive: the fragment list still
+// renders as a single rep so the layout doesn't collapse). Mirrors
+// the contract in V0531DesignARepCardLayoutSmoke.swift.
+func repCardCount(reps: Int?) -> Int {
+    guard let reps = reps, reps >= 1 else { return 1 }
+    return reps > 8 ? 1 : reps
+}
+
+// V0.53.1 Design A: the proportional width of one segment inside a
+// rep card's connected segment track. Returns a 0..1 fraction by
+// distance-over-total. nil distance or zero total → 0 (defensive,
+// segment renders at zero width and the layout doesn't crash).
+// Sum across all fragments in a rep equals 1.0 when every fragment
+// has a distance.
+func segmentWidth(fragmentDistance: Int?, totalDistance: Int) -> Double {
+    guard let d = fragmentDistance, totalDistance > 0 else { return 0 }
+    return Double(d) / Double(totalDistance)
+}
+
+// V0.53.1 Design A: which fragment the rep-card play button keys
+// on, when the card is tapped. nil = the card carries no play button
+// at all (all fragments are easy / feel-based — coaches don't time
+// those). The handler routes to the same onFragmentTap machinery
+// FragmentCTARow uses, keyed on fragment.id, so the eventual capture
+// semantics (feet-on-wall per V0.53_SPEC) land on the right fragment.
+func tapFragmentIndex(fragments: [ParsedFragment]) -> Int? {
+    for (i, f) in fragments.enumerated() {
+        if isTimableFragment(f) { return i }
+    }
+    return nil
+}
+
+// V0.53.1 Design A: label rendered inside / under a segment of the
+// rep-card track. Mirrors fragmentChipTitle's fallback chain so the
+// sighted and screen-reader breakdown reads the same: "{distance}m
+// {intensity.label}" → "{distance}m {descriptor}" → "{distance}m
+// {instruction}" → "{distance}m" → "Fragment".
+func segmentLabel(fragment: ParsedFragment) -> String {
+    var parts: [String] = []
+    if let d = fragment.distance { parts.append("\(d)m") }
+    if let label = fragment.intensity?.label, !label.isEmpty {
+        return parts.joined(separator: " ") + " " + label
+    }
+    if let desc = fragment.descriptor, !desc.isEmpty {
+        return parts.joined(separator: " ") + " " + desc
+    }
+    if let instr = fragment.instruction, !instr.isEmpty {
+        return parts.joined(separator: " ") + " " + instr
+    }
+    if !parts.isEmpty { return parts.joined(separator: " ") }
+    return "Fragment"
+}
+
+// V0.53.1 Design A: VoiceOver label for one rep card. One element
+// per card so screen-reader navigation lands on whole reps, not
+// individual segments. Includes reps context ("Rep 1 of 4"), the
+// rep's distance, the segment breakdown ("25 event rhythm then 25
+// easy"), and the interval ("on 1:00") when present. Distinct for
+// each rep in the set so VoiceOver never collapses identical cards
+// into a single node.
+func cardAccessibilityLabel(
+    repNumber: Int,
+    totalReps: Int,
+    parentDistance: Int?,
+    segments: [ParsedFragment],
+    interval: String?
+) -> String {
+    var parts: [String] = []
+    parts.append("Rep \(repNumber) of \(totalReps)")
+    if let d = parentDistance {
+        parts.append("\(d) meters")
+    }
+    let breakdown = segments.map { segmentLabel(fragment: $0) }.joined(separator: " then ")
+    if !breakdown.isEmpty {
+        parts.append(breakdown)
+    }
+    if let interval = interval, !interval.isEmpty {
+        parts.append("on \(interval)")
+    }
+    return parts.joined(separator: ", ")
+}
+
 private struct FragmentCTARow: View {
     let fragment: ParsedFragment
     let reps: Int?
     let paceTargetText: String?
+    // V0.53.1 (2026-09-08, jodie-09 purposeful-threshold): false when
+    // the row is a child of PairRepGroupRow — the parent header owns
+    // the @-send-off badge, so the per-fragment copy is redundant.
+    // Default true preserves the single-fragment call site at
+    // RepGroupRowView (line 401) where the row IS the only place the
+    // interval appears.
+    var showPaceBadge: Bool = true
     let recordedTimes: [FragmentTimeRecord]?
     // V0.35 (2026-08-12): nil = static row (builder preview). Renders
     // the same fragment metadata but is not tappable and shows no play
@@ -1289,6 +1407,12 @@ private struct FragmentCTARow: View {
     // the sheet. Haptics.selection() is fired by WorkoutPreview when
     // this callback runs (one place, not duplicated at each row).
     let onAggregateTap: ((String, [FragmentTimeRecord]) -> Void)?
+
+    // V0.53.1: true unless the fragment's intensity is the canonical
+    // "easy" type. Easy fragments are feel-based — coaches don't time
+    // them. Suppresses the play button + Button wrap; recorded-time
+    // chips still render so previously-captured times stay visible.
+    private var isTimable: Bool { isTimableFragment(fragment) }
 
     var body: some View {
         let content = HStack(spacing: 8) {
@@ -1334,7 +1458,15 @@ private struct FragmentCTARow: View {
                     if let start = fragment.startType, !start.isEmpty, start != "push" {
                         MetadataBadge(text: start.uppercased(), color: Color.textMuted)
                     }
-                    if let pace = paceTargetText, !pace.isEmpty {
+                    // V0.53.1 (2026-09-08, jodie-09 send-off-belong-to-rep):
+                    // suppress the per-fragment "@ 1:00" badge when the
+                    // row lives inside a PairRepGroupRow — the parent
+                    // header already owns the send-off so the child copy
+                    // is redundant. Single-fragment call sites (no parent
+                    // header) keep `showPaceBadge=true` (default) so the
+                    // interval appears once on the row.
+                    if shouldRenderFragmentPaceBadge(showPaceBadge: showPaceBadge, paceTargetText: paceTargetText),
+                       let pace = paceTargetText {
                         // Pace target = the rep group's interval
                         // (send-off or "1:30"). Fog text on inset
                         // chip — data, not a CTA.
@@ -1425,7 +1557,15 @@ private struct FragmentCTARow: View {
             // the play icon for a dim re-tap icon so the row still
             // reads as actionable ("tap to retime"). The Saved
             // check above carries the affirmative state.
-            if onTap != nil {
+            //
+            // V0.53.1 (2026-09-08, jodie-09 no-time-on-easy):
+            // suppress the play/retap icon entirely when the fragment
+            // is easy (feel-based; coaches don't time it). The row
+            // becomes passive description only — no timing CTA,
+            // no Button wrap below. Recorded-time chips above still
+            // render so any previously-captured times remain visible
+            // as a read-only history signal.
+            if onTap != nil, isTimable {
                 Image(systemName: recordedTimes != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
                     .foregroundColor(recordedTimes != nil ? Color.textMuted : Color.textPrimary)
             }
@@ -1435,7 +1575,13 @@ private struct FragmentCTARow: View {
         .background(Color.bgBase.opacity(0.4))
         .clipShape(RoundedRectangle(cornerRadius: 4))
 
-        if let onTap {
+        // V0.53.1: easy fragments are not tappable (no Button wrap).
+        // When onTap is nil OR isTimable is false, render the static
+        // content. The previous code wrapped unconditionally on onTap,
+        // which would still launch timing for easy fragments even
+        // though no play icon shows — breaking the "passive description"
+        // guarantee.
+        if let onTap, isTimable {
             Button(action: onTap) { content }
                 .buttonStyle(.plain)
         } else {
@@ -1636,6 +1782,12 @@ private struct PairRepGroupRow: View {
                     // owns the reps count.
                     reps: nil,
                     paceTargetText: paceTargetText,
+                    // V0.53.1 (2026-09-08, jodie-09 send-off-belong-to-rep):
+                    // parent header already owns the "@ 1:00" send-off
+                    // so the per-fragment copy is suppressed. Recorded-
+                    // time chips + confidence + start/gear badges still
+                    // render — only the @pace badge is hidden.
+                    showPaceBadge: false,
                     recordedTimes: recordedTimesForFragment(f, in: recordedTimesByFragmentId),
                     onTap: onFragmentTap.map { handler in
                         { handler(fIdx, f) }
@@ -1654,6 +1806,13 @@ private struct PairRepGroupRow: View {
     // between" when any inter-fragment rest exists). The breakdown
     // is the explicit signal that this is ONE composite rep, not
     // two independent swims.
+    //
+    // V0.53.1 (2026-09-08, jodie-09 send-off-belong-to-rep): when
+    // the parent rep group carries an interval (send-off / on-time),
+    // render it ONCE here as the MetadataBadge the fragment rows used
+    // to wear. The whole rep is on the minute, not each fragment.
+    // Mirrors shouldRenderFragmentPaceBadge so a nil/empty pace still
+    // produces no badge (e.g. sets written without a send-off cycle).
     private var headerLine: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
@@ -1674,6 +1833,13 @@ private struct PairRepGroupRow: View {
                     Text(s)
                         .font(.body)
                         .foregroundColor(Color.textPrimary)
+                }
+                // V0.53.1: send-off belongs to the whole rep. Same
+                // fog-on-inset chip the fragment rows used to wear;
+                // renders exactly once on the parent header.
+                if shouldRenderFragmentPaceBadge(showPaceBadge: true, paceTargetText: paceTargetText),
+                   let pace = paceTargetText {
+                    MetadataBadge(text: "@ \(pace)", color: Color.textMuted)
                 }
             }
             .padding(.leading, 2)
