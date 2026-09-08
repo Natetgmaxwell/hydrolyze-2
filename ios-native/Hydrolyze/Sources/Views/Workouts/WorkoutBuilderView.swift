@@ -75,6 +75,22 @@ struct WorkoutBuilderView: View {
                 viewModel.seedV0531DesignABuilder()
                 return
             }
+            // V0.53.2 mode-selection screenshot harnesses: isolated
+            // seeds for each of the three rendering modes so the
+            // visual reviewer can confirm the mode dispatch without
+            // scanning the full jodie-09 Purposeful Threshold
+            // workout. Mode 1 (track) is already exercised by
+            // -v0531-design-a-builder; the new harnesses cover
+            // Modes 2 (uniform) and 3 (per-rep progression) in
+            // isolation.
+            if ProcessInfo.processInfo.arguments.contains("-v0532-mode-uniform") {
+                viewModel.seedV0532ModeUniform()
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-v0532-mode-progression") {
+                viewModel.seedV0532ModeProgression()
+                return
+            }
             #endif
 
             // Phase 2.7 performance: warm up the parse-workout Edge Function on
@@ -106,8 +122,14 @@ struct WorkoutBuilderView: View {
         // posts don't reach the sim runtime); showing the input
         // column pushes the preview off-screen. Preview-only mode
         // captures the entire RepCard layout in one screenshot.
+        // V0.53.2 (2026-09-08): extended to the new mode-isolation
+        // harnesses (-v0532-mode-uniform, -v0532-mode-progression)
+        // — same preview-only constraint, same screenshot strategy.
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-v0531-design-a-builder") {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-v0531-design-a-builder")
+            || args.contains("-v0532-mode-uniform")
+            || args.contains("-v0532-mode-progression") {
             previewColumnContent
                 .padding(16)
         } else {
@@ -739,15 +761,52 @@ final class WorkoutBuilderViewModel: ObservableObject {
             title: "Warm-Up",
             namedSets: [
                 ParsedNamedSet(label: "Build", note: nil, repGroups: [
-                    // 4 × 150 @ 2:20-2:30 — non-composite, single set
+                    // 4 × 150 @ 2:20-2:30 — Each: 50@65% / 50@70% / 50@75%.
+                    // V0.53.2 (2026-09-08): the live parser emits
+                    // 3 fragments per rep for this set (one per
+                    // Each-line), each with its own percent_range
+                    // intensity. Three fragments × distinct
+                    // intensity types per rep = within-rep intensity
+                    // change → Mode 1 (segment track) renders.
+                    // The previous seed had it as a single rg with
+                    // the Each: lines collapsed into a note; the
+                    // V0.53.2 mode-selection rules reclassified
+                    // that as Mode 2 (uniform), which would suppress
+                    // the track — wrong for this case. Now we ship
+                    // the live-parse shape so the screenshot
+                    // harness reflects the actual parser output.
                     ParsedRepGroup(reps: 4, distance: 150, stroke: "Free",
                                    interval: "2:20-2:30", intensity: nil,
                                    pacing: nil, pattern: [], patternType: nil,
                                    connectors: nil, note: "Each: 50 @ 65% / 50 @ 70% / 50 @ 75%",
                                    gear: nil, gearOptional: false, descend: nil,
                                    details: nil, dive: false, suit: false,
-                                   ambiguousTerm: nil, fragments: nil,
-                                   sourceLine: nil, zoneTerm: nil),
+                                   ambiguousTerm: nil,
+                                   fragments: [
+                                       ParsedFragment(id: "frag-150-a", distance: 50, stroke: nil,
+                                                      instruction: nil,
+                                                      intensity: ParsedIntensity(type: .percent_range, label: "65%"),
+                                                      intensityType: "percent_range", intensityLabel: "65%",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: "65%", confidence: 1.0,
+                                                      restAfter: nil),
+                                       ParsedFragment(id: "frag-150-b", distance: 50, stroke: nil,
+                                                      instruction: nil,
+                                                      intensity: ParsedIntensity(type: .percent_range, label: "70%"),
+                                                      intensityType: "percent_range", intensityLabel: "70%",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: "70%", confidence: 1.0,
+                                                      restAfter: nil),
+                                       ParsedFragment(id: "frag-150-c", distance: 50, stroke: nil,
+                                                      instruction: nil,
+                                                      intensity: ParsedIntensity(type: .percent_range, label: "75%"),
+                                                      intensityType: "percent_range", intensityLabel: "75%",
+                                                      startType: nil, suit: nil, gear: nil,
+                                                      descriptor: "75%", confidence: 1.0,
+                                                      restAfter: nil),
+                                   ],
+                                   sourceLine: nil, zoneTerm: nil,
+                                   perRepTargets: nil),
                     // 4 × 100 @ 1:35-1:40 with fragments (25 scull / 50 strong / 25 easy).
                     // Mirrors the live parse shape (live curl at V0.53.1):
                     // frag0 {dist:25, intensity:null, instruction:"scull"},
@@ -786,6 +845,16 @@ final class WorkoutBuilderViewModel: ObservableObject {
                     // 4 × 50 @ 1:00 — Descend ladder (4 fragments each rep, but for
                     // screenshot simplicity use a single non-composite repGroup
                     // with descend="1-4" so the V0.46-style render kicks in.
+                    // V0.53.2 (2026-09-08): the live parser emits
+                    // explicit per-rep targets for the Descend
+                    // ladder ("70%", "75%", "80%", "~85%"). The
+                    // harness now supplies them via perRepTargets
+                    // so the Mode 3 render renders the per-card
+                    // target badges + chevrons. The previous seed
+                    // had only the note + descend="1-4" — that
+                    // route synthesized targets from a percent-range
+                    // intensity, but for "%" labeled ladders the
+                    // harness can supply the labels verbatim.
                     ParsedRepGroup(reps: 4, distance: 50, stroke: nil,
                                    interval: "1:00", intensity: nil,
                                    pacing: nil, pattern: [], patternType: nil,
@@ -794,7 +863,8 @@ final class WorkoutBuilderViewModel: ObservableObject {
                                    gear: nil, gearOptional: false,
                                    descend: "1-4", details: nil,
                                    dive: false, suit: false, ambiguousTerm: nil,
-                                   fragments: nil, sourceLine: nil, zoneTerm: nil),
+                                   fragments: nil, sourceLine: nil, zoneTerm: nil,
+                                   perRepTargets: ["70%", "75%", "80%", "~85%"]),
                     // 4 × 25 @ :40 / 12.5 strong + 12.5 easy — composite with rest
                     ParsedRepGroup(reps: 4, distance: 25, stroke: nil,
                                    interval: "0:40", intensity: nil,
@@ -894,6 +964,155 @@ final class WorkoutBuilderViewModel: ObservableObject {
                                    degraded: nil, degradedReason: nil)
 
         title = "Purposeful Threshold"
+        workoutText = text
+        parsedWorkout = parsed
+        parseSuccess = true
+        isPendingParse = false
+        cache[cacheKey(for: text)] = CachedParse(trimmedText: text, workout: parsed)
+        lastSentText = text
+    }
+
+    /// V0.53.2 (2026-09-08, jodie-09 user complaint on segment
+    /// track rendering on uniform reps): isolated seed for Mode 2
+    /// (uniform) screenshot capture. A clean 4 × 50 build set
+    /// (single intensity across every rep, no fragments, no
+    /// progression descriptor) so the visual reviewer can confirm
+    /// the new render doesn't paint a segment track where the rep
+    /// is genuinely one descriptor. Triggered by `-v0532-mode-uniform`.
+    func seedV0532ModeUniform() {
+        let text = """
+        Uniform rep — Mode 2
+
+        Warm-Up
+
+        4 × 50 build @ 1:10
+        """
+        let warmUp = ParsedSection(
+            title: "Warm-Up",
+            namedSets: [
+                ParsedNamedSet(label: "Build", note: nil, repGroups: [
+                    // 4 × 50 build @ 1:10 — every rep is the same
+                    // descriptor ("build") at the same intensity.
+                    // No fragments (the rep is not split), no
+                    // descend / build pacing on the rg, no
+                    // per-rep targets. Mode 2 (uniform) — a
+                    // plain rep card per rep, no track, no
+                    // chevron. This is the case the user
+                    // complained about: the previous build
+                    // would have rendered an inappropriate
+                    // segment track on this set.
+                    ParsedRepGroup(reps: 4, distance: 50, stroke: "Free",
+                                   interval: "1:10",
+                                   intensity: ParsedIntensity(type: .aerobic, label: "build"),
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil, note: nil,
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil, fragments: nil,
+                                   sourceLine: nil, zoneTerm: nil,
+                                   perRepTargets: nil),
+                    // 4 × 50 free easy — every rep easy, plain set.
+                    // No fragments → Mode 2.
+                    ParsedRepGroup(reps: 4, distance: 50, stroke: "Free",
+                                   interval: nil,
+                                   intensity: ParsedIntensity(type: .easy, label: "easy"),
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil, note: nil,
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil, fragments: nil,
+                                   sourceLine: nil, zoneTerm: "easy",
+                                   perRepTargets: nil),
+                    // 8 × 50 free @ threshold on 1:30 — uniform
+                    // single-intensity repGroup with reps > cap
+                    // (8) so the ×N collapse affordance renders.
+                    // Mode 2 + collapsed.
+                    ParsedRepGroup(reps: 8, distance: 50, stroke: "Free",
+                                   interval: "1:30",
+                                   intensity: ParsedIntensity(type: .threshold, label: "threshold"),
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil, note: nil,
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil, fragments: nil,
+                                   sourceLine: nil, zoneTerm: "threshold",
+                                   perRepTargets: nil),
+                ])
+            ]
+        )
+        let parsed = ParsedWorkout(title: "Mode 2 — uniform",
+                                   sections: [warmUp],
+                                   degraded: nil, degradedReason: nil)
+        title = "Mode 2 — uniform"
+        workoutText = text
+        parsedWorkout = parsed
+        parseSuccess = true
+        isPendingParse = false
+        cache[cacheKey(for: text)] = CachedParse(trimmedText: text, workout: parsed)
+        lastSentText = text
+    }
+
+    /// V0.53.2: isolated seed for Mode 3 (per-rep progression)
+    /// screenshot capture. A clean Descend 4 × 50 set so the
+    /// visual reviewer can confirm each card carries its own
+    /// target ("70%", "75%", "80%", "~85%") with the chevron
+    /// between them showing direction. Triggered by
+    /// `-v0532-mode-progression`.
+    func seedV0532ModeProgression() {
+        let text = """
+        Per-rep progression — Mode 3
+
+        Main Set
+
+        4 × 50 @ 1:00
+        Descend:
+        1 = 70%
+        2 = 75%
+        3 = 80%
+        4 = ~85%
+
+        4 × 100 build
+        """
+        let mainSet = ParsedSection(
+            title: "Main Set",
+            namedSets: [
+                ParsedNamedSet(label: "Threshold", note: nil, repGroups: [
+                    // 4 × 50 @ 1:00 — Descend ladder. Per-rep
+                    // targets populated explicitly so the Mode 3
+                    // render paints the badge per card.
+                    ParsedRepGroup(reps: 4, distance: 50, stroke: "Free",
+                                   interval: "1:00", intensity: nil,
+                                   pacing: nil, pattern: [], patternType: nil,
+                                   connectors: nil,
+                                   note: "Descend: 1 = 70% / 2 = 75% / 3 = 80% / 4 = ~85%",
+                                   gear: nil, gearOptional: false,
+                                   descend: "1-4", details: nil,
+                                   dive: false, suit: false, ambiguousTerm: nil,
+                                   fragments: nil, sourceLine: nil, zoneTerm: nil,
+                                   perRepTargets: ["70%", "75%", "80%", "~85%"]),
+                    // 4 × 100 build — uniform intensity with
+                    // pacing="build" → Mode 3 (per-rep build
+                    // progression). No perRepTargets → chevron
+                    // only (no numeric labels) — confirms the
+                    // chevron-only path renders cleanly without
+                    // synthesized labels.
+                    ParsedRepGroup(reps: 4, distance: 100, stroke: "Free",
+                                   interval: nil,
+                                   intensity: ParsedIntensity(type: .aerobic, label: "build"),
+                                   pacing: "build", pattern: [], patternType: nil,
+                                   connectors: nil, note: nil,
+                                   gear: nil, gearOptional: false, descend: nil,
+                                   details: nil, dive: false, suit: false,
+                                   ambiguousTerm: nil, fragments: nil,
+                                   sourceLine: nil, zoneTerm: nil,
+                                   perRepTargets: nil),
+                ])
+            ]
+        )
+        let parsed = ParsedWorkout(title: "Mode 3 — progression",
+                                   sections: [mainSet],
+                                   degraded: nil, degradedReason: nil)
+        title = "Mode 3 — progression"
         workoutText = text
         parsedWorkout = parsed
         parseSuccess = true

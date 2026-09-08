@@ -99,6 +99,7 @@
 		A668CB0BE3BD1F1B5236A9BB /* build_and_run_resolver.sh in Resources */ = {isa = PBXBuildFile; fileRef = 6FEE165FD6BF32A1E9DDC8F6 /* build_and_run_resolver.sh */; };
 		A71AE8C077E296C7E6FAF9DB /* PhasedProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E9DBEDA7BD10A912DF675D1 /* PhasedProgressView.swift */; };
 		A81250405E32626E83026239 /* AttendanceBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6419FC350D113A41F5979A /* AttendanceBadge.swift */; };
+		AA55B3B7E1FE07CFD4EA45F5 /* V0531DesignARepCardLayoutSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39EB36ADDE0560C444A699F6 /* V0531DesignARepCardLayoutSmoke.swift */; };
 		AE95ECADBA2F3754F7785556 /* SwimmerAnalyticsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7389A8D8FFD1E6F799D53DF6 /* SwimmerAnalyticsViewModel.swift */; };
 		AFFCEB114CF74D2BD5ACDC2F /* JetBrainsMonoFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A3FEF422084985E5D70A7A /* JetBrainsMonoFont.swift */; };
 		B2A56DAA16FFDA7BBC32915A /* SessionStartViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 953FDAF57842AEC0AF43B76F /* SessionStartViewModel.swift */; };
@@ -140,6 +141,7 @@
 		E54D8BD8A2A4AAB4A01A51C2 /* SwimmerAnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9769C6AF2FC9D2292E64C103 /* SwimmerAnalyticsView.swift */; };
 		E5BDB884AAD367992D8BF7F5 /* CalibrationFactorsCLITest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 749CEC366935E5647FE9E071 /* CalibrationFactorsCLITest.swift */; };
 		E72759B5DCE4C825578B824A /* TimingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BF608CAF3B3D0FCA857BEC /* TimingView.swift */; };
+		E868BEBBF2D5280DDFDC52FA /* V0532RepCardModeSelectionSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5C719107D86EF0CF21440DF /* V0532RepCardModeSelectionSmoke.swift */; };
 		EB9A7B5E535E0B22F94BB591 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FAE9A0EE7E5C00413B6F831 /* FlowLayout.swift */; };
 		F0550B6C9285B3D9568A129E /* SpeedCurveFitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35DF81249E9FDCF5337E8489 /* SpeedCurveFitter.swift */; };
 		F372E237F69B857FEE3AB422 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 24A6766EB2A726378E3EA074 /* README.md */; };
@@ -196,6 +198,7 @@
 		35DF81249E9FDCF5337E8489 /* SpeedCurveFitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedCurveFitter.swift; sourceTree = "<group>"; };
 		37C8C23E57DE311E36E6243A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		37FF124F118710DAAF3014FE /* RecoverySignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoverySignature.swift; sourceTree = "<group>"; };
+		39EB36ADDE0560C444A699F6 /* V0531DesignARepCardLayoutSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V0531DesignARepCardLayoutSmoke.swift; sourceTree = "<group>"; };
 		3AA843D052311070F8AEE466 /* build_and_run.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run.sh; sourceTree = "<group>"; };
 		3B57DEE2C8841CB1436A3D30 /* CalibrationFactors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationFactors.swift; sourceTree = "<group>"; };
 		3E2C863D2B9B6375268ACA3C /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
@@ -264,6 +267,7 @@
 		AD6216796BE406C11CB42FF1 /* SquadSessionsEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquadSessionsEditor.swift; sourceTree = "<group>"; };
 		AE093A14EBD59B57E6337E78 /* SwimmerSheetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerSheetViewModel.swift; sourceTree = "<group>"; };
 		B0102BBE0B7283BBAEB2212A /* LapAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LapAssignment.swift; sourceTree = "<group>"; };
+		B5C719107D86EF0CF21440DF /* V0532RepCardModeSelectionSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V0532RepCardModeSelectionSmoke.swift; sourceTree = "<group>"; };
 		B697EFAE574632F9D8DD5D24 /* WorkoutSetFragment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSetFragment.swift; sourceTree = "<group>"; };
 		B754DDC1D6F4548B1611C4B6 /* VocabularyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyService.swift; sourceTree = "<group>"; };
 		B785FD52B8AAC2796EF6C35B /* Color+Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Hex.swift"; sourceTree = "<group>"; };
@@ -533,6 +537,8 @@
 				0AC88D24EE1BB1E40703F6C7 /* SkipPickerWaveAssignmentsSmoke.swift */,
 				D021B8CA4757186A862ACF1A /* SoloLapAttributionSmoke.swift */,
 				C0D4728A9610A4E3351488A2 /* V0531CompositeRepLayoutSmoke.swift */,
+				39EB36ADDE0560C444A699F6 /* V0531DesignARepCardLayoutSmoke.swift */,
+				B5C719107D86EF0CF21440DF /* V0532RepCardModeSelectionSmoke.swift */,
 				EF69CCB3B0B19C51E8A84D20 /* CLI */,
 			);
 			name = Tests;
@@ -949,6 +955,8 @@
 				1638200D70C95A99BA97DBA2 /* ThreeMinuteTestCLITest.swift in Sources */,
 				C37C108BEAFB3FFC32869EF3 /* TrainingZonesCLITest.swift in Sources */,
 				BF4546D04119F898D4561257 /* V0531CompositeRepLayoutSmoke.swift in Sources */,
+				AA55B3B7E1FE07CFD4EA45F5 /* V0531DesignARepCardLayoutSmoke.swift in Sources */,
+				E868BEBBF2D5280DDFDC52FA /* V0532RepCardModeSelectionSmoke.swift in Sources */,
 				86D02092BD9FAA9D4FB2185F /* WorkoutParser3MTCLITest.swift in Sources */,
 				A655A7B13E6C0360C4808B68 /* WorkoutParserZoneCLITest.swift in Sources */,
 			);

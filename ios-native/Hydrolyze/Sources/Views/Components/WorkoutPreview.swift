@@ -374,35 +374,123 @@ private struct RepGroupRowView: View {
             // V0.35 (2026-08-12): the builder preview now renders the same
             // fragment rows as the detail view (static, no play icon) so the
             // coach sees the fragments while editing — not a flat spine.
-            if let fragments = rg.fragments, !fragments.isEmpty {
-                if fragments.count > 1 {
-                    PairRepGroupRow(
-                        fragments: fragments,
-                        reps: rg.reps,
-                        // V0.53 (2026-09-08): forward parent distance
-                        // + stroke so the header reads "4 × 50m Free"
-                        // instead of just "4 ×". Without these, the
-                        // 50 (the actual rep distance) gets buried —
-                        // coach reads "two 25s" instead of "one 50 as
-                        // 25 + 25". Optional; legacy call sites that
-                        // don't pass them render as before.
-                        parentDistance: rg.distance,
-                        parentStroke: rg.stroke,
-                        paceTargetText: rg.interval,
-                        recordedTimesByFragmentId: recordedTimesByFragmentId,
-                        onFragmentTap: onFragmentTap.map { handler in
-                            { fIdx, f in
-                                handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
-                            }
-                        },
-                        onAggregateChipTap: onAggregateChipTap
-                    )
-                } else {
+            //
+            // V0.53.2 (2026-09-08, jodie-09 user complaint): the
+            // segment track is a metaphor for "part of this rep
+            // is at intensity X then changes to Y". When that
+            // metaphor is false, the track lies — and the user
+            // sees a slider on a rep that has no actual split.
+            // Selection happens at the repGroup level via
+            // `repCardMode(for:)` and dispatches to one of three
+            // render paths below. Mode 1 (track) keeps the
+            // existing Design A (RepCard segment track). Modes
+            // 2 (uniform) and 3 (per-rep progression) are new.
+            //
+            // V0.53.2 dispatch shape: the mode check happens FIRST
+            // (outside the fragments guard), because Mode 3 (per-
+            // rep progression) frequently fires for fragmentless
+            // repGroups — a Descend ladder like "4 × 50 @ 1:00 —
+            // Descend: 1=70% 2=75%..." has no per-rep fragments,
+            // it has rg.descend + rg.perRepTargets. If we waited
+            // for fragments before checking mode, we'd miss every
+            // fragmentless Mode 3 case and render the old rg-level
+            // row instead.
+            let mode = repCardMode(for: rg)
+            let fragments = rg.fragments ?? []
+
+            if mode == .track, fragments.count > 1 {
+                // Mode 1 (within-rep intensity change) — the
+                // connected segment track per rep card.
+                PairRepGroupRow(
+                    rg: rg,
+                    fragments: fragments,
+                    reps: rg.reps,
+                    // V0.53 (2026-09-08): forward parent distance
+                    // + stroke so the header reads "4 × 50m Free"
+                    // instead of just "4 ×". Without these, the
+                    // 50 (the actual rep distance) gets buried —
+                    // coach reads "two 25s" instead of "one 50 as
+                    // 25 + 25". Optional; legacy call sites that
+                    // don't pass them render as before.
+                    parentDistance: rg.distance,
+                    parentStroke: rg.stroke,
+                    paceTargetText: rg.interval,
+                    recordedTimesByFragmentId: recordedTimesByFragmentId,
+                    onFragmentTap: onFragmentTap.map { handler in
+                        { fIdx, f in
+                            handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
+                        }
+                    },
+                    onAggregateChipTap: onAggregateChipTap,
+                    note: rg.note
+                )
+            } else if mode == .progression {
+                // Mode 3 (per-rep progression). Fires for both
+                // fragmentless repGroups (Descend ladders, build
+                // through sets) and multi-fragment repGroups where
+                // any fragment carries a progression type. Each
+                // card carries its own target; a chevron between
+                // cards shows direction. No within-card track.
+                ProgressionRepGroupRow(
+                    rg: rg,
+                    fragments: fragments,
+                    reps: rg.reps,
+                    parentDistance: rg.distance,
+                    parentStroke: rg.stroke,
+                    paceTargetText: rg.interval,
+                    perRepTargets: perRepTargets(for: rg),
+                    recordedTimesByFragmentId: recordedTimesByFragmentId,
+                    onFragmentTap: onFragmentTap.map { handler in
+                        { fIdx, f in
+                            handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
+                        }
+                    },
+                    onAggregateChipTap: onAggregateChipTap,
+                    note: rg.note
+                )
+            } else if mode == .uniform, fragments.count > 1 {
+                // Mode 2 (uniform) with multi-fragment repGroup
+                // where all fragments share one intensity. Plain
+                // summary rows + the wrapping note.
+                UniformRepGroupRow(
+                    rg: rg,
+                    fragments: fragments,
+                    reps: rg.reps,
+                    parentDistance: rg.distance,
+                    parentStroke: rg.stroke,
+                    paceTargetText: rg.interval,
+                    recordedTimesByFragmentId: recordedTimesByFragmentId,
+                    onFragmentTap: onFragmentTap.map { handler in
+                        { fIdx, f in
+                            handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f)
+                        }
+                    },
+                    onAggregateChipTap: onAggregateChipTap,
+                    note: rg.note
+                )
+            } else {
+                // Mode 2 (uniform) fallback: single fragment (or no
+                // fragments at all). Render the existing
+                // FragmentCTARow path. showPaceBadge=true (default)
+                // because no parent header owns the pace for
+                // single-fragment repGroups.
+                //
+                // When fragments is empty AND the rg has a note
+                // (the Descend/Each: case where the parser
+                // collapsed the structure into a single rg with
+                // a multi-line note), the note IS the
+                // progression instruction — but it lives in
+                // Mode 2 (no fragments, no progression descriptor
+                // detected). Render the existing FragmentCTARow
+                // path for the single row + the note below as
+                // italic text (the wrap fix from this slice).
+                if !fragments.isEmpty {
                     ForEach(Array(fragments.enumerated()), id: \.offset) { fIdx, f in
                         FragmentCTARow(
                             fragment: f,
                             reps: rg.reps,
                             paceTargetText: rg.interval,
+                            showPaceBadge: true,
                             recordedTimes: recordedTimesForFragment(f, in: recordedTimesByFragmentId),
                             onTap: onFragmentTap.map { handler in
                                 { handler(sectionIndex, namedSetIndex, repGroupIndex, fIdx, f) }
@@ -412,6 +500,24 @@ private struct RepGroupRowView: View {
                             }
                         )
                     }
+                }
+                // V0.53.2 (2026-09-08, caption-wrap nit): wrap any
+                // rg.note on multiple lines so the "Each: 50 @ 65%
+                // / 50 @ 70% / 50 @ 75%" and "Descend: 1 = 70% / 2
+                // = 75% / 3 = 80% / 4 = ~85%" captions never
+                // truncate mid-number. The previous behaviour was
+                // single-line truncation with an ellipsis inside
+                // the number — the user-reported bug.
+                if let note = rg.note, !note.isEmpty {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundColor(Color.textMuted)
+                        .italic()
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 8)
+                        .padding(.top, 2)
+                        .accessibilityLabel(note)
                 }
             }
 
@@ -682,6 +788,24 @@ enum ParsedIntensityType: String, Codable {
     case easy, aerobic, threshold, race_pace, pace_target, sprint, descend, build, negative_split, percent_range, threeMinuteTest = "3mt"
 }
 
+// V0.53.2 (2026-09-08, jodie-09 user complaint on segment track
+// rendering on uniform reps): the segment track is a metaphor for
+// "part of this rep is at intensity X then changes to Y". Three
+// modes — picked per repGroup by `repCardMode(for:)` below.
+enum RepCardMode: Equatable {
+    // Connected proportional track per rep card. The metaphor is true.
+    // (Existing Design A from f4375d6, unchanged.)
+    case track
+    // Plain row. Single fragment / all-fragments-share-one-intensity
+    // AND no progression descriptor. No track, no chevron — one
+    // card, distance + instruction + send-off + play.
+    case uniform
+    // Per-rep progression. Instruction varies ACROSS reps (Descend
+    // 1-4, build through, ascend) but the rep itself is uniform.
+    // Each card carries its own target; a chevron shows direction.
+    case progression
+}
+
 struct ParsedIntensity: Codable {
     let type: ParsedIntensityType
     let label: String
@@ -834,6 +958,13 @@ struct ParsedRepGroup: Codable {
     // to resolve each swimmer's zone pace. Additive: does not replace
     // `intensity` (the zone word also maps to its intensity type).
     var zoneTerm: String?
+    // V0.53.2 (2026-09-08, jodie-09 per-rep progression): explicit
+    // per-rep target labels for Mode 3 renders (e.g. ["70%", "75%",
+    // "80%", "~85%"] for a `Descend: 1=70% 2=75% 3=80% 4=~85%`
+    // ladder). nil = synthesize from rg.descend + intensity percent
+    // range, or fall back to chevron-only render. Server contract:
+    // decodeIfPresent — old payloads without this field decode clean.
+    var perRepTargets: [String]?
 
     // ponytail: custom decoder that handles BOTH the regex parser's
     // response (which has every field) and the LLM's response (which
@@ -854,6 +985,11 @@ struct ParsedRepGroup: Codable {
         // LLM uses flat fields instead of the nested intensity object
         case intensityType = "intensity_type"
         case intensityLabel = "intensity_label"
+        // V0.53.2 (2026-09-08): per-rep progression target labels.
+        // Server emits `per_rep_targets` when the parser detected a
+        // per-rep ladder (Descend: 1=N% 2=N% ...). nil = synthesize
+        // or chevron-only — see perRepTargets(for:) helper.
+        case perRepTargets = "per_rep_targets"
     }
 
     init(from decoder: Decoder) throws {
@@ -876,6 +1012,7 @@ struct ParsedRepGroup: Codable {
         ambiguousTerm = try c.decodeIfPresent(String.self, forKey: .ambiguousTerm)
         fragments = try c.decodeIfPresent([ParsedFragment].self, forKey: .fragments)
         sourceLine = try c.decodeIfPresent(String.self, forKey: .sourceLine)
+        perRepTargets = try c.decodeIfPresent([String].self, forKey: .perRepTargets)
         // V0.41 (2026-08-18): zone term. Prefer the LLM path's snake_case
         // `zone_term`; fall back to the regex path's camelCase `zoneTerm`.
         zoneTerm = try c.decodeIfPresent(String.self, forKey: .zoneTerm)
@@ -921,7 +1058,8 @@ struct ParsedRepGroup: Codable {
         ambiguousTerm: String? = nil,
         fragments: [ParsedFragment]? = nil,
         sourceLine: String? = nil,
-        zoneTerm: String? = nil
+        zoneTerm: String? = nil,
+        perRepTargets: [String]? = nil
     ) {
         self.reps = reps
         self.distance = distance
@@ -943,6 +1081,7 @@ struct ParsedRepGroup: Codable {
         self.fragments = fragments
         self.sourceLine = sourceLine
         self.zoneTerm = zoneTerm
+        self.perRepTargets = perRepTargets
     }
 
     // ponytail: explicit Encodable so the synthesized conformance survives
@@ -970,6 +1109,7 @@ struct ParsedRepGroup: Codable {
         try c.encodeIfPresent(suit, forKey: .suit)
         try c.encodeIfPresent(ambiguousTerm, forKey: .ambiguousTerm)
         try c.encodeIfPresent(zoneTerm, forKey: .zoneTerm)
+        try c.encodeIfPresent(perRepTargets, forKey: .perRepTargets)
         // fragments and sourceLine are LLM-only additions; we don't emit
         // them on encode because no caller round-trips this struct.
     }
@@ -1385,6 +1525,164 @@ func cardAccessibilityLabel(
     return parts.joined(separator: ", ")
 }
 
+// V0.53.2 (2026-09-08, jodie-09 user complaint): the segment track
+// is a metaphor for "part of this rep is at intensity X then changes
+// to Y". When that metaphor is false — when the rep is uniform, or
+// when the instruction varies ACROSS reps instead of WITHIN — the
+// track would lie about the structure. Three modes, picked per
+// repGroup:
+//
+//   .track        — Mode 1. Within-rep intensity change. Connected
+//                   segment track per rep card. The metaphor is true.
+//                   (Existing Design A from f4375d6, unchanged.)
+//
+//   .uniform      — Mode 2. Plain row. Single fragment, or all
+//                   fragments share one intensity, AND no progression
+//                   descriptor. The rep is one swim at one descriptor;
+//                   a track would falsely imply an intensity split.
+//
+//   .progression  — Mode 3. Per-rep progression. The instruction
+//                   varies across reps (Descend 1-4, build through,
+//                   ascend) but the rep itself is uniform. Each card
+//                   carries its own target; a chevron shows direction.
+//                   No within-card track.
+//
+// Selection rule, in order:
+//
+//   1. If rg has ≥2 fragments with ≥2 distinct intensity types →
+//      .track. This is the canonical within-rep split.
+//
+//   2. Else if any of these is true:
+//        rg.descend != nil
+//        rg.pacing == "build"
+//        rg.intensity.type == "descend"
+//        rg.zoneTerm == "descend"
+//        any fragment.intensity.type == "descend" or "build"
+//      → .progression. The instruction varies across reps.
+//
+//   3. Else → .uniform. Single fragment with no progression, or
+//      all-fragments-share-one-intensity, or no fragments at all.
+//
+// "Progression wins over track": when both apply (rare but possible —
+// e.g. a 2-fragment composite where one fragment has pacing "build"),
+// the coach's instruction is the progression, not the split. Rule 2
+// fires AFTER rule 1's check, so the more-specific intent wins.
+//
+// Progression-term detection reuses the canonical intensity taxonomy
+// the parser uses — `descend` / `build` / `ascend` are server-side
+// IntensityType values, not invented here. nil intensity = no
+// progression term detected (drills, descriptors, hold rates carry
+// no progression type and stay timable).
+func repCardMode(for rg: ParsedRepGroup) -> RepCardMode {
+    let fragments = rg.fragments ?? []
+
+    // Count distinct intensity types among the fragments. nil
+    // intensity fragments don't contribute a type (drills,
+    // descriptors, hold rates).
+    let distinctIntensityTypes: Set<String> = Set(
+        fragments.compactMap { $0.intensity?.type.rawValue }
+    )
+
+    // Rule 1: within-rep intensity change.
+    if fragments.count >= 2, distinctIntensityTypes.count >= 2 {
+        return .track
+    }
+
+    // Rule 2: progression descriptor anywhere.
+    let rgHasProgression =
+        rg.descend != nil ||
+        rg.pacing == "build" ||
+        rg.intensity?.type == .descend ||
+        rg.zoneTerm == "descend"
+    // Fragment-level progression: only via intensity type, since
+    // ParsedFragment doesn't carry a pacing field (per-fragment
+    // pacing is rare in practice — the parser emits "build" as a
+    // rg-level pacing, not per-fragment). V0.53.2 narrows to the
+    // intensity.type check for the same reason.
+    let anyFragmentIsProgression = fragments.contains { f in
+        f.intensity?.type == .descend || f.intensity?.type == .build
+    }
+    if rgHasProgression || anyFragmentIsProgression {
+        return .progression
+    }
+
+    // Rule 3: uniform.
+    return .uniform
+}
+
+// V0.53.2: target labels for per-rep progression. Two sources:
+//
+//   - perRepTargets on the rg (preferred). When the parser / harness
+//     supplies explicit per-rep targets like ["70%", "75%", "80%",
+//     "~85%"], those flow straight into each card. nil → fall back
+//     to chevron-only progression.
+//
+//   - synthesized from rg.descend + rg.intensity's percent range.
+//     When the rg has a descend ladder ("1-4") and a percent-range
+//     intensity (low..high), interpolate evenly. The harness can
+//     override with perRepTargets when the interpolation wouldn't
+//     match the coach's intent (e.g. "Descend: 1=70 2=75 3=80 4=~85"
+//     where the last step is ~, not linear).
+//
+// Returns one target string per rep, in rep order (rep 1 first). The
+// caller is responsible for capping to repCardCount(reps) — beyond
+// 8 reps, the render collapses to one card with ×N and we
+// the per-rep labels. nil = no per-rep targets (chevron-only render).
+func perRepTargets(for rg: ParsedRepGroup) -> [String]? {
+    // Preferred: explicit per-rep targets from the parser / harness.
+    if let explicit = rg.perRepTargets, !explicit.isEmpty {
+        return explicit
+    }
+
+    // Synthesized: descend ladder + percent range intensity.
+    // Parse the rg.descend range like "1-4" → [1, 4]. With a percent
+    // intensity of percentLow..percentHigh, interpolate N evenly-
+    // spaced targets (N = reps). Only meaningful for percent_range
+    // intensities; other intensity types return nil (chevron only).
+    guard let descend = rg.descend, let reps = rg.reps, reps >= 2 else {
+        return nil
+    }
+    guard let intensity = rg.intensity,
+          intensity.type == .percent_range,
+          let low = intensity.percentLow,
+          let high = intensity.percentHigh else {
+        return nil
+    }
+    guard let (start, end) = parseDescendRange(descend),
+          start >= 1, end >= start else {
+        return nil
+    }
+    let span = end - start
+    guard span + 1 == reps else {
+        // Mismatch (e.g. "1-4" on a 6×50) — bail. The harness covers
+        // the matching case; mismatches get chevron-only.
+        return nil
+    }
+    let percentSpan = high - low
+    var result: [String] = []
+    for i in 0..<reps {
+        let pct = low + (percentSpan * i / max(reps - 1, 1))
+        result.append("\(pct)%")
+    }
+    return result
+}
+
+// V0.53.2: parse "1-4" / "1–4" / "1 to 4" → (1, 4). nil on failure.
+// Used by perRepTargets above for descend-ladder interpolation.
+func parseDescendRange(_ raw: String) -> (Int, Int)? {
+    let trimmed = raw.trimmingCharacters(in: .whitespaces)
+    let separators = ["–", "-", " to "]
+    for sep in separators {
+        let parts = trimmed.components(separatedBy: sep)
+        if parts.count == 2,
+           let lo = Int(parts[0].trimmingCharacters(in: .whitespaces)),
+           let hi = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
+            return (lo, hi)
+        }
+    }
+    return nil
+}
+
 private struct FragmentCTARow: View {
     let fragment: ParsedFragment
     let reps: Int?
@@ -1733,6 +2031,11 @@ private struct FragmentCTARow: View {
 // fragments, the breakdown renders "+ :15 rest" between the parts so
 // the coach sees "with rest between" vs "continuous".
 private struct PairRepGroupRow: View {
+    // V0.53.2 (2026-09-08): forward the full rg so the body can
+    // detect mode + use the rg's perRepTargets / descend / pacing /
+    // zoneTerm. Optional so legacy call sites that don't pass it
+    // degrade gracefully (mode falls back to .track).
+    let rg: ParsedRepGroup?
     let fragments: [ParsedFragment]
     let reps: Int?
     // V0.53: parent rep group's distance + stroke, so the header
@@ -1749,6 +2052,14 @@ private struct PairRepGroupRow: View {
     // shared callback ensures only one sheet is presented at a time
     // (WorkoutPreview owns the state slot).
     let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
+    // V0.53.2 (2026-09-08, caption-wrap nit): the rg's `note` field
+    // (e.g. "Each: 50 @ 65% / 50 @ 70% / 50 @ 75%") when present.
+    // For Mode 1 (track) we render it BELOW the rep cards so the
+    // coach reads the wrap-around instruction that the track alone
+    // can't carry. Wraps multi-line — never truncates mid-number.
+    // For Modes 2 (uniform) and 3 (progression), the note is also
+    // surfaced by their dedicated rows. nil = no note to render.
+    let note: String?
 
     var body: some View {
         // V0.53.1 Design A (2026-09-08, jodie-09 approved direction):
@@ -1817,6 +2128,28 @@ private struct PairRepGroupRow: View {
                     .padding(.leading, 4)
                     .accessibilityLabel("\(reps) reps")
             }
+            // V0.53.2 (2026-09-08, caption-wrap nit): the rg's `note`
+            // (e.g. "Each: 50 @ 65% / 50 @ 70% / 50 @ 75%") — when
+            // present — renders BELOW the rep cards so the coach
+            // reads the wrap-around instruction that the track alone
+            // doesn't carry. Wraps multi-line via .lineLimit(nil) +
+            // fixedSize(horizontal:false, vertical:true) so a long
+            // caption like the Descend ladder ("Descend: 1 = 70% / 2
+            // = 75% / 3 = 80% / 4 = ~85%") never truncates mid-number.
+            // For Mode 1 (track), the track itself shows the rep's
+            // internal split; this note carries the ACROSS-rep
+            // progression instruction that the track can't show.
+            if let note = note, !note.isEmpty {
+                Text(note)
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .italic()
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 8)
+                    .padding(.top, 2)
+                    .accessibilityLabel(note)
+            }
         }
     }
 
@@ -1881,6 +2214,453 @@ private struct PairRepGroupRow: View {
     // the same breakdown for VoiceOver.
 }
 
+// V0.53.2 (2026-09-08, jodie-09 user complaint): Mode 2 (uniform)
+// render path. Used when the segment track would lie — a single
+// fragment, or all fragments sharing one intensity, AND no
+// progression descriptor. The rep is one swim at one descriptor;
+// a track would falsely imply an intensity split.
+//
+// Visual: one summary row per rep (or one row per rep when
+// fragments.count > 1 and all fragments share one intensity),
+// carrying ×N + parent distance + stroke + send-off + a chevron/
+// arrow only if per-rep targets are present (uniform cases
+// usually don't have per-rep targets, so no chevron). The rep
+// card is a flat row — no track, no internal divisions.
+//
+// The single tap target per rep card keys on the timable fragment
+// (same rule as RepCard); when ALL fragments are easy, the card
+// carries no play affordance and is passive description only
+// (mirrors the V0.53.1 easy gating).
+private struct UniformRepGroupRow: View {
+    let rg: ParsedRepGroup
+    let fragments: [ParsedFragment]
+    let reps: Int?
+    let parentDistance: Int?
+    let parentStroke: String?
+    let paceTargetText: String?
+    let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    let onFragmentTap: ((Int, ParsedFragment) -> Void)?
+    let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
+    let note: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if reps != nil || fragments.count > 1 {
+                headerLine
+            }
+            let count = repCardCount(reps: reps)
+            ForEach(0..<count, id: \.self) { repIdx in
+                UniformRepCard(
+                    rg: rg,
+                    fragments: fragments,
+                    paceTargetText: paceTargetText,
+                    recordedTimes: recordedTimesForFirstTimableFragment(in: fragments, map: recordedTimesByFragmentId),
+                    onTap: makeCardTapHandler(repIdx: repIdx),
+                    onAggregateTap: { title, records in
+                        onAggregateChipTap(title, records)
+                    }
+                )
+            }
+            if let note = note, !note.isEmpty {
+                Text(note)
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .italic()
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 8)
+                    .padding(.top, 2)
+                    .accessibilityLabel(note)
+            }
+        }
+    }
+
+    private func makeCardTapHandler(repIdx: Int) -> (() -> Void)? {
+        guard let onFragmentTap = onFragmentTap else { return nil }
+        guard let fIdx = tapFragmentIndex(fragments: fragments) else { return nil }
+        let fragment = fragments[fIdx]
+        return { onFragmentTap(fIdx, fragment) }
+    }
+
+    private var headerLine: some View {
+        HStack(spacing: 6) {
+            Rectangle()
+                .fill(Color.accentAmber)
+                .frame(width: 2, height: 14)
+            if let reps = reps, reps > 1 {
+                Text("\(reps)×")
+                    .font(.numeric)
+                    .foregroundColor(Color.accentAmber)
+            }
+            if let d = parentDistance {
+                Text("\(d)m")
+                    .font(.numeric)
+                    .foregroundColor(Color.textPrimary)
+            }
+            if let s = parentStroke, !s.isEmpty {
+                Text(s)
+                    .font(.body)
+                    .foregroundColor(Color.textPrimary)
+            }
+        }
+        .padding(.leading, 2)
+    }
+}
+
+// V0.53.2: one uniform-rep card. Plain row, no track, no chevron.
+// Distance + intensity label + send-off + play affordance (when
+// timable). Mirrors FragmentCTARow's content for single-fragment
+// repGroups but as a flat card row instead of a fragment row —
+// same visual rhythm as RepCard (rounded background, padding) so
+// the design system reads as one family.
+private struct UniformRepCard: View {
+    let rg: ParsedRepGroup
+    let fragments: [ParsedFragment]
+    let paceTargetText: String?
+    let recordedTimes: [FragmentTimeRecord]?
+    let onTap: (() -> Void)?
+    let onAggregateTap: (String, [FragmentTimeRecord]) -> Void
+
+    private var hasPlayAffordance: Bool {
+        onTap != nil && tapFragmentIndex(fragments: fragments) != nil
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle()
+                .fill(Color.textMuted)
+                .frame(width: 2)
+            // Distance + intensity + descriptor (mirrors the
+            // FragmentCTARow label chain so single-fragment
+            // repGroups read the same as before).
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    if let d = rg.distance {
+                        Text("\(d)m")
+                            .font(.numeric)
+                            .foregroundColor(Color.textPrimary)
+                    }
+                    if let stroke = rg.stroke, !stroke.isEmpty {
+                        Text(stroke)
+                            .font(.body)
+                            .foregroundColor(Color.textPrimary)
+                    }
+                    if let label = firstFragmentIntensityLabel() {
+                        Text("@ \(label)")
+                            .font(.caption)
+                            .foregroundColor(Color.accentAmber)
+                    }
+                }
+                HStack(spacing: 6) {
+                    if let pace = paceTargetText, !pace.isEmpty {
+                        MetadataBadge(text: "@ \(pace)", color: Color.textMuted)
+                    }
+                    if let fragment = fragments.first, fragment.suit == true {
+                        MetadataBadge(text: "SUIT", color: Color.textMuted)
+                    }
+                }
+            }
+            Spacer()
+            if hasPlayAffordance {
+                Image(systemName: recordedTimes != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
+                    .foregroundColor(recordedTimes != nil ? Color.textMuted : Color.textPrimary)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(Color.bgBase.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(uniformRepAccessibilityLabel)
+        .accessibilityAddTraits(hasPlayAffordance ? .isButton : [])
+        .onTapGesture { onTap?() }
+    }
+
+    private var uniformRepAccessibilityLabel: String {
+        var parts: [String] = []
+        if let d = rg.distance { parts.append("\(d) meters") }
+        if let stroke = rg.stroke, !stroke.isEmpty { parts.append(stroke) }
+        if let label = firstFragmentIntensityLabel() { parts.append("@ \(label)") }
+        if let pace = paceTargetText, !pace.isEmpty { parts.append("on \(pace)") }
+        return parts.joined(separator: ", ")
+    }
+
+    // First non-empty intensity label across the fragments; falls
+    // back to the rg's intensity. Used by both the visible label
+    // and the accessibility label.
+    private func firstFragmentIntensityLabel() -> String? {
+        for f in fragments {
+            if let label = f.intensity?.label, !label.isEmpty {
+                return label
+            }
+            if let label = f.intensityLabel, !label.isEmpty {
+                return label
+            }
+            if let desc = f.descriptor, !desc.isEmpty {
+                return desc
+            }
+        }
+        return rg.intensity?.label
+    }
+}
+
+// V0.53.2: Mode 3 (per-rep progression) render path. Used when
+// the instruction varies ACROSS reps (Descend 1-4, build through,
+// ascend). The rep itself is uniform, but each card carries its
+// own target. A chevron between cards shows progression direction.
+//
+// Visual: same ×N + parent distance + stroke header as RepCard.
+// Then N rep cards, each showing its per-rep target (70%, 75%, …).
+// A small ↘ chevron between cards when perRepTargets is non-nil,
+// indicating direction. No within-card track.
+//
+// When perRepTargets is nil (no explicit labels + no synthesized
+// descend-ladder targets), the chevron still renders so the
+// progression direction is visible — just without the numeric
+// labels. The coach reads "Rep 1 → Rep 2 → Rep 3 → Rep 4" as a
+// sequence, even without the %s.
+private struct ProgressionRepGroupRow: View {
+    let rg: ParsedRepGroup
+    let fragments: [ParsedFragment]
+    let reps: Int?
+    let parentDistance: Int?
+    let parentStroke: String?
+    let paceTargetText: String?
+    let perRepTargets: [String]?
+    let recordedTimesByFragmentId: [String: [FragmentTimeRecord]]?
+    let onFragmentTap: ((Int, ParsedFragment) -> Void)?
+    let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
+    let note: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if reps != nil || fragments.count > 1 {
+                headerLine
+            }
+            let count = repCardCount(reps: reps)
+            ForEach(0..<count, id: \.self) { repIdx in
+                if repIdx > 0 {
+                    // Subtle chevron between cards. ↘ for descend /
+                    // build (most common — coaches descend or build
+                    // through the set); ↗ for ascend when the
+                    // rg's pacing/intensity signals up. Default ↘
+                    // covers the corpus's progression cases.
+                    Image(systemName: progressionChevron)
+                        .font(.caption2)
+                        .foregroundColor(Color.textFaint)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 2)
+                        .accessibilityHidden(true)
+                }
+                ProgressionRepCard(
+                    repNumber: repIdx + 1,
+                    totalReps: reps ?? 1,
+                    rg: rg,
+                    fragments: fragments,
+                    paceTargetText: paceTargetText,
+                    perRepTarget: perRepTargets.flatMap { $0.indices.contains(repIdx) ? $0[repIdx] : nil },
+                    recordedTimes: recordedTimesForFirstTimableFragment(in: fragments, map: recordedTimesByFragmentId),
+                    onTap: makeCardTapHandler(repIdx: repIdx),
+                    onAggregateTap: { title, records in
+                        onAggregateChipTap(title, records)
+                    }
+                )
+            }
+            if let note = note, !note.isEmpty {
+                Text(note)
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .italic()
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 8)
+                    .padding(.top, 2)
+                    .accessibilityLabel(note)
+            }
+        }
+    }
+
+    // Chevron direction. V0.53.2 ships descend + build as the two
+    // detected progression descriptors — both render ↘ ("the
+    // numbers go down" / "the numbers build up"). Ascend would
+    // render ↗ but isn't a server-side intensity type today
+    // (negSplit is the only "up" progression, and it's rarely used
+    // in user-facing ladders). Default ↘ for unknown.
+    private var progressionChevron: String {
+        if rg.pacing == "build" { return "arrow.up.right" }
+        if rg.intensity?.type == .negative_split { return "arrow.up.right" }
+        return "arrow.down.right"
+    }
+
+    private func makeCardTapHandler(repIdx: Int) -> (() -> Void)? {
+        guard let onFragmentTap = onFragmentTap else { return nil }
+        guard let fIdx = tapFragmentIndex(fragments: fragments) else { return nil }
+        let fragment = fragments[fIdx]
+        return { onFragmentTap(fIdx, fragment) }
+    }
+
+    private var headerLine: some View {
+        HStack(spacing: 6) {
+            Rectangle()
+                .fill(Color.accentAmber)
+                .frame(width: 2, height: 14)
+            if let reps = reps, reps > 1 {
+                Text("\(reps)×")
+                    .font(.numeric)
+                    .foregroundColor(Color.accentAmber)
+            }
+            if let d = parentDistance {
+                Text("\(d)m")
+                    .font(.numeric)
+                    .foregroundColor(Color.textPrimary)
+            }
+            if let s = parentStroke, !s.isEmpty {
+                Text(s)
+                    .font(.body)
+                    .foregroundColor(Color.textPrimary)
+            }
+            // Progression badge — "DESCEND" / "BUILD" — so the
+            // coach sees the ladder shape at a glance without
+            // reading the per-card labels.
+            if let badge = progressionBadge {
+                MetadataBadge(text: badge, color: Color.accentAmber)
+            }
+        }
+        .padding(.leading, 2)
+    }
+
+    private var progressionBadge: String? {
+        if rg.descend != nil || rg.intensity?.type == .descend || rg.zoneTerm == "descend" {
+            return "DESCEND"
+        }
+        if rg.pacing == "build" { return "BUILD" }
+        return nil
+    }
+}
+
+// V0.53.2: one progression-rep card. Carries the per-rep target
+// (e.g. "70%", "75%") as a prominent badge on the right, plus
+// the rep's distance + intensity descriptor on the left. Same
+// play affordance + recorded-time semantics as RepCard.
+//
+// No track (the rep itself is uniform within itself). The visual
+// anchor is the per-rep target badge.
+private struct ProgressionRepCard: View {
+    let repNumber: Int
+    let totalReps: Int
+    let rg: ParsedRepGroup
+    let fragments: [ParsedFragment]
+    let paceTargetText: String?
+    let perRepTarget: String?
+    let recordedTimes: [FragmentTimeRecord]?
+    let onTap: (() -> Void)?
+    let onAggregateTap: (String, [FragmentTimeRecord]) -> Void
+
+    private var hasPlayAffordance: Bool {
+        onTap != nil && tapFragmentIndex(fragments: fragments) != nil
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Rep number prefix (1/4, 2/4, …) so the coach reads
+            // "rep 2 of 4 = 75%" without ambiguity. Sits on the
+            // left, muted, so the target badge on the right reads
+            // as the primary signal.
+            if totalReps > 1 {
+                Text("\(repNumber)/\(totalReps)")
+                    .font(.numericSmall)
+                    .foregroundColor(Color.textFaint)
+            }
+            // Distance + intensity descriptor (left side).
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    if let d = rg.distance {
+                        Text("\(d)m")
+                            .font(.numeric)
+                            .foregroundColor(Color.textPrimary)
+                    }
+                    if let stroke = rg.stroke, !stroke.isEmpty {
+                        Text(stroke)
+                            .font(.body)
+                            .foregroundColor(Color.textPrimary)
+                    }
+                    if let label = firstFragmentIntensityLabel() {
+                        Text("@ \(label)")
+                            .font(.caption)
+                            .foregroundColor(Color.accentAmber)
+                    }
+                }
+                HStack(spacing: 6) {
+                    if let pace = paceTargetText, !pace.isEmpty {
+                        MetadataBadge(text: "@ \(pace)", color: Color.textMuted)
+                    }
+                }
+            }
+            Spacer()
+            // Per-rep target badge — the primary visual signal for
+            // Mode 3. Same amber tint as the rest of the
+            // progression chrome (header ×N, progression badge).
+            // When perRepTarget is nil (no explicit targets +
+            // couldn't synthesize), this badge is omitted and the
+            // coach reads the chevron-only direction.
+            if let target = perRepTarget {
+                Text(target)
+                    .font(.numericSmall)
+                    .foregroundColor(Color.accentAmber)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.accentAmber.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.accentAmber.opacity(0.35), lineWidth: 1)
+                    )
+                    .accessibilityLabel("target \(target)")
+            }
+            if hasPlayAffordance {
+                Image(systemName: recordedTimes != nil ? "arrow.counterclockwise.circle" : "play.circle.fill")
+                    .foregroundColor(recordedTimes != nil ? Color.textMuted : Color.textPrimary)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(Color.bgBase.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(progressionCardAccessibilityLabel)
+        .accessibilityAddTraits(hasPlayAffordance ? .isButton : [])
+        .onTapGesture { onTap?() }
+    }
+
+    private var progressionCardAccessibilityLabel: String {
+        var parts: [String] = []
+        if totalReps > 1 {
+            parts.append("Rep \(repNumber) of \(totalReps)")
+        }
+        if let d = rg.distance { parts.append("\(d) meters") }
+        if let stroke = rg.stroke, !stroke.isEmpty { parts.append(stroke) }
+        if let label = firstFragmentIntensityLabel() { parts.append("@ \(label)") }
+        if let target = perRepTarget { parts.append("target \(target)") }
+        if let pace = paceTargetText, !pace.isEmpty { parts.append("on \(pace)") }
+        return parts.joined(separator: ", ")
+    }
+
+    private func firstFragmentIntensityLabel() -> String? {
+        for f in fragments {
+            if let label = f.intensity?.label, !label.isEmpty {
+                return label
+            }
+            if let label = f.intensityLabel, !label.isEmpty {
+                return label
+            }
+            if let desc = f.descriptor, !desc.isEmpty {
+                return desc
+            }
+        }
+        return rg.intensity?.label
+    }
+}
+
 // t_d59998d9 (2026-08-05): resolve recorded times for a fragment from the
 // WorkoutDetailView-held map. Looks up by fragment.id, then falls back
 // to descriptor+distance+intensity as a soft key so a row that lost its
@@ -1894,6 +2674,22 @@ private func recordedTimesForFragment(_ fragment: ParsedFragment, in map: [Strin
     let softKey = "\(fragment.distance ?? 0)|\(fragment.intensity?.label ?? fragment.descriptor ?? "")|\(fragment.startType ?? "")"
     if let times = map[softKey], !times.isEmpty { return times }
     return nil
+}
+
+// V0.53.2 (2026-09-08): safe lookup of the timable fragment's
+// recorded times for Mode 2/3 rows. Used when the parent repGroup
+// may have ZERO fragments (the Descend-ladder case where the
+// per-rep targets live in rg.descend + rg.perRepTargets, not in
+// per-rep fragments). Returns nil for empty fragments — never
+// indexes fragments[0] on an empty array (the index-out-of-range
+// crash that V0.53.2 first shipped).
+private func recordedTimesForFirstTimableFragment(
+    in fragments: [ParsedFragment],
+    map: [String: [FragmentTimeRecord]]?
+) -> [FragmentTimeRecord]? {
+    guard !fragments.isEmpty else { return nil }
+    guard let fIdx = tapFragmentIndex(fragments: fragments) else { return nil }
+    return recordedTimesForFragment(fragments[fIdx], in: map)
 }
 
 // t_d59998d9 (2026-08-05): format milliseconds as M:SS.HH (the same

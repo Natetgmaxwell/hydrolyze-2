@@ -154,6 +154,15 @@ struct ContentView: View {
             if args.contains("-v0531-design-a-builder") {
                 return .builderJodie09
             }
+            // V0.53.2 (2026-09-08, jodie-09 mode-selection): the
+            // mode-isolation harnesses (-v0532-mode-uniform,
+            // -v0532-mode-progression) also route to the builder
+            // — the seed functions for each harness live inside
+            // WorkoutBuilderView.task (gated on the same args).
+            if args.contains("-v0532-mode-uniform")
+                || args.contains("-v0532-mode-progression") {
+                return .builderJodie09
+            }
             return nil
         }
     }
