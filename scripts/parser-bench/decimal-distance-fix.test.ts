@@ -38,6 +38,14 @@ function makeFragment(distance: number | null, label: string) {
   };
 }
 
+// V0.53.3 (2026-09-08, jodie-09 display fidelity): the helper
+// populates `distance_label` whenever `distance` is set, mirroring
+// the coach's exact source-text wording. Half-pool fragments
+// (12.5, 37.5, 62.5, 87.5) preserve the decimal; integer fragments
+// get the integer's string form. The TypeScript-side FragmentLike
+// interface must include the optional `distance_label` so the
+// round-trip lands in the actual response.
+
 // RED test 1: half-pool fragment gets rounded to integer.
 {
   const input = {
@@ -90,6 +98,9 @@ function makeFragment(distance: number | null, label: string) {
     "12.5 should round to 13 (Math.round)",
   );
   assert.equal(fragments[1].distance, 13);
+  // V0.53.3: distance_label preserves the coach's "12.5" wording.
+  assert.equal(fragments[0].distance_label, "12.5", "label should preserve 12.5");
+  assert.equal(fragments[1].distance_label, "12.5", "label should preserve 12.5");
   // Source line still carries the precise wording — coach intent preserved.
   assert.equal(
     out.sections[0].namedSets[0].repGroups[0].sourceLine,
@@ -146,6 +157,9 @@ function makeFragment(distance: number | null, label: string) {
   const fragments = out.sections[0].namedSets[0].repGroups[0].fragments!;
   assert.equal(fragments[0].distance, 38);
   assert.equal(fragments[1].distance, 38);
+  // V0.53.3: distance_label preserves the 37.5 wording.
+  assert.equal(fragments[0].distance_label, "37.5");
+  assert.equal(fragments[1].distance_label, "37.5");
   console.log("OK: 37.5 rounds to 38");
 }
 
@@ -197,6 +211,10 @@ function makeFragment(distance: number | null, label: string) {
   const fragments = out.sections[0].namedSets[0].repGroups[0].fragments!;
   assert.equal(fragments[0].distance, 75);
   assert.equal(fragments[1].distance, 25);
+  // V0.53.3: integer fragments still get a label — the string form
+  // of the integer distance. Eliminates the client-side nil branch.
+  assert.equal(fragments[0].distance_label, "75");
+  assert.equal(fragments[1].distance_label, "25");
   console.log("OK: integer fragments unchanged");
 }
 
@@ -248,6 +266,11 @@ function makeFragment(distance: number | null, label: string) {
   const fragments = out.sections[0].namedSets[0].repGroups[0].fragments!;
   assert.equal(fragments[0].distance, 100);
   assert.equal(fragments[1].distance, null);
+  // V0.53.3: null distance stays null, AND distance_label stays null
+  // (only populated when distance is set). Time-based fragments get no
+  // label, matching the no-distance-is-no-label contract.
+  assert.equal(fragments[0].distance_label, "100");
+  assert.equal(fragments[1].distance_label, null);
   console.log("OK: null fragment distance preserved");
 }
 
@@ -298,6 +321,57 @@ function makeFragment(distance: number | null, label: string) {
   // Should not throw on null fragments array.
   assert.equal(out.sections[0].namedSets[0].repGroups[0].fragments, null);
   console.log("OK: null repGroup.fragments tolerated");
+}
+
+// RED test 6 (V0.53.3, 2026-09-08): 87.5 (the 4th canonical half-pool
+// distance) rounds to 88 and carries distance_label="87.5". The
+// fragmentDistanceRound-trip must work for every SWIM_DISTANCES value,
+// not just 12.5 and 37.5.
+{
+  const input = {
+    title: null,
+    sections: [
+      {
+        title: null,
+        namedSets: [
+          {
+            label: null,
+            note: null,
+            repGroups: [
+              {
+                reps: 1,
+                distance: 175,
+                stroke: null,
+                interval: null,
+                intensity: null,
+                zoneTerm: null,
+                pacing: null,
+                pattern: [],
+                patternType: null,
+                connectors: [],
+                note: null,
+                gear: null,
+                gearOptional: false,
+                descend: null,
+                details: null,
+                dive: false,
+                suit: false,
+                ambiguousTerm: null,
+                defaultRpe: null,
+                fragments: [makeFragment(87.5, "hard")],
+                sourceLine: "1 x 175: 87.5 hard / 87.5 easy",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const out = normalizeFragmentDistances(input);
+  const fragments = out.sections[0].namedSets[0].repGroups[0].fragments!;
+  assert.equal(fragments[0].distance, 88);
+  assert.equal(fragments[0].distance_label, "87.5");
+  console.log("OK: 87.5 rounds to 88 with label preserved");
 }
 
 console.log("All decimal-distance-fix tests passed.");

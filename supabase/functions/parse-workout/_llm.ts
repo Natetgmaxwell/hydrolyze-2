@@ -34,6 +34,10 @@ import { extractUnmappedTerms, scrubUnmappedTerms } from "./_dialect-detector.ts
 interface LLMFragment {
   id: string | null; // V0.35 (2026-08-12): stamped deterministically post-validation
   distance: number | null;
+  // V0.53.3 (2026-09-08, jodie-09 display fidelity): the verbatim
+  // source-text form of the fragment's distance. See the matching
+  // comment in ios-native/supabase/functions/parse-workout/_llm.ts.
+  distance_label: string | null;
   stroke: string | null;
   instruction: string | null;
   // ponytail (2026-08-11): fragment intensity is the pairing engine's

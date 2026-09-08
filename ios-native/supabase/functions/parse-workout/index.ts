@@ -80,6 +80,13 @@ type Rep =
 interface Fragment {
   id: string; // V0.35 (2026-08-12): stamped deterministically in parseWithFallback
   distance: number;
+  // V0.53.3 (2026-09-08, jodie-09 display fidelity): the verbatim
+  // source-text form of the fragment's distance. Populated by
+  // normalizeFragmentDistances right before serialization. iOS
+  // uses this for display ("12.5m strong | 12.5m easy") instead of
+  // the rounded "13m strong | 13m easy". Always set when distance
+  // is set, null when distance is null (time-based fragments).
+  distance_label: string | null;
   stroke: Stroke | null;
   intensity: ParsedIntensity | null;
   note: string | null;
@@ -1284,6 +1291,12 @@ function parseCompositeFragments(
     fragments.push({
       id: "", // placeholder — stamped in parseWithFallback
       distance: rd.distance,
+      // V0.53.3 (2026-09-08, jodie-09 display fidelity): placeholder;
+      // normalizeFragmentDistances overwrites this with String(distance)
+      // right before serialization (so 12.5 → "12.5", 25 → "25").
+      // Required field so TS doesn't complain about uninitialized
+      // property access during construction.
+      distance_label: null,
       stroke,
       intensity,
       note: segNote,

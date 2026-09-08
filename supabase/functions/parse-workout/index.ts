@@ -80,6 +80,10 @@ type Rep =
 interface Fragment {
   id: string; // V0.35 (2026-08-12): stamped deterministically in parseWithFallback
   distance: number;
+  // V0.53.3 (2026-09-08, jodie-09 display fidelity): mirror of
+  // ios-native/supabase/. Populated by normalizeFragmentDistances
+  // right before serialization.
+  distance_label: string | null;
   stroke: Stroke | null;
   intensity: ParsedIntensity | null;
   note: string | null;
@@ -1284,6 +1288,10 @@ function parseCompositeFragments(
     fragments.push({
       id: "", // placeholder — stamped in parseWithFallback
       distance: rd.distance,
+      // V0.53.3 (2026-09-08, jodie-09 display fidelity): placeholder;
+      // normalizeFragmentDistances overwrites this with String(distance)
+      // right before serialization. Mirror of ios-native/supabase/.
+      distance_label: null,
       stroke,
       intensity,
       note: segNote,

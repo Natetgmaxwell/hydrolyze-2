@@ -324,11 +324,25 @@ private struct RepGroupRowView: View {
                             .foregroundColor(Color.textMuted)
                     }
 
+                    // V0.53.3 (2026-09-08, caption-wrap completion): the above-set
+                    // "(note)" caption — sibling of the V0.53.2 below-set
+                    // wrap fix — now also wraps multi-line via
+                    // .lineLimit(nil) + fixedSize. The V0.53.2 pass
+                    // landed on the 3 below-set paths (lines 511-521,
+                    // 2142-2152, 2264-2274, 2469-2479) and missed
+                    // this one — the "(note)" inside the header HStack
+                    // still truncated mid-number ("Each: 50 @ 65% / 50 @
+                    // 70% / 50 @ 75%" → "Each: 50 @ 65% / 50 @ 70% /…").
+                    // Wrapping here keeps the header from competing with
+                    // the segmented control's space; the caption drops to
+                    // a multi-line below the ×N + parent distance row.
                     if let note = rg.note {
                         Text("(\(note))")
                             .font(.caption)
                             .italic()
                             .foregroundColor(Color.textFaint)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     ForEach(rg.gear ?? [], id: \.self) { gear in
@@ -1132,6 +1146,18 @@ struct ParsedRepGroup: Codable {
 struct ParsedFragment: Codable {
     let id: String?
     let distance: Int?
+    // V0.53.3 (2026-09-08, jodie-09 display fidelity): the verbatim
+    // source-text form of the fragment's distance (e.g. "12.5",
+    // "37.5", "25", "100"). The server's normalizeFragmentDistances
+    // populates this right before serialization; the int distance is
+    // still the wire type (V0.51 — Swift JSONDecoder rejects
+    // fractional JSON numbers as DecodingError.dataCorrupted). When
+    // set, render surfaces prefer it ("12.5m strong" instead of
+    // "13m strong"). nil-tolerant decode (decodeIfPresent) so old
+    // servers without the field keep working — the int distance is
+    // the fallback. See plans/v0533-fragment-decimal-distance-label-
+    // design-spec.md for the design contract.
+    let distanceLabel: String?
     let stroke: String?
     let instruction: String?
     // Fragment metadata (2026-08-04, parser/stopwatch/pairing wiring).
@@ -1173,6 +1199,11 @@ struct ParsedFragment: Codable {
         case startType = "start_type"
         case suit, gear, descriptor, confidence
         case restAfter = "rest_after"
+        // V0.53.3 (2026-09-08): optional wire field set by the server
+        // right before serialization. Old servers don't emit it; the
+        // decodeIfPresent below returns nil and render falls back to
+        // the int distance (the V0.51 contract).
+        case distanceLabel = "distance_label"
     }
 
     init(from decoder: Decoder) throws {
@@ -1225,6 +1256,12 @@ struct ParsedFragment: Codable {
         // "continuous" (the conservative default — fragments always
         // belonged to a single rep; restAfter was an additive field).
         restAfter = try c.decodeIfPresent(Int.self, forKey: .restAfter)
+        // V0.53.3 (2026-09-08, jodie-09 display fidelity): decode the
+        // optional distance_label string the server sets just before
+        // serialization. nil-tolerant so old server builds (pre-V0.53.3)
+        // decode without crashing — the render surfaces fall back to
+        // the int distance in that case.
+        distanceLabel = try c.decodeIfPresent(String.self, forKey: .distanceLabel)
     }
 
     // Memberwise init for in-code construction (#Preview, future test
@@ -1232,6 +1269,10 @@ struct ParsedFragment: Codable {
     init(
         id: String? = nil,
         distance: Int? = nil,
+        // V0.53.3 (2026-09-08): new optional label for display fidelity.
+        // Default nil — old call sites and previews that don't pass it
+        // get the int-distance fallback in segmentLabel.
+        distanceLabel: String? = nil,
         stroke: String? = nil,
         instruction: String? = nil,
         intensity: ParsedIntensity? = nil,
@@ -1246,6 +1287,7 @@ struct ParsedFragment: Codable {
     ) {
         self.id = id
         self.distance = distance
+        self.distanceLabel = distanceLabel
         self.stroke = stroke
         self.instruction = instruction
         self.intensity = intensity
@@ -1259,13 +1301,40 @@ struct ParsedFragment: Codable {
         self.restAfter = restAfter
     }
 
-    // ponytail (2026-08-04): human-readable summary used by the
+    // V0.53.3 (2026-09-08, jodie-09 display fidelity): file-scope helper
+// for the fragment-distance label chain. Returns the verbatim string
+// form when distance_label is set (e.g. "12.5m", "37.5m"), falls back
+// to the int distance ("25m", "100m"), and returns an empty string
+// when distance is unknown. The empty-string fallback matches the
+// prior `if let d = ... { "\(d)m" }` behaviour on nil — every render
+// site was already gated on distance, so the empty path is unreachable
+// in practice, but the helper keeps the contract explicit.
+//
+// Render-site usage: every site that previously read `\(d)m` from
+// `fragment.distance` now reads `fragmentDistanceText(fragment)`
+// instead. The wire type of distance stays Int? (V0.51 contract);
+// the label is the display-side fidelity layer.
+func fragmentDistanceText(_ fragment: ParsedFragment) -> String {
+    if let label = fragment.distanceLabel, !label.isEmpty {
+        return "\(label)m"
+    }
+    if let d = fragment.distance {
+        return "\(d)m"
+    }
+    return ""
+}
+
+// ponytail (2026-08-04): human-readable summary used by the
     // per-fragment CTA. Format: "<distance> <stroke> <intensity>" with
     // the descriptor verbatim if present. The CTA is the row; tapping
     // it opens the live stopwatch pre-filled with these fields.
     var ctaLabel: String {
         var parts: [String] = []
-        if let d = distance { parts.append("\(d)m") }
+        // V0.53.3: prefer the verbatim label ("12.5m") over the rounded
+        // int ("13m") when present. Falls back to the int when nil —
+        // same behaviour as before this change.
+        let dist = fragmentDistanceText(self)
+        if !dist.isEmpty { parts.append(dist) }
         if let s = stroke, !s.isEmpty { parts.append(s) }
         if let label = intensity?.label, !label.isEmpty { parts.append(label) }
         if let desc = descriptor, !desc.isEmpty, intensity == nil {
@@ -1480,9 +1549,16 @@ func tapFragmentIndex(fragments: [ParsedFragment]) -> Int? {
 // sighted and screen-reader breakdown reads the same: "{distance}m
 // {intensity.label}" → "{distance}m {descriptor}" → "{distance}m
 // {instruction}" → "{distance}m" → "Fragment".
+//
+// V0.53.3 (2026-09-08, jodie-09 display fidelity): the {distance}
+// part now comes from fragmentDistanceText, which prefers the
+// verbatim source-text label ("12.5") over the rounded int ("13").
+// The fallback chain after that is unchanged — same intensity label,
+// descriptor, instruction.
 func segmentLabel(fragment: ParsedFragment) -> String {
     var parts: [String] = []
-    if let d = fragment.distance { parts.append("\(d)m") }
+    let dist = fragmentDistanceText(fragment)
+    if !dist.isEmpty { parts.append(dist) }
     if let label = fragment.intensity?.label, !label.isEmpty {
         return parts.joined(separator: " ") + " " + label
     }
@@ -1724,8 +1800,13 @@ private struct FragmentCTARow: View {
                             .font(.numeric)
                             .foregroundColor(Color.textMuted)
                     }
-                    if let d = fragment.distance {
-                        Text("\(d)m")
+                    // V0.53.3 (2026-09-08, jodie-09 display fidelity):
+                    // prefer the verbatim label ("12.5m") over the
+                    // rounded int ("13m"). Falls back to the int when
+                    // nil — same visible behaviour as before.
+                    let dist = fragmentDistanceText(fragment)
+                    if !dist.isEmpty {
+                        Text(dist)
                             .font(.numeric)
                             .foregroundColor(Color.textPrimary)
                     }
@@ -1954,7 +2035,12 @@ private struct FragmentCTARow: View {
     /// its title and by VoiceOver for the chip's accessibility label.
     private func fragmentChipTitle() -> String {
         var parts: [String] = []
-        if let d = fragment.distance { parts.append("\(d)m") }
+        // V0.53.3 (2026-09-08, jodie-09 display fidelity): prefer the
+        // verbatim source-text label over the rounded int. Same call
+        // site as segmentLabel — both feed the same fallback chain
+        // for sighted + VoiceOver consistency.
+        let dist = fragmentDistanceText(fragment)
+        if !dist.isEmpty { parts.append(dist) }
         if let s = fragment.stroke, !s.isEmpty { parts.append(s) }
         if let label = fragment.intensity?.label, !label.isEmpty {
             return parts.joined(separator: " ") + " @ " + label
@@ -3002,7 +3088,9 @@ private struct RepCard: View {
     // V0.48 S2 chip title helper (shared with FragmentCTARow).
     private func fragmentChipTitle(fragment: ParsedFragment) -> String {
         var parts: [String] = []
-        if let d = fragment.distance { parts.append("\(d)m") }
+        // V0.53.3 (2026-09-08): prefer verbatim label over rounded int.
+        let dist = fragmentDistanceText(fragment)
+        if !dist.isEmpty { parts.append(dist) }
         if let s = fragment.stroke, !s.isEmpty { parts.append(s) }
         if let label = fragment.intensity?.label, !label.isEmpty {
             return parts.joined(separator: " ") + " @ " + label

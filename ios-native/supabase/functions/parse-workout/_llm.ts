@@ -34,6 +34,15 @@ import { extractUnmappedTerms, scrubUnmappedTerms } from "./_dialect-detector.ts
 interface LLMFragment {
   id: string | null; // V0.35 (2026-08-12): stamped deterministically post-validation
   distance: number | null;
+  // V0.53.3 (2026-09-08, jodie-09 display fidelity): the verbatim
+  // source-text form of the fragment's distance. Set by
+  // normalizeFragmentDistances right before serialization (the LLM
+  // itself never emits this — the validator emits the round-tripped
+  // form from `distance`). iOS uses it for display ("12.5m strong |
+  // 12.5m easy") instead of the rounded "13m strong | 13m easy".
+  // Always populated when distance is non-null, null when distance
+  // is null (time-based fragments have no distance, no label).
+  distance_label: string | null;
   stroke: string | null;
   instruction: string | null;
   // ponytail (2026-08-11): fragment intensity is the pairing engine's
