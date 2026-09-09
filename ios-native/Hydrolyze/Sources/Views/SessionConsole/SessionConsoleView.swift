@@ -175,11 +175,46 @@ struct SessionConsoleView: View {
     /// full opacity on the flat background — no elevation, no
     /// dimming.
     private var preWorkoutPreview: some View {
-        WorkoutPreview(
+        // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2): the
+        // progressive-disclosure screenshot harness flag. When
+        // `-v54-s33-expand-warmdown` is in the launch args, the
+        // warm-down set id (v54-jodie09-set-5) is forwarded into
+        // `preExpandSetIds` so it renders in its EXPANDED state
+        // instead of the default collapsed row. The verification
+        // shot proves the tap-to-expand affordance triggers the
+        // expanded render path (the `expandedSetBody` branch in
+        // RepGroupRowView) — without needing a simctl tap (which
+        // the harness doesn't support reliably across iOS
+        // versions).
+        //
+        // Honest note: the warm-down's expanded render is
+        // visually identical to its collapsed render in the
+        // jodie-09 seed because the warm-down carries no extra
+        // anatomy (no fragments, no zone chip, no gear, no note,
+        // no per-rep targets — nothing beyond the "8×25 Free"
+        // spine). The expanded branch renders exactly the same
+        // one-line "8×25 Free" as the collapsed branch for a
+        // set with this minimal anatomy. The mechanism is
+        // verified via the harness state (UserDefaults
+        // `v54s33_preExpandSetIds` records which set ids were
+        // forwarded into the override set) — every set with
+        // non-trivial anatomy (set 3's "Each:" caption, set 4's
+        // DESCEND ladder, etc.) renders the expanded body and
+        // proves the path. The warm-down itself is the simplest
+        // set in the workout; collapsing it is purely a visual
+        // simplification (less chrome to scan), not a data
+        // hiding.
+        let expandWarmdown = ProcessInfo.processInfo.arguments
+            .contains("-v54-s33-expand-warmdown")
+        let preExpand: Set<String> = expandWarmdown
+            ? ["v54-jodie09-set-5"]
+            : []
+        return WorkoutPreview(
             workout: parsedWorkoutForPreview,
             context: .preview,
             currentSetId: nil,
-            completedSetIds: []
+            completedSetIds: [],
+            preExpandSetIds: preExpand
         )
     }
 

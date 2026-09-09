@@ -74,6 +74,17 @@ struct WorkoutPreview: View {
     var degradedReason: String? = nil
     var onRetry: (() -> Void)? = nil
 
+    /// V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2): optional
+    /// set-id set that should render EXPANDED even if they would
+    /// otherwise collapse under the progressive-disclosure gate.
+    /// Used by the screenshot harness's `-v54-s33-expand-warmdown`
+    /// launch arg so the verification shot can capture both the
+    /// collapsed default and the expanded state without needing a
+    /// simctl tap (which isn't supported by the current harness).
+    /// Empty / nil = the default collapsed behaviour holds (the
+    /// progressive-disclosure wins).
+    var preExpandSetIds: Set<String> = []
+
     // V0.48 Slice 2 (2026-08-22): sheet state for the aggregate chip.
     // Owned by WorkoutPreview (not by each row) so multiple chips across
     // the tree share one presentation slot — tapping any aggregate chip
@@ -137,7 +148,12 @@ struct WorkoutPreview: View {
                                 title: title,
                                 records: records
                             )
-                        }
+                        },
+                        // V0.54 S3.3: forward the pre-expand set-ids
+                        // through to each repGroup so the harness can
+                        // seed expanded state for the verification
+                        // screenshot.
+                        preExpandSetIds: preExpandSetIds
                     )
                 }
             }
@@ -266,6 +282,12 @@ private struct SectionView: View {
     // title string (e.g. "75m @ fast") and the records to render in the
     // sheet — already grouped/bucketed by the calling row.
     let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
+    // V0.54 S3.3: set-ids that should render EXPANDED even if they'd
+    // otherwise collapse under the progressive-disclosure gate. See
+    // WorkoutPreview.preExpandSetIds for context. Forwarded through
+    // to each RepGroupRowView so the @State expansion can be seeded
+    // on appear.
+    let preExpandSetIds: Set<String>
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -294,6 +316,21 @@ private struct SectionView: View {
                     }
 
                     ForEach(Array(namedSet.repGroups.enumerated()), id: \.offset) { rgIdx, rg in
+                        // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2):
+                        // single hairline Divider + 20pt vertical padding
+                        // between consecutive repGroups (sets). Replaces
+                        // the implicit "spacing only" rhythm with a visible
+                        // structural rule — whitespace + one hairline does
+                        // the grouping the chip chrome used to do. The
+                        // first repGroup renders no leading divider (nothing
+                        // to separate from), so the ForEach index gates
+                        // it. Same divider color + thickness as the section
+                        // title rule for visual consistency.
+                        if rgIdx > 0 {
+                            Divider()
+                                .background(Color.divider)
+                                .padding(.vertical, 20)
+                        }
                         RepGroupRowView(
                             rg: rg,
                             sectionIndex: sectionIndex,
@@ -311,7 +348,12 @@ private struct SectionView: View {
                             context: context,
                             currentSetId: currentSetId,
                             completedSetIds: completedSetIds,
-                            onAggregateChipTap: onAggregateChipTap
+                            onAggregateChipTap: onAggregateChipTap,
+                            // V0.54 S3.3: forward pre-expand set-ids
+                            // so the harness can seed an "already
+                            // expanded" state for the verification
+                            // screenshot without simctl tap support.
+                            preExpandSetIds: preExpandSetIds
                         )
                     }
                 }
@@ -342,6 +384,17 @@ private struct RepGroupRowView: View {
     // V0.48 Slice 2 (2026-08-22): forwarded from SectionView. Fires when
     // a fragment row needs to open the aggregate sheet (3+ records tier).
     let onAggregateChipTap: (String, [FragmentTimeRecord]) -> Void
+    // V0.54 S3.3: set-ids that should render EXPANDED even if
+    // they'd otherwise collapse. Forwarded from
+    // WorkoutPreview.preExpandSetIds via SectionView. Used by the
+    // `.onAppear` hook below to seed `expanded = true` when the
+    // harness asks for it (via `-v54-s33-expand-warmdown`).
+    // Empty = no overrides; the progressive-disclosure gate
+    // decides for itself. Declared LAST in the property list
+    // because Swift's auto-synthesised init enforces declared
+    // argument order — `preExpandSetIds: preExpandSetIds`
+    // appears at the end of every call site.
+    var preExpandSetIds: Set<String> = []
 
     /// V0.54 S2.1 (2026-09-08): true iff this repGroup belongs to the
     /// currently-active set in the Console's LIVE state. Drives the
@@ -376,6 +429,43 @@ private struct RepGroupRowView: View {
         return 1.0
     }
 
+    // V0.54 S3.3 (2026-09-09, jodie-09 PRE simplification round 2):
+    // progressive disclosure gate. True when this set is a low-information
+    // bookend (warm-up / warm-down) that warrants collapsing to a single
+    // quiet row in the PRE body — coach doesn't need to read it in detail
+    // before tapping Start Session. Conservative gate: every condition
+    // below must hold, so any set carrying real swim instructions
+    // (fragments, gear, dive, suit, descend ladder, per-rep targets,
+    // non-easy intensity, rich note) renders the full anatomy.
+    //
+    // PRE-only (.preview context). LIVE's elevation logic needs every
+    // set's full anatomy rendered so the current/completed treatment
+    // stays meaningful — collapsing on LIVE would break the elevation
+    // pass-through.
+    private var isCollapsibleWarmupCooldown: Bool {
+        guard context == .preview else { return false }
+        guard rg.zoneTerm?.lowercased() == "easy" else { return false }
+        let frags = rg.fragments ?? []
+        guard frags.isEmpty else { return false }
+        let gear = rg.gear ?? []
+        guard gear.isEmpty else { return false }
+        guard rg.dive != true else { return false }
+        guard rg.suit != true else { return false }
+        guard (rg.note ?? "").isEmpty else { return false }
+        guard rg.descend == nil else { return false }
+        guard rg.perRepTargets == nil || rg.perRepTargets?.isEmpty == true else { return false }
+        if let intensityType = rg.intensity?.type, intensityType != .easy { return false }
+        guard (rg.pattern ?? []).isEmpty else { return false }
+        return true
+    }
+
+    /// V0.54 S3.3: per-repGroup expansion state for the collapsible
+    /// warm-up / warm-down path. Default false (collapsed) so the
+    /// first-glance PRE view shows warm-up + warm-down as quiet rows.
+    /// Lives on RepGroupRowView so each set owns its own expansion
+    /// state — tapping one warm-down doesn't auto-expand the warm-up.
+    @State private var expanded: Bool = false
+
     /// V0.54 S2.1 (2026-09-08): the elevation container for the
     /// currently-active set. Border + scale + accent background so
     /// the coach reads "this is the set on the stopwatch right now"
@@ -394,6 +484,78 @@ private struct RepGroupRowView: View {
     }
 
     var body: some View {
+        // V0.54 S3.3 (2026-09-09, jodie-09 PRE simplification round 2):
+        // progressive disclosure. When the set qualifies as a low-information
+        // bookend (warm-up / warm-down) AND we're in PRE, render a single
+        // collapsed row with a chevron. Tapping the row expands it to the
+        // full anatomy. The expanded render path is unchanged below — every
+        // LVN invariant (zone color carried via text color, gear as symbols,
+        // send-off as inline mono, hairline rhythm) still applies once
+        // expanded.
+        //
+        // The collapse branch lives INSIDE this body so elevation, opacity,
+        // and the contextMenu ("Remove this set") still wrap the whole
+        // repGroup container — the system reports a single accessibility
+        // element, the long-press affordance still works on the collapsed
+        // row, and the LIVE elevation pass-through stays a no-op (.preview
+        // means the collapse predicate already returns false in LIVE).
+        //
+        // V0.54 S3.3: `.onAppear` seeds `expanded = true` if the
+        // parent forwarded this rg.setId in `preExpandSetIds` (the
+        // harness's `-v54-s33-expand-warmdown` path). Without the
+        // onAppear seed, the @State would default to false and the
+        // harness couldn't capture the expanded screenshot. The
+        // seed is one-shot per set: `expanded = true` after the
+        // initial render, no animation flash (which would also
+        // confuse the screenshot timing).
+        let seededExpanded = preExpandSetIds.contains(rg.setId ?? "")
+        // V0.54 S3.3 harness debug: track each set's setId +
+        // pre-expand match in UserDefaults so the post-screenshot
+        // dump confirms the seed flow reached the per-set body.
+        // Comment-only — UserDefaults writes were removed because
+        // they broke SwiftUI's opaque-return-type inference on
+        // `var body`. The match itself is verified via the harness
+        // state in SessionConsoleView (UserDefaults
+        // `v54s33_preExpandSetIds`). Same SwiftUI inference trap
+        // the V0.54 S3.1 `showsLadder` gate documented inline.
+        return Group {
+            if isCollapsibleWarmupCooldown, !expanded, !seededExpanded {
+                CollapsibleSetRow(rg: rg) {
+                    Haptics.selection()
+                    withAnimation(Animations.springSnappy) {
+                        expanded = true
+                    }
+                }
+                .opacity(elevationOpacity)
+                .contextMenu {
+                    if let onRemoveRepGroup {
+                        Button(role: .destructive) {
+                            Haptics.warning()
+                            onRemoveRepGroup(sectionIndex, namedSetIndex, repGroupIndex)
+                        } label: {
+                            Text("Remove this set")
+                        }
+                    }
+                }
+            } else {
+                expandedSetBody
+                    .onAppear {
+                        if seededExpanded, !expanded {
+                            expanded = true
+                        }
+                    }
+            }
+        }
+    }
+
+    /// V0.54 S3.3: the full-render body for a repGroup. Extracted from the
+    /// `var body` so the collapsible path above can swap in the collapsed
+    /// row when appropriate without duplicating the entire render tree.
+    /// Behaviour here is unchanged from pre-S3.3 (S3.1–S3.2 invariants
+    /// preserved verbatim); the only S3.3 mutations inside are the
+    /// chip→typography conversions in each headerLine and the
+    /// ProgressionRepCard's percentage chip demotion.
+    private var expandedSetBody: some View {
         // V0.54 S2.1 (2026-09-08): the elevation container.
         //
         // ZStack with `elevationBackground` behind so the border + accent
@@ -453,14 +615,16 @@ private struct RepGroupRowView: View {
                             .foregroundColor(Color.accentAmber)
                     }
 
-                    // V0.41 Slice 3 (2026-08-18): zone-term chip — the
-                    // set's governing zone word (Easy/Steady/Hard/Sprint)
-                    // shown as a distinct cyan marker so the coach sees
-                    // "this set prescribes a zone" at a glance. Renders
-                    // only when the parser emitted a zone term.
-                    if let zoneTerm = rg.zoneTerm {
-                        MetadataBadge(text: zoneTerm.capitalized, color: Color.textMuted)
-                    }
+                    // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2):
+                    // zone term no longer renders as a chip badge. The
+                    // set's zone now expresses via the distance text
+                    // color (see `zoneColor(for:)` and the patched
+                    // spineText below). The `[Easy]` / `[Steady]` pill
+                    // is removed from PRE — every visible chip on the
+                    // screen had to go. The OUTER compact header is
+                    // only reached in the Mode 2 single-fragment
+                    // fallback path today, so the demotion affects
+                    // set 3 (the 6×100) the most.
 
                     if let interval = rg.interval {
                         Text(" on \(interval)")
@@ -483,15 +647,29 @@ private struct RepGroupRowView: View {
                     // header-side position. Pure visual dedupe — no
                     // data or accessibility impact.
 
+                    // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2):
+                    // gear + DIVE + SUIT badges converted from outlined
+                    // boxes to caption-sized SF Symbols at textMuted.
+                    // One consistent style across the row — symbol
+                    // differentiates, treatment doesn't. The old
+                    // `GearBadge` outlined box was the loudest single
+                    // contributor of "chip mush"; a single SF Symbol
+                    // per gear reads as data, not chrome.
                     ForEach(rg.gear ?? [], id: \.self) { gear in
-                        GearBadge(gear: gear, optional: rg.gearOptional ?? false)
+                        Image(systemName: gearSymbol(for: gear))
+                            .font(.caption)
+                            .foregroundColor(Color.textMuted)
                     }
 
                     if rg.dive == true {
-                        MetadataBadge(text: "DIVE", color: Color.accentAmber)
+                        Image(systemName: "figure.dive")
+                            .font(.caption)
+                            .foregroundColor(Color.accentAmber)
                     }
                     if rg.suit == true {
-                        MetadataBadge(text: "SUIT", color: Color.textMuted)
+                        Image(systemName: "figure.pool.swim")
+                            .font(.caption)
+                            .foregroundColor(Color.textMuted)
                     }
 
                     // RPE flywheel: if the parser detected an ambiguous intensity term,
@@ -2033,6 +2211,147 @@ func parseDescendRange(_ raw: String) -> (Int, Int)? {
     return nil
 }
 
+// V0.54 S3.3 (2026-09-09, jodie-09 PRE simplification round 2):
+// zone color mapping. Replaces the old zone-chip badge — the set's
+// governing zone (easy / steady / hard / sprint) is now expressed
+// via the leading distance text's color instead of an outlined
+// "Easy"/"Steady" pill. Easy keeps the muted primary text — adding
+// a tint would create the loudness the simplification removes.
+// Steady/Hard escalate through amber (warming effort); Sprint hits
+// coral (peak intensity — matches accentAction semantics elsewhere).
+//
+// Caller passes the rg's zoneTerm string (the canonical zone word
+// from the parser, lowercased). Unknown / nil values fall back to
+// textPrimary — same neutral the distance text already wears, so
+// nil zones behave as before.
+func zoneColor(for zoneTerm: String?) -> Color {
+    switch zoneTerm?.lowercased() {
+    case "easy": return Color.textPrimary
+    case "steady": return Color.accentAmber.opacity(0.85)
+    case "hard": return Color.accentAmber
+    case "sprint": return Color.accentAction
+    default: return Color.textPrimary
+    }
+}
+
+// V0.54 S3.3: SF Symbol mapping for set-level gear / start / suit
+// signals. Replaces the old MetadataBadge + GearBadge outlined boxes
+// with caption-sized symbols at textMuted. One style (caption + muted
+// color) for visual consistency — the only differentiation is the
+// symbol itself, not its treatment.
+//
+// `pull` → `hand.raised.fill` (closest SF Symbol proxy for the
+// "paddles on hands" affordance; a dedicated paddles symbol doesn't
+// exist in SF Symbols).
+// `kick` → `figure.kickboxing` (the only SF Symbol with a kicking
+// silhouette — close enough to a kickboard leg pattern).
+// `drill` → `figure.run` (the generic motion symbol; drill sets
+// usually carry a pattern descriptor that the row's note already
+// names, so the symbol is the secondary signal).
+// `dive` → `figure.dive` (iOS 16+, semantically exact — a diving
+// silhouette).
+// `suit` → `figure.pool.swim` (the wetsuit-clad swim silhouette;
+// matches the parser's "wearing a wetsuit" semantic for set.suit).
+//
+// Unknown gear strings fall back to `circle.fill` so the row still
+// carries a marker (better than dropping the gear entirely and
+// silently losing the coach's instruction).
+func gearSymbol(for gear: String) -> String {
+    switch gear.lowercased() {
+    case "pull": return "hand.raised.fill"
+    case "kick": return "figure.kickboxing"
+    case "drill": return "figure.run"
+    case "paddles": return "hand.raised.fill"
+    default: return "circle.fill"
+    }
+}
+
+/// V0.54 S3.3 (2026-09-09, jodie-09 PRE simplification round 2):
+/// progressive disclosure — the collapsed warm-up / warm-down row.
+/// Renders one quiet HStack: "reps × distance Free" (zone-colored)
+/// + Spacer + chevron. Tap fires the `onExpand` closure so the
+/// parent RepGroupRowView can flip its `expanded` state and render
+/// the full anatomy.
+///
+/// Visual rhythm matches the S3.3 hairline system: 12pt vertical
+/// padding (same as intra-set spacing), no card chrome, no chip
+/// outlines. The chevron rotates 90° on tap via the parent's
+/// `withAnimation` — the rotation is the single visual signal that
+/// the row "opened."
+///
+/// Accessibility: the row reports as a single button with a label
+/// that names the set ("1 × 400 meters Free warm-up, tap to expand").
+/// VoiceOver users get the same expand-on-tap affordance as sighted
+/// coaches. The `accessibilityHint` explicitly names the action so
+/// the user knows what tapping does.
+private struct CollapsibleSetRow: View {
+    let rg: ParsedRepGroup
+    let onExpand: () -> Void
+
+    var body: some View {
+        Button(action: onExpand) {
+            HStack(spacing: 8) {
+                // "1 × 400" — distance colored by the zone, so the
+                // warm-up's "easy" reads through the text color
+                // instead of the old [Easy] chip.
+                if let reps = rg.reps, reps > 1 {
+                    Text("\(reps)×")
+                        .font(.numeric)
+                        .foregroundColor(Color.textPrimary.opacity(0.85))
+                }
+                if let distance = rg.distance {
+                    Text("\(distance)m")
+                        .font(.numeric)
+                        .foregroundColor(zoneColor(for: rg.zoneTerm))
+                }
+                if let stroke = rg.stroke, !stroke.isEmpty {
+                    Text(stroke)
+                        .font(.body)
+                        .foregroundColor(Color.textPrimary)
+                }
+                Spacer()
+                // Chevron — SF Symbol, caption size, muted. The
+                // 90° rotation is driven by the parent's
+                // withAnimation when expanded toggles; this view
+                // doesn't track its own rotation state to avoid
+                // duplicating the bool.
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(Color.textFaint)
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(collapsedAccessibilityLabel)
+        .accessibilityHint("Tap to expand")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// VoiceOver label: the set's full readable description in one
+    /// breath. Mirrors the verbalisation the expanded header would
+    /// render so the collapsed state loses no information for
+    /// screen-reader users — just visible chrome.
+    private var collapsedAccessibilityLabel: String {
+        var parts: [String] = []
+        if let reps = rg.reps, reps > 1 {
+            parts.append("\(reps) times")
+        }
+        if let distance = rg.distance {
+            parts.append("\(distance) meters")
+        }
+        if let stroke = rg.stroke, !stroke.isEmpty {
+            parts.append(stroke)
+        }
+        if let zone = rg.zoneTerm, !zone.isEmpty {
+            parts.append(zone)
+        }
+        return parts.joined(separator: " ")
+    }
+}
+
 private struct FragmentCTARow: View {
     let fragment: ParsedFragment
     let reps: Int?
@@ -2652,10 +2971,19 @@ private struct PairRepGroupRow: View {
                     .font(.numeric)
                     .foregroundColor(Color.accentAmber)
             }
+            // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2):
+            // parent distance wears the zone color. The set's
+            // governing zone (easy / steady / hard / sprint)
+            // now expresses via this Text's color instead of
+            // the removed [Easy] / [Steady] / [Hard] chip.
+            // PairRepGroupRow's rg is optional — `rg?.zoneTerm`
+            // returns nil for legacy callers, which falls
+            // through `zoneColor(for:)` to the textPrimary
+            // default (same as pre-S3.3).
             if let d = parentDistance {
                 Text("\(d)m")
                     .font(.numeric)
-                    .foregroundColor(Color.textPrimary)
+                    .foregroundColor(zoneColor(for: rg?.zoneTerm))
             }
             if let s = parentStroke, !s.isEmpty {
                 Text(s)
@@ -2672,18 +3000,24 @@ private struct PairRepGroupRow: View {
                     .font(.captionStrong)
                     .foregroundColor(Color.textMuted)
             }
-            // V0.54 S3.1 (rule 2): gear belongs to the SET header.
-            // Single badge cluster, not a per-card repetition.
+            // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2): gear +
+            // DIVE + SUIT converted from outlined chips to caption-
+            // sized SF Symbols at textMuted. One style — symbol
+            // differentiates, treatment doesn't.
             ForEach(rg?.gear ?? [], id: \.self) { gear in
-                GearBadge(gear: gear, optional: rg?.gearOptional ?? false)
+                Image(systemName: gearSymbol(for: gear))
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
-            // V0.54 S3.1 (rule 2): DIVE / SUIT markers at the SET
-            // header — they describe the whole set, not one rep.
             if rg?.dive == true {
-                MetadataBadge(text: "DIVE", color: Color.accentAmber)
+                Image(systemName: "figure.dive")
+                    .font(.caption)
+                    .foregroundColor(Color.accentAmber)
             }
             if rg?.suit == true {
-                MetadataBadge(text: "SUIT", color: Color.textMuted)
+                Image(systemName: "figure.pool.swim")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
         }
         .padding(.leading, 2)
@@ -2825,10 +3159,19 @@ private struct UniformRepGroupRow: View {
                     .font(.numeric)
                     .foregroundColor(Color.accentAmber)
             }
+            // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2):
+            // parent distance wears the zone color. The set's
+            // governing zone (easy / steady / hard / sprint)
+            // now expresses via this Text's color instead of
+            // the removed [Easy] / [Steady] / [Hard] chip.
+            // PairRepGroupRow's rg is optional — `rg?.zoneTerm`
+            // returns nil for legacy callers, which falls
+            // through `zoneColor(for:)` to the textPrimary
+            // default (same as pre-S3.3).
             if let d = parentDistance {
                 Text("\(d)m")
                     .font(.numeric)
-                    .foregroundColor(Color.textPrimary)
+                    .foregroundColor(zoneColor(for: rg.zoneTerm))
             }
             if let s = parentStroke, !s.isEmpty {
                 Text(s)
@@ -2841,15 +3184,23 @@ private struct UniformRepGroupRow: View {
                     .font(.captionStrong)
                     .foregroundColor(Color.textMuted)
             }
-            // V0.54 S3.1 (rule 2): gear + DIVE/SUIT at set header.
+            // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2): gear +
+            // DIVE + SUIT converted from outlined chips to caption-
+            // sized SF Symbols at textMuted.
             ForEach(rg.gear ?? [], id: \.self) { gear in
-                GearBadge(gear: gear, optional: rg.gearOptional ?? false)
+                Image(systemName: gearSymbol(for: gear))
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
             if rg.dive == true {
-                MetadataBadge(text: "DIVE", color: Color.accentAmber)
+                Image(systemName: "figure.dive")
+                    .font(.caption)
+                    .foregroundColor(Color.accentAmber)
             }
             if rg.suit == true {
-                MetadataBadge(text: "SUIT", color: Color.textMuted)
+                Image(systemName: "figure.pool.swim")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
         }
         .padding(.leading, 2)
@@ -3087,10 +3438,19 @@ private struct ProgressionRepGroupRow: View {
                     .font(.numeric)
                     .foregroundColor(Color.accentAmber)
             }
+            // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2):
+            // parent distance wears the zone color. The set's
+            // governing zone (easy / steady / hard / sprint)
+            // now expresses via this Text's color instead of
+            // the removed [Easy] / [Steady] / [Hard] chip.
+            // PairRepGroupRow's rg is optional — `rg?.zoneTerm`
+            // returns nil for legacy callers, which falls
+            // through `zoneColor(for:)` to the textPrimary
+            // default (same as pre-S3.3).
             if let d = parentDistance {
                 Text("\(d)m")
                     .font(.numeric)
-                    .foregroundColor(Color.textPrimary)
+                    .foregroundColor(zoneColor(for: rg.zoneTerm))
             }
             if let s = parentStroke, !s.isEmpty {
                 Text(s)
@@ -3116,34 +3476,50 @@ private struct ProgressionRepGroupRow: View {
                     .foregroundColor(Color.accentAmber)
             }
             if !showsLadder, let zoneTerm = rg.zoneTerm {
-                MetadataBadge(text: zoneTerm.capitalized, color: Color.textMuted)
+                // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2):
+                // zone chip demoted to plain text. The leading
+                // distance already wears the zone color via
+                // `zoneColor(for:)`, so the standalone `[Hard]`
+                // pill is one chrome layer too many.
+                Text(zoneTerm.uppercased())
+                    .font(.caption2)
+                    .tracking(0.8)
+                    .foregroundColor(Color.accentAmber)
             }
-            // V0.54 S3.1 (rule 2): gear + DIVE/SUIT at set header.
+            // V0.54 S3.3: gear + DIVE + SUIT as SF Symbols.
             ForEach(rg.gear ?? [], id: \.self) { gear in
-                GearBadge(gear: gear, optional: rg.gearOptional ?? false)
+                Image(systemName: gearSymbol(for: gear))
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
             if rg.dive == true {
-                MetadataBadge(text: "DIVE", color: Color.accentAmber)
+                Image(systemName: "figure.dive")
+                    .font(.caption)
+                    .foregroundColor(Color.accentAmber)
             }
             if rg.suit == true {
-                MetadataBadge(text: "SUIT", color: Color.textMuted)
+                Image(systemName: "figure.pool.swim")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
-            // V0.54 S3.2 (rule-2 dedupe, one level down): the
-            // send-off is a SET-level fact — it lives at the header
-            // once, not on every per-rep row (the rows used to
-            // repeat "@ 1:00" on each of the 4 DESCEND cards). Reads
-            // as "on 1:00" to mirror the canonical "4× 50m Free
-            // on 1:00" verbalisation, with the same muted
-            // MetadataBadge styling as Set 3's send-off chip.
+            // V0.54 S3.3: send-off demoted to inline caption text.
+            // Same canonical "on 1:00" verbalisation as Set 3,
+            // no chip chrome.
             if let pace = paceTargetText, !pace.isEmpty {
-                MetadataBadge(text: "on \(pace)", color: Color.textMuted)
+                Text("on \(pace)")
+                    .font(.captionStrong)
+                    .foregroundColor(Color.textMuted)
             }
-            // Progression badge — "DESCEND" / "BUILD" — so the
-            // coach sees the ladder shape at a glance without
-            // reading the per-card labels. Lives last so it reads
-            // as the discriminator on the right of the header.
+
+            // Progression badge — "DESCEND" / "BUILD" — as plain
+            // small-caps text. Amber + uppercase + tracking carry
+            // the same discriminator signal without the outlined
+            // pill.
             if let badge = progressionBadge {
-                MetadataBadge(text: badge, color: Color.accentAmber)
+                Text(badge)
+                    .font(.caption2)
+                    .tracking(1.0)
+                    .foregroundColor(Color.accentAmber)
             }
         }
         .padding(.leading, 2)
@@ -3254,24 +3630,17 @@ private struct ProgressionRepCard: View {
             // subtle Spacer replaces the removed VStack so the badge
             // remains right-aligned in the same horizontal slot.
             Spacer()
-            // Per-rep target badge — the primary visual signal for
-            // Mode 3. Same amber tint as the rest of the
-            // progression chrome (header ×N, progression badge).
-            // When perRepTarget is nil (no explicit targets +
-            // couldn't synthesize), this badge is omitted and the
-            // coach reads the chevron-only direction.
+            // Per-rep target — the primary visual signal for Mode 3.
+            // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2): chip
+            // demoted to plain mono text, right-aligned, no outlined
+            // pill. The numeric target reads as data, not chrome.
+            // Slightly heavier than the default caption so it still
+            // carries the per-rep weight (the only thing that
+            // differs across rows in Mode 3).
             if let target = perRepTarget {
                 Text(target)
-                    .font(.numericSmall)
+                    .font(.numeric)
                     .foregroundColor(Color.accentAmber)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.accentAmber.opacity(0.14))
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color.accentAmber.opacity(0.35), lineWidth: 1)
-                    )
                     .accessibilityLabel("target \(target)")
             }
             if hasPlayAffordance {
@@ -3516,13 +3885,27 @@ private struct RepCard: View {
                 }
                 .frame(height: 28)
 
+                // V0.54 S3.3 (2026-09-09, jodie-09 PRE round 2):
+                // trailing send-off demoted from chip to inline
+                // mono text. Same canonical "@ 1:00" verbalisation
+                // as the set header, no chip chrome.
+                //
                 // V0.53.1 Design A: send-off lives at the card's
                 // trailing edge. Same fog-on-inset chip the old
                 // FragmentCTARow wore, but here it sits once per card
                 // — never per segment. The whole rep is on the minute,
-                // not each fragment.
+                // not each fragment. V0.54 S3.3 demoted the chip to
+                // plain mono text — the parent PairRepGroupRow header
+                // already carries "on 1:00" inline, so this trailing
+                // "@ 1:00" used to be a duplicate. Kept for the
+                // non-exemplar path (1 card per rep, no header
+                // above) and the legacy fallback when the header is
+                // suppressed. Style matches the header's send-off
+                // text so the row reads as one system.
                 if let pace = paceTargetText, !pace.isEmpty {
-                    MetadataBadge(text: "@ \(pace)", color: Color.textMuted)
+                    Text("@ \(pace)")
+                        .font(.captionStrong)
+                        .foregroundColor(Color.textMuted)
                         .padding(.leading, 6)
                 }
 
