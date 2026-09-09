@@ -413,7 +413,29 @@ private struct RepGroupRowView: View {
             // set is really 4 reps of 75 fast / 25 easy). The fragment
             // rows below carry the full picture; the spine only renders
             // for fragment-less sets.
-            if !hasFragments {
+            //
+            // V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass): the
+            // spine ALSO has to be suppressed when the dispatched
+            // `*RepGroupRow` (Mode 1 .track, Mode 2 multi-fragment
+            // .uniform, Mode 3 .progression) renders its OWN
+            // headerLine — otherwise the two stack (Set 4 in the
+            // jodie-09 screenshot showed the OUTER compact header
+            // AND the new Mode 3 header above the four rep cards,
+            // violating rule 4 of the dedupe rules). The dispatched
+            // rows carry the full set-level context (×N, distance,
+            // stroke, zone, send-off, gear, DIVE/SUIT, ladder
+            // badge). The OUTER compact header survives ONLY for
+            // the Mode 2 single-fragment fallback path
+            // (`UniformRepGroupRow` with fragments.count ≤ 1) —
+            // where there's no dispatched row to carry the
+            // set-level context, so the OUTER header is the
+            // canonical render path.
+            let mode = repCardMode(for: rg)
+            let mode2MultiFragment = mode == .uniform && (rg.fragments?.count ?? 0) > 1
+            let mode1Track = mode == .track
+            let mode3Progression = mode == .progression
+            let dispatchedRendersHeader = mode1Track || mode2MultiFragment || mode3Progression
+            if !hasFragments && !dispatchedRendersHeader {
                 HStack(spacing: 2) {
                     Text(spineText)
                         .font(.numeric)
@@ -525,7 +547,13 @@ private struct RepGroupRowView: View {
             // for fragments before checking mode, we'd miss every
             // fragmentless Mode 3 case and render the old rg-level
             // row instead.
-            let mode = repCardMode(for: rg)
+            //
+            // V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass):
+            // `mode` and `fragments` were hoisted to the top of
+            // this VStack so the OUTER compact-header gate
+            // (`dispatchedRendersHeader`, line 437) could read them.
+            // Don't re-declare here — Swift will error on the
+            // duplicate `let`.
             let fragments = rg.fragments ?? []
 
             if mode == .track, fragments.count > 1 {
@@ -1723,6 +1751,37 @@ func repCardCount(reps: Int?) -> Int {
     return reps > 8 ? 1 : reps
 }
 
+// V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass): the exemplar
+// collapse gate. Returns true when every rep in the repGroup is
+// identical (same fragments, same send-off) AND the mode is one of
+// the two "within-rep variation" modes (Mode 1 .track and Mode 2
+// .uniform). Mode 3 (.progression) is excluded because each card has
+// a distinct per-rep target — collapsing would hide the build
+// sequence that IS the point of Mode 3. Mode 4 (legacy / fallback)
+// is also excluded: the single-fragment or no-fragment path renders
+// FragmentCTARow per fragment and there's nothing to collapse.
+//
+// reps == 1 → false (singletons render one card as before — no
+// multiplier badge needed).
+//
+// reps ≥ 2 → true for Mode 1 / Mode 2: collapse to one exemplar card
+// with a ×N trailing badge.
+//
+// The V0.53.1 `repCardCount` cap (reps > 8 → 1 card + ×N) still
+// fires for all modes; the S3.1 exemplar collapse is the
+// complementary path that fires at 2 ≤ reps ≤ 8 for Mode 1 / Mode 2.
+enum ExemplarCollapseMode {
+    case track      // Mode 1 (within-rep intensity change)
+    case uniform    // Mode 2 (uniform)
+    case progression // Mode 3 — never collapses
+}
+
+func shouldCollapseToExemplar(reps: Int?, mode: ExemplarCollapseMode) -> Bool {
+    guard mode == .track || mode == .uniform else { return false }
+    guard let reps = reps, reps >= 2 else { return false }
+    return true
+}
+
 // V0.53.1 Design A: the proportional width of one segment inside a
 // rep card's connected segment track. Returns a 0..1 fraction by
 // distance-over-total. nil distance or zero total → 0 (defensive,
@@ -2414,64 +2473,104 @@ private struct PairRepGroupRow: View {
         // is now visually inherent in the segment track, so the old
         // "each as: 25 + 25 — continuous" caption is GONE — that's
         // the show-not-tell fix the user asked for.
+        //
+        // V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass): identical
+        // reps collapse to ONE exemplar card with a "×N" badge.
+        // Rule 1 of the dedupe rules: when every rep is identical
+        // (same fragments, same send-off), render one card with the
+        // ×N multiplier. Within a single repGroup the fragments list
+        // is the same across all reps by construction — the per-rep
+        // variation lives ONLY in Mode 3 (`perRepTargets`). So for
+        // Mode 1 (.track) and Mode 2 (.uniform) the exemplar collapse
+        // is unconditional. Mode 3 stays expanded because each card's
+        // target differs. For reps == 1 (singletons like 400 free
+        // warm-up) no collapse — single card as before.
         VStack(alignment: .leading, spacing: 6) {
             if reps != nil || fragments.count > 1 {
                 headerLine
             }
-            // Design A: rep cards. For 4 reps → 4 cards. For 9+ reps →
-            // 1 card + "×N" affordance. The rep list is bounded by
-            // repCardCount so we never paginate.
-            let count = repCardCount(reps: reps)
-            let isCollapsed = count == 1 && (reps ?? 1) > 1
-            ForEach(0..<count, id: \.self) { repIdx in
-                let repNumber = repIdx + 1
+            // Design A: rep cards. For reps ≤ 8 AND identical reps
+            // (Mode 1/2): render ONE exemplar card with ×N badge.
+            // For 9+ reps: 1 card + "×N" affordance (V0.53.1 cap).
+            // For reps == 1: single card as before.
+            //
+            // V0.54 S3.1: the exemplar path forwards the rg so the
+            // header can carry gear / zone / dive / suit (set-level
+            // context that used to repeat per card). The single
+            // RepCard no longer needs the send-off badge (it's in the
+            // header), the gear badges (also in the header), or the
+            // gear-trail — all "say it once at the set header" per
+            // rule 2.
+            let isExemplar = shouldCollapseToExemplar(reps: reps, mode: .track)
+            if isExemplar, let reps = reps {
                 RepCard(
-                    repNumber: repNumber,
-                    totalReps: reps ?? 1,
+                    repNumber: 1,
+                    totalReps: reps,
                     parentDistance: parentDistance,
                     fragments: fragments,
-                    // Send-off belongs to the whole rep (V0.53.1),
-                    // and Design A pins it to the card trailing edge
-                    // — never per segment. Single source of truth.
-                    paceTargetText: paceTargetText,
-                    // Recorded times for the timable fragment of this
-                    // rep (always the first timable one — see
-                    // tapFragmentIndex). When ALL fragments are easy
-                    // the card has no play affordance; the recorded
-                    // chip would never appear because no timing
-                    // exists for an easy segment, so we read the
-                    // first fragment's recorded times defensively.
+                    // V0.54 S3.1: pass nil send-off on the exemplar
+                    // card — the set-level headerLine already shows
+                    // @ pace. Per rule 2, the send-off lives ONCE.
+                    paceTargetText: nil,
                     recordedTimes: recordedTimesForFragment(
                         fragments[tapFragmentIndex(fragments: fragments) ?? 0],
                         in: recordedTimesByFragmentId
                     ),
-                    // Card-level tap. Routes to the same onFragmentTap
-                    // machinery FragmentCTARow uses, keyed on the
-                    // timable fragment's id. nil = no play affordance
-                    // (all fragments easy).
-                    onTap: makeCardTapHandler(repIdx: repIdx),
-                    // V0.54 S2.1: forward context so RepCard's tap
-                    // gesture + play icon honor the .preview
-                    // zero-CTA contract. PRE / read-only contexts
-                    // default to .preview (no tap, no play icon);
-                    // LIVE surfaces both.
+                    // V0.54 S3.1: no per-card tap on exemplar — the
+                    // LIVE state (where the stopwatch is the primary
+                    // CTA) keys on the stopwatch, not the exemplar
+                    // card. PRE's zero-CTA invariant already prevents
+                    // the play icon from rendering; the onFragmentTap
+                    // route stays wired so the LIVE elevation surfaces
+                    // the stopwatch surface when needed.
+                    onTap: makeCardTapHandler(repIdx: 0),
                     context: context,
                     onAggregateTap: { title, records in
                         onAggregateChipTap(title, records)
                     }
                 )
-            }
-            if isCollapsed, let reps = reps {
-                // V0.53.1 Design A: the "×N" affordance that replaces
-                // the 9th-through-Nth rep cards. Same amber tint the
-                // ×N prefix uses elsewhere in the app — visual
-                // continuity with the header ×4. The coach reads
-                // "×12" and knows: one card shown, eleven more.
+                // ×N badge trailing the exemplar. Same amber tint
+                // the ×N prefix uses elsewhere — visual continuity
+                // with the header's leading ×N. The coach reads "1
+                // card + ×4" and knows: one swim shown, four in the
+                // set, all identical.
                 Text("× \(reps)")
                     .font(.numeric)
                     .foregroundColor(Color.accentAmber)
                     .padding(.leading, 4)
-                    .accessibilityLabel("\(reps) reps")
+                    .accessibilityLabel("\(reps) identical reps")
+            } else {
+                // Non-exemplar path (legacy): 4 cards for a 4-rep set
+                // when reps differ per-card (today only Mode 3 fires
+                // this). Mode 1/2 with reps == 1 also hit this path.
+                let count = repCardCount(reps: reps)
+                let isCollapsed = count == 1 && (reps ?? 1) > 1
+                ForEach(0..<count, id: \.self) { repIdx in
+                    let repNumber = repIdx + 1
+                    RepCard(
+                        repNumber: repNumber,
+                        totalReps: reps ?? 1,
+                        parentDistance: parentDistance,
+                        fragments: fragments,
+                        paceTargetText: paceTargetText,
+                        recordedTimes: recordedTimesForFragment(
+                            fragments[tapFragmentIndex(fragments: fragments) ?? 0],
+                            in: recordedTimesByFragmentId
+                        ),
+                        onTap: makeCardTapHandler(repIdx: repIdx),
+                        context: context,
+                        onAggregateTap: { title, records in
+                            onAggregateChipTap(title, records)
+                        }
+                    )
+                }
+                if isCollapsed, let reps = reps {
+                    Text("× \(reps)")
+                        .font(.numeric)
+                        .foregroundColor(Color.accentAmber)
+                        .padding(.leading, 4)
+                        .accessibilityLabel("\(reps) reps")
+                }
             }
             // V0.53.2 (2026-09-08, caption-wrap nit): the rg's `note`
             // (e.g. "Each: 50 @ 65% / 50 @ 70% / 50 @ 75%") — when
@@ -2527,6 +2626,22 @@ private struct PairRepGroupRow: View {
     // visually. Header is now just ×N + parent distance + stroke —
     // the parent context for the rep cards below. This is the
     // show-not-tell fix the user asked for in jodie-09.
+    //
+    // V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass): the header
+    // now carries the FULL set-level context — ×N, parent
+    // distance, stroke, zone chip, send-off, gear, dive/suit
+    // badges. Rule 2 of the dedupe rules: stroke, gear, zone
+    // chip, send-off belong to the SET header, not the per-card
+    // chrome. The exemplar card (Mode 1/2 collapsed path) drops
+    // the per-card send-off because it now lives here once.
+    //
+    // Rule 3 (range OR ladder, never both) is enforced inside
+    // the `showsLadder` gate: when `rg?.perRepTargets` is
+    // populated we suppress the intensity-range text and the
+    // zone chip — the ladder card-implies both. Today only Mode
+    // 3 (ProgressionRepGroupRow) has a populated perRepTargets,
+    // so the gate is a no-op here; the Mode 3 row's own
+    // headerLine enforces the same rule for its header.
     private var headerLine: some View {
         HStack(spacing: 6) {
             Rectangle()
@@ -2546,6 +2661,29 @@ private struct PairRepGroupRow: View {
                 Text(s)
                     .font(.body)
                     .foregroundColor(Color.textPrimary)
+            }
+            // V0.54 S3.1 (rule 2): send-off belongs to the SET
+            // header, not the per-card chrome. Rendered here
+            // exactly once for the whole set. Mode 1 / Mode 2
+            // exemplar cards pass paceTargetText: nil so the
+            // card itself doesn't double-render it.
+            if let pace = paceTargetText, !pace.isEmpty {
+                Text("on \(pace)")
+                    .font(.captionStrong)
+                    .foregroundColor(Color.textMuted)
+            }
+            // V0.54 S3.1 (rule 2): gear belongs to the SET header.
+            // Single badge cluster, not a per-card repetition.
+            ForEach(rg?.gear ?? [], id: \.self) { gear in
+                GearBadge(gear: gear, optional: rg?.gearOptional ?? false)
+            }
+            // V0.54 S3.1 (rule 2): DIVE / SUIT markers at the SET
+            // header — they describe the whole set, not one rep.
+            if rg?.dive == true {
+                MetadataBadge(text: "DIVE", color: Color.accentAmber)
+            }
+            if rg?.suit == true {
+                MetadataBadge(text: "SUIT", color: Color.textMuted)
             }
         }
         .padding(.leading, 2)
@@ -2592,26 +2730,59 @@ private struct UniformRepGroupRow: View {
     let note: String?
 
     var body: some View {
+        // V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass): identical
+        // reps collapse to ONE exemplar card with a "×N" badge.
+        // Mode 2 (.uniform) shares the rule with Mode 1 — every
+        // rep in the rg has the same fragments + same send-off
+        // (the variation Mode 2 catches is WITHIN a single rep,
+        // ACROSS its fragments, which the single card already
+        // shows). The header carries the set-level context (zone
+        // chip, send-off, gear, dive/suit) so the exemplar card
+        // drops the per-card chrome (rule 2).
         VStack(alignment: .leading, spacing: 6) {
             if reps != nil || fragments.count > 1 {
                 headerLine
             }
-            let count = repCardCount(reps: reps)
-            ForEach(0..<count, id: \.self) { repIdx in
+            let isExemplar = shouldCollapseToExemplar(reps: reps, mode: .uniform)
+            if isExemplar, let reps = reps {
+                // Single exemplar card. Send-off + gear live on the
+                // header — pass nil to the card so they don't
+                // double-render.
                 UniformRepCard(
                     rg: rg,
                     fragments: fragments,
-                    paceTargetText: paceTargetText,
+                    paceTargetText: nil,
                     recordedTimes: recordedTimesForFirstTimableFragment(in: fragments, map: recordedTimesByFragmentId),
-                    onTap: makeCardTapHandler(repIdx: repIdx),
-                    // V0.54 S2.1: forward context to UniformRepCard so
-                    // the tap gesture + play icon honor .preview's
-                    // zero-CTA invariant.
+                    onTap: makeCardTapHandler(repIdx: 0),
                     context: context,
                     onAggregateTap: { title, records in
                         onAggregateChipTap(title, records)
                     }
                 )
+                // ×N trailing badge — same affordance as Mode 1.
+                Text("× \(reps)")
+                    .font(.numeric)
+                    .foregroundColor(Color.accentAmber)
+                    .padding(.leading, 4)
+                    .accessibilityLabel("\(reps) identical reps")
+            } else {
+                // Non-exemplar path (legacy / reps == 1): one card
+                // per rep. Mode 3 is dispatched separately above, so
+                // this path only fires for reps == 1 today.
+                let count = repCardCount(reps: reps)
+                ForEach(0..<count, id: \.self) { repIdx in
+                    UniformRepCard(
+                        rg: rg,
+                        fragments: fragments,
+                        paceTargetText: paceTargetText,
+                        recordedTimes: recordedTimesForFirstTimableFragment(in: fragments, map: recordedTimesByFragmentId),
+                        onTap: makeCardTapHandler(repIdx: repIdx),
+                        context: context,
+                        onAggregateTap: { title, records in
+                            onAggregateChipTap(title, records)
+                        }
+                    )
+                }
             }
             if let note = note, !note.isEmpty {
                 Text(note)
@@ -2635,6 +2806,16 @@ private struct UniformRepGroupRow: View {
     }
 
     private var headerLine: some View {
+        // V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass): same
+        // set-level context as Mode 1's header — ×N, distance,
+        // stroke, send-off, gear, dive/suit. Rule 2 again:
+        // send-off + gear + zone chip live ONCE at the set
+        // header, not on each rep card. Zone chip is omitted
+        // here for Mode 2 because Mode 2 fires when the rep is
+        // uniform within itself (a `steady` 6×100 already reads
+        // the @65-75% range — adding `[Steady]` is noise). The
+        // ladder/range disambiguation (rule 3) is a Mode 3
+        // concern; Mode 2 doesn't fire perRepTargets today.
         HStack(spacing: 6) {
             Rectangle()
                 .fill(Color.accentAmber)
@@ -2653,6 +2834,22 @@ private struct UniformRepGroupRow: View {
                 Text(s)
                     .font(.body)
                     .foregroundColor(Color.textPrimary)
+            }
+            // V0.54 S3.1 (rule 2): send-off at the set header.
+            if let pace = paceTargetText, !pace.isEmpty {
+                Text("on \(pace)")
+                    .font(.captionStrong)
+                    .foregroundColor(Color.textMuted)
+            }
+            // V0.54 S3.1 (rule 2): gear + DIVE/SUIT at set header.
+            ForEach(rg.gear ?? [], id: \.self) { gear in
+                GearBadge(gear: gear, optional: rg.gearOptional ?? false)
+            }
+            if rg.dive == true {
+                MetadataBadge(text: "DIVE", color: Color.accentAmber)
+            }
+            if rg.suit == true {
+                MetadataBadge(text: "SUIT", color: Color.textMuted)
             }
         }
         .padding(.leading, 2)
@@ -2868,6 +3065,19 @@ private struct ProgressionRepGroupRow: View {
     }
 
     private var headerLine: some View {
+        // V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass): when
+        // perRepTargets is populated (the Mode 3 ladder case —
+        // 70/75/80/85 cards below), suppress the intensity range
+        // and the [Hard] zone chip — the ladder implies both. Rule
+        // 3: range OR ladder, never both. The cards carry the
+        // numeric targets; the header shows the ladder shape
+        // (DESCEND / BUILD badge) and the set-level context (×N,
+        // distance, stroke, send-off, gear, dive/suit).
+        //
+        // Mode 3 keeps all 4 rep cards because each card has a
+        // distinct target — collapse would hide the build sequence
+        // that IS the point of Mode 3. Rule 1 explicitly excludes
+        // Mode 3 from the exemplar collapse.
         HStack(spacing: 6) {
             Rectangle()
                 .fill(Color.accentAmber)
@@ -2887,14 +3097,58 @@ private struct ProgressionRepGroupRow: View {
                     .font(.body)
                     .foregroundColor(Color.textPrimary)
             }
+            // V0.54 S3.1 (rule 3): the intensity range text only
+            // renders when the ladder is NOT populated. For a Mode
+            // 3 with explicit per-rep targets (the jodie-09 4×50
+            // DESCEND 70-85% case), the @70-85% range is implied
+            // by the 70/75/80/85 cards and the [Hard] zone is
+            // implied by "Hard set, building". Show neither —
+            // keep the header clean.
+            //
+            // Inline intensity formatter (mirrors RepGroupRowView's
+            // fmtIntensity(_:) helper, which lives in the OUTER
+            // RepGroupRowView — out of scope here). Keeps the
+            // descend + pacing suffix that the range text
+            // already wears. Pure presentational helper.
+            if !showsLadder, let intensity = rg.intensity {
+                Text(" @ \(progressionHeaderIntensity(intensity))")
+                    .font(.caption)
+                    .foregroundColor(Color.accentAmber)
+            }
+            if !showsLadder, let zoneTerm = rg.zoneTerm {
+                MetadataBadge(text: zoneTerm.capitalized, color: Color.textMuted)
+            }
+            // V0.54 S3.1 (rule 2): gear + DIVE/SUIT at set header.
+            ForEach(rg.gear ?? [], id: \.self) { gear in
+                GearBadge(gear: gear, optional: rg.gearOptional ?? false)
+            }
+            if rg.dive == true {
+                MetadataBadge(text: "DIVE", color: Color.accentAmber)
+            }
+            if rg.suit == true {
+                MetadataBadge(text: "SUIT", color: Color.textMuted)
+            }
             // Progression badge — "DESCEND" / "BUILD" — so the
             // coach sees the ladder shape at a glance without
-            // reading the per-card labels.
+            // reading the per-card labels. Lives last so it reads
+            // as the discriminator on the right of the header.
             if let badge = progressionBadge {
                 MetadataBadge(text: badge, color: Color.accentAmber)
             }
         }
         .padding(.leading, 2)
+    }
+
+    // V0.54 S3.1 (rule 3): the ladder-suppression gate. When
+    // perRepTargets is populated, the header suppresses the
+    // intensity range + zone chip because the ladder implies
+    // both. Extracted to a stored-ish var so `headerLine`'s
+    // `some View` opaque-return-type inference can see a single
+    // HStack body (Swift's opaque-return rule requires the body's
+    // last expression to determine the type — `let` statements at
+    // the top break that).
+    private var showsLadder: Bool {
+        perRepTargets?.isEmpty == false
     }
 
     private var progressionBadge: String? {
@@ -2903,6 +3157,32 @@ private struct ProgressionRepGroupRow: View {
         }
         if rg.pacing == "build" { return "BUILD" }
         return nil
+    }
+
+    // V0.54 S3.1 (2026-09-09, jodie-09 de-busy pass): inline the
+    // intensity formatter so the Mode 3 headerLine can render the
+    // "@ percent-range" text without depending on the OUTER
+    // RepGroupRowView's fmtIntensity(_:) helper (which is private
+    // to that struct). Mirrors the original helper 1:1 — percent
+    // range renders as "low–high%", descend appends " ↘ {descend}",
+    // and pacing appends the pacing word when it isn't "build"
+    // (build is handled by the DESCEND/BUILD badge).
+    private func progressionHeaderIntensity(_ i: ParsedIntensity) -> String {
+        if i.type == ParsedIntensityType.percent_range {
+            if let low = i.percentLow, let high = i.percentHigh {
+                return "\(low)–\(high)%"
+            } else if let low = i.percentLow {
+                return "~\(low)%"
+            }
+        }
+        var result = i.label
+        if let descend = rg.descend {
+            result += " ↘ \(descend)"
+        }
+        if let pacing = rg.pacing, pacing != "build" {
+            result += " \(pacing)"
+        }
+        return result
     }
 }
 
@@ -2937,10 +3217,18 @@ private struct ProgressionRepCard: View {
             // "rep 2 of 4 = 75%" without ambiguity. Sits on the
             // left, muted, so the target badge on the right reads
             // as the primary signal.
+            //
+            // V0.54 S3.1 (rule 6: quiet the hierarchy): bumped one
+            // contrast step from `.numericSmall` / `Color.textFaint`
+            // to `.caption` / `Color.textMuted` so the "rep 2 / 4"
+            // legibility class reads cleanly on a glance. Was the
+            // known low-contrast nit Nathan flagged. One step up,
+            // not to textPrimary (would compete with the per-rep
+            // target pill on the right).
             if totalReps > 1 {
                 Text("\(repNumber)/\(totalReps)")
-                    .font(.numericSmall)
-                    .foregroundColor(Color.textFaint)
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
             }
             // Distance + intensity descriptor (left side).
             VStack(alignment: .leading, spacing: 2) {
