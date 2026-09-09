@@ -3128,6 +3128,16 @@ private struct ProgressionRepGroupRow: View {
             if rg.suit == true {
                 MetadataBadge(text: "SUIT", color: Color.textMuted)
             }
+            // V0.54 S3.2 (rule-2 dedupe, one level down): the
+            // send-off is a SET-level fact — it lives at the header
+            // once, not on every per-rep row (the rows used to
+            // repeat "@ 1:00" on each of the 4 DESCEND cards). Reads
+            // as "on 1:00" to mirror the canonical "4× 50m Free
+            // on 1:00" verbalisation, with the same muted
+            // MetadataBadge styling as Set 3's send-off chip.
+            if let pace = paceTargetText, !pace.isEmpty {
+                MetadataBadge(text: "on \(pace)", color: Color.textMuted)
+            }
             // Progression badge — "DESCEND" / "BUILD" — so the
             // coach sees the ladder shape at a glance without
             // reading the per-card labels. Lives last so it reads
@@ -3230,31 +3240,19 @@ private struct ProgressionRepCard: View {
                     .font(.caption)
                     .foregroundColor(Color.textMuted)
             }
-            // Distance + intensity descriptor (left side).
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    if let d = rg.distance {
-                        Text("\(d)m")
-                            .font(.numeric)
-                            .foregroundColor(Color.textPrimary)
-                    }
-                    if let stroke = rg.stroke, !stroke.isEmpty {
-                        Text(stroke)
-                            .font(.body)
-                            .foregroundColor(Color.textPrimary)
-                    }
-                    if let label = firstFragmentIntensityLabel() {
-                        Text("@ \(label)")
-                            .font(.caption)
-                            .foregroundColor(Color.accentAmber)
-                    }
-                }
-                HStack(spacing: 6) {
-                    if let pace = paceTargetText, !pace.isEmpty {
-                        MetadataBadge(text: "@ \(pace)", color: Color.textMuted)
-                    }
-                }
-            }
+            // V0.54 S3.2 (2026-09-09, jodie-09 de-busy pass): strip
+            // per-row distance / stroke / @intensity / send-off.
+            // Those are set-level facts — the ProgressionRepGroupRow
+            // header carries "4× 50m Free + Pull + DESCEND + on 1:00"
+            // once. Each row only varies by rep index + per-rep
+            // target badge (70% → 85%). Rule-2 dedupe one level down
+            // from S3.1: the row must not repeat the header.
+            //
+            // Visual stays anchored: the per-rep target badge on the
+            // right is still the primary signal, the rep index on
+            // the left still disambiguates "rep 2 of 4 = 75%". A
+            // subtle Spacer replaces the removed VStack so the badge
+            // remains right-aligned in the same horizontal slot.
             Spacer()
             // Per-rep target badge — the primary visual signal for
             // Mode 3. Same amber tint as the rest of the
@@ -3295,31 +3293,16 @@ private struct ProgressionRepCard: View {
     }
 
     private var progressionCardAccessibilityLabel: String {
+        // V0.54 S3.2 (rule-2 dedupe): only the per-row-varying facts
+        // — rep index + per-rep target. Set-level facts (distance,
+        // stroke, intensity, send-off) are announced once at the
+        // parent ProgressionRepGroupRow's header line.
         var parts: [String] = []
         if totalReps > 1 {
             parts.append("Rep \(repNumber) of \(totalReps)")
         }
-        if let d = rg.distance { parts.append("\(d) meters") }
-        if let stroke = rg.stroke, !stroke.isEmpty { parts.append(stroke) }
-        if let label = firstFragmentIntensityLabel() { parts.append("@ \(label)") }
         if let target = perRepTarget { parts.append("target \(target)") }
-        if let pace = paceTargetText, !pace.isEmpty { parts.append("on \(pace)") }
         return parts.joined(separator: ", ")
-    }
-
-    private func firstFragmentIntensityLabel() -> String? {
-        for f in fragments {
-            if let label = f.intensity?.label, !label.isEmpty {
-                return label
-            }
-            if let label = f.intensityLabel, !label.isEmpty {
-                return label
-            }
-            if let desc = f.descriptor, !desc.isEmpty {
-                return desc
-            }
-        }
-        return rg.intensity?.label
     }
 }
 
