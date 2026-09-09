@@ -122,30 +122,53 @@ struct SessionConsoleView: View {
     // (accentAction foreground) in PRE.
 
     private var preBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
-            // V0.54 S2.1 (2026-09-08, jodie-09 user feedback):
-            // replace the flat "◯ N | ZONE | label" one-liners with
-            // the full WorkoutPreview rendering (rep cards × modes,
-            // fragment rows, captions, send-offs). The spec's
-            // "one primary CTA" rule constrains ACTIONS, not
-            // INFORMATION — the coach must see exactly what the
-            // swimmers will be doing, instruction included, before
-            // tapping Start Session. The breadcrumb stays as the
-            // only correction surface; START SESSION stays as the
-            // only action surface.
-            preWorkoutPreview
-                .padding(.horizontal, 16)
-            Spacer(minLength: 16)
-            breadcrumb
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-            startButton
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+        // V0.54 S3.3b (2026-09-09): the prior VStack was a fixed
+        // layout — when the jodie-09 S3.3 spacing rhythm (12pt
+        // intra-set, 20pt between sets, hairlines) pushed the
+        // preview taller than the screen, the VStack spilled
+        // content off BOTH ends (top warm-up row clipped, START
+        // SESSION entirely off-screen). The primary CTA of the PRE
+        // state was unreachable.
+        //
+        // Standard pool-deck pattern: scroll the information surface
+        // (workout preview), pin the action surface (breadcrumb +
+        // START SESSION) to the safe-area bottom. Long workouts
+        // scroll; short workouts sit at the natural top — but the
+        // CTA is ALWAYS reachable regardless of workout length.
+        //
+        // The .safeAreaInset(edge: .bottom) footer lives outside the
+        // ScrollView, so it cannot be clipped. The bottom inset
+        // carries the 24pt safe-area padding the old VStack's
+        // `.padding(.bottom, 24)` provided.
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 16)
+                // V0.54 S2.1 (2026-09-08, jodie-09 user feedback):
+                // replace the flat "◯ N | ZONE | label" one-liners with
+                // the full WorkoutPreview rendering (rep cards × modes,
+                // fragment rows, captions, send-offs). The spec's
+                // "one primary CTA" rule constrains ACTIONS, not
+                // INFORMATION — the coach must see exactly what the
+                // swimmers will be doing, instruction included, before
+                // tapping Start Session. The breadcrumb stays as the
+                // only correction surface; START SESSION stays as the
+                // only action surface.
+                preWorkoutPreview
+                    .padding(.horizontal, 16)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 12) {
+                breadcrumb
+                    .padding(.horizontal, 16)
+                startButton
+                    .padding(.horizontal, 16)
+            }
+            .padding(.bottom, 24)
+            .background(Color.bgBase)
         }
     }
 
