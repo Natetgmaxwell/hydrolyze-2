@@ -183,7 +183,8 @@ struct ContentView: View {
             if args.contains("-v54-demo-console")
                 || args.contains("-v54-demo-console-live")
                 || args.contains("-v54-demo-console-jodie09")
-                || args.contains("-v54-demo-console-live-jodie09") {
+                || args.contains("-v54-demo-console-live-jodie09")
+                || args.contains("-v54-demo-console-between-jodie09") {
                 return .console
             }
             return nil

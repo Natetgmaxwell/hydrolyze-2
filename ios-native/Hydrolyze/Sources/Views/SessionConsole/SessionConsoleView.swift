@@ -30,16 +30,29 @@ struct SessionConsoleView: View {
             switch viewModel.state {
             case .pre:
                 preBody
-            case .live, .between, .post:
+            case .live:
                 // S2 (2026-09-08): LIVE renders the existing
                 // TimingView (decision 12 — wrapper-not-rewrite),
                 // seeded with a SetPrefill from the first timeable
-                // set per spec §5. BETWEEN is derived from the
-                // TimingView's elapsed time vs the set's intervalText
-                // (S3 wires the countdown). POST is the stopwatch's
-                // `.finished`/`.saving` summary (S4 wires the
-                // unmatched-gap rows).
+                // set per spec §5. S3 (2026-09-09) also surfaces
+                // the `WaveChipStrip` above the first rep's stopwatch
+                // — the wave chip strip is a secondary coach action,
+                // not the primary CTA (the stopwatch below remains
+                // the single primary affordance per spec invariant).
                 liveBody
+            case .between:
+                // S3 (2026-09-09): BETWEEN shows the send-off
+                // countdown + Next-rep pill. Single primary CTA per
+                // spec invariant — the pill IS the one action during
+                // BETWEEN. Last-rep-of-set auto-progresses to POST
+                // on :00 via the VM's countdown timer.
+                betweenBody
+            case .post:
+                // S4 (deferred): POST body + Review pairs + End
+                // session. S3 lands the state transition on the last
+                // rep's countdown :00 and renders a placeholder so
+                // the state machine is observable in the simulator.
+                postStubBody
             }
         }
         .toolbar {
@@ -91,7 +104,8 @@ struct SessionConsoleView: View {
             if args.contains("-v54-demo-console")
                || args.contains("-v54-demo-console-live")
                || args.contains("-v54-demo-console-jodie09")
-               || args.contains("-v54-demo-console-live-jodie09") {
+               || args.contains("-v54-demo-console-live-jodie09")
+               || args.contains("-v54-demo-console-between-jodie09") {
                 viewModel.seedV54DemoConsole()
                 return
             }
@@ -243,6 +257,29 @@ struct SessionConsoleView: View {
             // (every set is fully rendered).
             liveWorkoutPreview
                 .padding(.horizontal, 16)
+            // V0.54 S3 (2026-09-09): the wave chip strip renders
+            // ABOVE the stopwatch (spec §3 / decision 11 — "the
+            // first rep's stopwatch is the primary CTA; the wave
+            // chip strip is a one-tap affordance above it"). Hidden
+            // for solo swimmers (R8: <2 wave_assignments).
+            //
+            // `onTapChip(lane)` fires when the coach picks a swap
+            // target inside the chip's quick-action menu; the VM's
+            // `swapLanes(a: tappedLane, b: pickedLane)` mutates the
+            // in-memory lane → name map. WaveChipStrip handles the
+            // "tap chip → Menu → tap swap target" interaction itself;
+            // the chip strip is a presentational view — the VM owns
+            // the swap state.
+            if !liveWaveChips.isEmpty {
+                WaveChipStrip(
+                    lanes: liveWaveChips,
+                    onPickSwap: { tappedLane, pickedLane in
+                        viewModel.swapLanes(a: tappedLane, b: pickedLane)
+                    }
+                )
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+            }
             if let prefill = liveSetPrefill {
                 TimingView(
                     prefill: prefill,
@@ -359,6 +396,131 @@ struct SessionConsoleView: View {
                 .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// V0.54 S3 (2026-09-09): derive `WaveChipStrip.LaneChip`s from
+    /// the VM's `waveAssignmentsByLane` dict. Ordered ascending by
+    /// lane number so the chips render in lane-1, lane-2, lane-3
+    /// order — the visual that matches the pool layout. R8
+    /// (solo-swimmer suppression) is handled in WaveChipStrip —
+    /// it returns nil when `lanes.count <= 1`.
+    private var liveWaveChips: [WaveChipStrip.LaneChip] {
+        viewModel.waveAssignmentsByLane
+            .sorted { $0.key < $1.key }
+            .map { (lane, name) in
+                WaveChipStrip.LaneChip(lane: lane, swimmerName: name)
+            }
+    }
+
+    // MARK: - S3 BETWEEN body
+    //
+    // Per spec §BETWEEN wireframe (L120-136): the send-off
+    // countdown + completed-rep list + a single primary CTA
+    // (Next-rep pill). R7: nil/unparseable intervalText → no
+    // countdown shown, the pill IS the only CTA, auto-progress
+    // already handled by `liveEnter()` (the state lands in LIVE
+    // directly when intervalMs is nil, so BETWEEN never enters).
+    //
+    // The countdown reads `:SS` for values under 60s and `M:SS`
+    // above (defensive — 2:30 send-offs exist in the corpus).
+    // Pure countdown publication — no side effects in the body;
+    // the VM owns the timer.
+
+    private var betweenBody: some View {
+        VStack(spacing: 24) {
+            Spacer(minLength: 0)
+            // Header strip — same `liveRoster` chip strip so the
+            // coach sees "who's in" the same way across LIVE and
+            // BETWEEN. Hidden for empty roster per V0.49 contract.
+            if !liveRoster.isEmpty {
+                RosterStripView(roster: liveRoster)
+                    .padding(.horizontal, 16)
+            }
+            // Rep counter — "rep N / total × distance @ send-off".
+            // Mirrors the LIVE header's "SET N" reading so the
+            // coach reads the context on every state transition.
+            if let set = viewModel.currentSet {
+                Text("rep \((viewModel.currentRepIndex ?? 0) + 1) / \(set.reps ?? 0) × \(set.distance ?? 0)m \(set.stroke ?? "Free") @ \(set.intervalText ?? "")")
+                    .font(.eyebrow)
+                    .tracking(0.5)
+                    .foregroundStyle(Color.textFaint)
+                    .padding(.horizontal, 16)
+            }
+            // Send-off countdown — spec wireframe `───── :12 ─────`
+            // reading. Renders as a single large `:SS` so the
+            // coach reads it across the pool without squinting.
+            // Guarded: nil countdown (e.g. R7 path already
+            // auto-progressed) is unreachable in normal flow, but
+            // the guard keeps the body safe during transitions.
+            Text(countdownLabel)
+                .font(.system(size: 64, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(Color.textPrimary)
+                .accessibilityLabel("Send-off countdown: \(countdownLabel) remaining")
+            Text("next send-off")
+                .font(.caption)
+                .foregroundStyle(Color.textMuted)
+            // Per spec §BETWEEN acceptance: `Next rep` pill is the
+            // ONE primary CTA during BETWEEN. Non-blocking — the
+            // pill short-circuits the countdown and the VM
+            // advances the state machine forward.
+            Button {
+                Haptics.tap()
+                viewModel.nextRep()
+            } label: {
+                Text("Start next rep now  →")
+                    .font(.captionStrong)
+                    .tracking(0.5)
+                    .foregroundStyle(Color.textOnAccent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.accentAction)
+                    .cornerRadius(12)
+            }
+            .buttonStyle(PressFeedbackStyle())
+            .padding(.horizontal, 16)
+            .accessibilityLabel("Start next rep now")
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Format the BETWEEN countdown digits. `:SS` for sub-1-minute,
+    /// `M:SS` for send-offs above 60s (rare, but possible). Falls
+    /// back to `0:00` when `countdownRemainingMs` is nil — that
+    /// state is unreachable in normal flow (R7 short-circuits to
+    /// LIVE/POST), but the guard prevents a SwiftUI body crash if
+    /// the VM's countdown task is cancelled mid-tick.
+    private var countdownLabel: String {
+        let ms = viewModel.countdownRemainingMs ?? 0
+        let totalSeconds = max(ms / 1000, 0)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    // MARK: - S3 POST stub (S4 fills this)
+    //
+    // S3 lands the state transition `state = .post` on the last
+    // rep's countdown :00 (spec §BETWEEN) but the POST body is
+    // still a placeholder until S4. The stub matches the S1
+    // pattern: explicit state name + back-to-PRE escape hatch.
+    // Once S4 lands, the POST body replaces this with the
+    // summary + Review pairs + End session CTAs.
+
+    private var postStubBody: some View {
+        VStack(spacing: 16) {
+            Text("POST")
+                .font(.titleSmall)
+                .foregroundStyle(Color.textPrimary)
+            Text("Session complete — S3 lands the state transition on the last rep's :00. The full POST body (one row per rep + Review pairs + End session) lands in S4.")
+                .font(.caption)
+                .foregroundStyle(Color.textMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Button("Back to PRE") { viewModel.resetToPre() }
+                .buttonStyle(.bordered)
+                .tint(Color.accentAction)
+        }
     }
 
     // MARK: - Stubs (S3/S4 fill these in)

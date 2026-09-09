@@ -50,6 +50,31 @@ final class SessionConsoleViewModel: ObservableObject {
     /// focused on (0-based). Used to decide which rep card is
     /// expanded vs collapsed. nil until the first LAP fires.
     @Published private(set) var currentRepIndex: Int? = nil
+    /// V0.54 S3 (2026-09-09): send-off interval parsed from the
+    /// parent set's `intervalText` (e.g. "1:30" → 90000 ms).
+    /// `nil` when the set has no intervalText or it's unparseable
+    /// (spec R7: nil/unparseable → no countdown shown, auto-progress
+    /// immediately, Next-rep pill is the only CTA, debug-log it).
+    @Published private(set) var intervalMs: Int? = nil
+    /// V0.54 S3 (2026-09-09): milliseconds remaining in the BETWEEN
+    /// countdown. Drives the BETWEEN body's `─── :12 ───` reading.
+    /// Published on a `Timer.publish(every: 0.1)` cadence so the UI
+    /// ticks smoothly without re-running the state machine on every
+    /// tick. `nil` when not in BETWEEN (countdown is inactive).
+    @Published private(set) var countdownRemainingMs: Int? = nil
+    /// V0.54 S3 (2026-09-09): wave assignments keyed by lane number,
+    /// derived from `WaveAllocator.allocate(...)` at `liveEnter()`.
+    /// Surfaced to the LIVE body's `WaveChipStrip` (one chip per
+    /// lane; tap-to-swap). Single-swimmer sets surface no chips
+    /// (spec R8: solo swimmer → hidden).
+    @Published private(set) var waveAssignmentsByLane: [Int: String] = [:]
+    /// V0.54 S3 (2026-09-09): the `WorkoutSet` the Console is
+    /// currently focused on. S2 inlined the first-timeable set into
+    /// the LIVE body via `liveSetPrefill`; S3 holds it on the VM
+    /// so BETWEEN/LIVE can both read `currentSet.intervalText`
+    /// without re-deriving the first-timeable heuristic on every
+    /// state transition.
+    @Published private(set) var currentSet: WorkoutSet? = nil
     /// V0.54 S2.1 (2026-09-08, jodie-09 user feedback): the set-ids
     /// of completed sets in order. Drives the LIVE body's reduced-
     /// opacity treatment on those sets — every set keeps full
@@ -157,11 +182,285 @@ final class SessionConsoleViewModel: ObservableObject {
 
     /// Tap "Start Session". S1 advances PRE → LIVE with no intermediate
     /// screens (decision 10). S2 wires the stopwatch + the
-    /// first-timeable heuristic; S1 only flips the state so the
-    /// acceptance test (PRE → LIVE on tap) passes.
+    /// first-timeable heuristic; S3 runs the WaveAllocator fold via
+    /// `liveEnter()` (spec §3 / decision 8 — wave assignment confirmed
+    /// at the first rep's stopwatch entry, not in PRE).
     func startSession() {
         guard state == .pre else { return }
         state = .live
+        liveEnter()
+    }
+
+    /// V0.54 S3 (2026-09-09): invoked on entering LIVE. Per spec §3 /
+    /// decision 8, WaveAllocator runs HERE (the first rep's stopwatch
+    /// is about to arm), NOT in PRE. The allocations are persisted
+    /// idempotently via `WorkoutService.synthesizeWaveAssignmentsIfMissing`
+    /// (V0.51 contract held), and the lane → swimmer mapping is
+    /// cached on the VM as `waveAssignmentsByLane` for the
+    /// `WaveChipStrip` UI surface.
+    ///
+    /// SPEC VERIFICATION (R4, 2026-09-09): `HistoricalTimePredictor.
+    /// predict()` is pure-functional — every input is a parameter,
+    /// no instance state, no I/O. Calling it twice with the same
+    /// inputs returns the same `Prediction`. Safe to call from here.
+    ///
+    /// R7 (no intervalText) + R8 (solo swimmer) are handled in the
+    /// downstream consumers: BETWEEN reads `intervalMs` and falls
+    /// back to immediate next-rep; `WaveChipStrip` hides itself
+    /// when the assignment set has fewer than 2 swimmers.
+    func liveEnter() {
+        // 1. Resolve the first timeable set. `firstTimeableRepIndex()`
+        //    is S1's surface — it returns the orderIndex, not the set.
+        guard let orderIndex = firstTimeableRepIndex(),
+                        let resolvedSet = sets.first(where: { $0.orderIndex == orderIndex })
+        else {
+            // Spec §5 fallback: no timeable set → POST (S4). For S3
+            // we leave the state at LIVE; S4 wires the transition.
+            // The S2 noTimeableStub explains the gap on screen.
+            return
+        }
+        currentSet = resolvedSet
+
+        // 2. Parse the intervalText (R7: nil/unparseable → intervalMs stays nil).
+        intervalMs = Self.parseIntervalText(resolvedSet.intervalText)
+
+        // 3. Wave assignment fold. Build a `Swimmer` for each roster
+        //    entry (WaveAllocator needs the full Swimmer shape),
+        //    allocate, and cache the lane → name mapping. The DB
+        //    write is best-effort (V0.51 contract — fail-open,
+        //    next launch retries).
+        let swimmers: [Swimmer] = attendanceEntries.map { entry in
+            Swimmer(
+                id: entry.swimmerId,
+                coachId: "",
+                firstName: entry.swimmerName,
+                lastName: nil,
+                birthdate: nil,
+                gender: nil,
+                notes: nil,
+                preferredGear: nil,
+                formStroke: nil,
+                mainStroke: nil,
+                archivedAt: nil,
+                createdAt: nil
+            )
+        }
+        if swimmers.count >= 2 {
+            let assignments = WaveAllocator.allocate(
+                roster: swimmers,
+                sets: [resolvedSet],
+                poolConfig: WaveAllocator.PoolConfig(),
+                predictions: [:]
+            )
+            for assignment in assignments where assignment.workoutSetId == resolvedSet.id {
+                waveAssignmentsByLane[assignment.lane] = swimmerDisplayName(
+                    forId: assignment.swimmerId
+                )
+            }
+            // Best-effort persist — V0.51's idempotent writer. Failures
+            // log + continue (the in-memory cache still drives the UI).
+            Task { [sessionId, resolvedSet, attendanceEntries, workout] in
+                await WorkoutService().synthesizeWaveAssignmentsIfMissing(
+                    sessionId: sessionId,
+                    workoutSetId: resolvedSet.id,
+                    rosterEntries: attendanceEntries.map { entry in
+                        SessionRosterSnapshot.Entry(
+                            swimmerId: entry.swimmerId,
+                            firstName: nil,
+                            lastName: entry.swimmerName,
+                            lane: nil,
+                            positionInLane: nil
+                        )
+                    },
+                    coachId: workout?.coachId
+                )
+            }
+        } else {
+            // R8: solo swimmer → strip hidden, lane map empty.
+            waveAssignmentsByLane = [:]
+        }
+    }
+
+    /// V0.54 S3 (2026-09-09): parse a set's `intervalText` ("1:30",
+    /// "1:00", "2:20-2:30" → take the first side) to milliseconds.
+    /// Returns `nil` for nil/unparseable input (spec R7).
+    static func parseIntervalText(_ text: String?) -> Int? {
+        guard let text = text?.trimmingCharacters(in: .whitespaces), !text.isEmpty else {
+            return nil
+        }
+        // Take the first half of a range ("1:30-2:00" → "1:30").
+        let firstHalf = text.split(separator: "-").first.map(String.init) ?? text
+        let parts = firstHalf.split(separator: ":")
+        guard parts.count == 2,
+                        let minutes = Int(parts[0].trimmingCharacters(in: .whitespaces)),
+                        let seconds = Int(parts[1].trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
+        return (minutes * 60 + seconds) * 1000
+    }
+
+    /// Lookup a display name for a swimmer id from the attendance
+    /// entries. Falls back to the id itself when no entry exists
+    /// (defensive — `WaveChipStrip` reads the name for the chip).
+    private func swimmerDisplayName(forId id: String) -> String {
+        attendanceEntries.first(where: { $0.swimmerId == id })?.swimmerName ?? id
+    }
+
+    /// V0.54 S3 (2026-09-09): tap LAP / capture the current rep. S2
+    /// wired the TimingView callback; S3 advances the state machine
+    /// to BETWEEN and starts the countdown (or auto-progresses
+    /// immediately when the set has no intervalText — R7).
+    func lapRecorded() {
+        guard state == .live else { return }
+        let reps = currentSet?.reps ?? 0
+        // Mark the current rep as recorded. `repsByRepIndex` is the
+        // single source of truth for the LIVE body's compressed
+        // summary; the TimingView's per-LAP callback already feeds
+        // it in `handleRecordedPayload`, but a STOP that doesn't
+        // fire LAP leaves a nil — `lapRecorded` is the safe path.
+        if let idx = currentRepIndex ?? max(reps - 1, 0) as Int? {
+            repsByRepIndex[idx, default: 0] = repsByRepIndex[idx] ?? 0
+        }
+        enterBetween()
+    }
+
+    /// V0.54 S3 (2026-09-09): tap STOP. Per spec §LIVE: "STOP
+    /// transitions to BETWEEN with the rep marked complete." S4's
+    /// POST summary reads the same `repsByRepIndex` map. S3 routes
+    /// through BETWEEN for parity with LAP — the countdown becomes
+    /// the "rest before the next rep" affordance, identical to the
+    /// LAP path from the coach's perspective.
+    func stopRep() {
+        guard state == .live else { return }
+        // Stamp a non-zero placeholder so the row reads as "captured"
+        // in the POST summary if the TimingView's onRecord didn't
+        // fire (rare — TimingView fires onRecord on every stopwatch
+        // stop). The POST body will overwrite with the real ms when
+        // S4 lands.
+        if let idx = currentRepIndex ?? 0 as Int? {
+            repsByRepIndex[idx, default: 0] = repsByRepIndex[idx] ?? 0
+        }
+        enterBetween()
+    }
+
+    /// Internal: LIVE → BETWEEN (the countdown entry). Pulls the
+    /// interval from `intervalMs` (already parsed in `liveEnter`).
+    /// R7: `intervalMs == nil` → auto-progress immediately via
+    /// `nextRep()` (the Next-rep pill is the only CTA, no countdown
+    /// shown, debug-logged).
+    private func enterBetween() {
+        guard let reps = currentSet?.reps, reps > 0 else {
+            // No reps to iterate — fall through to nextRep, which
+            // walks the state machine forward.
+            nextRep()
+            return
+        }
+        // Advance `currentRepIndex` so the BETWEEN body shows the
+        // rep that's "on deck" (the next rep, not the one we just
+        // finished).
+        let nextIdx = (currentRepIndex ?? -1) + 1
+        // Last rep of the set → countdown auto-progresses to POST
+        // on :00 (spec §BETWEEN + R7 fallback). For S3 we leave the
+        // state in BETWEEN until the countdown hits :00, then
+        // `nextRep` decides whether to advance LIVE or POST. S4
+        // fills the POST body.
+        guard let intervalMs = intervalMs else {
+            // R7: no intervalText. Auto-progress immediately.
+            print("[SessionConsoleViewModel] R7: no intervalText for set \(currentSet?.id ?? "nil"); auto-progressing past BETWEEN")
+            nextRep()
+            return
+        }
+        state = .between
+        countdownRemainingMs = intervalMs
+        startCountdown(intervalMs: intervalMs, totalReps: reps)
+    }
+
+    /// V0.54 S3 (2026-09-09): the countdown timer. Fires every
+    /// 100ms so the `:12 → :11 → :10` reading updates smoothly. At
+    /// 0 the timer advances via `nextRep()` (which decides LIVE vs
+    /// POST). Held weakly on the VM via a private `Task` handle —
+    /// cancelled when the VM re-enters a non-BETWEEN state, or when
+    /// `nextRep()` short-circuits the countdown.
+    private var countdownTask: Task<Void, Never>? = nil
+
+    private func startCountdown(intervalMs: Int, totalReps: Int) {
+        countdownTask?.cancel()
+        let startedAt = Date()
+        countdownTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self = self else { return }
+                let elapsed = Int(Date().timeIntervalSince(startedAt) * 1000)
+                let remaining = max(intervalMs - elapsed, 0)
+                await MainActor.run {
+                    self.countdownRemainingMs = remaining
+                }
+                if remaining <= 0 {
+                    await MainActor.run {
+                        self.countdownFinished(totalReps: totalReps)
+                    }
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+    }
+
+    /// V0.54 S3 (2026-09-09): the countdown hit :00. Either advance
+    /// LIVE for the next rep, or — if the just-finished rep was the
+    /// last in the set — transition to POST (spec §BETWEEN).
+    private func countdownFinished(totalReps: Int) {
+        countdownTask?.cancel()
+        countdownTask = nil
+        countdownRemainingMs = nil
+        let finishedIdx = (currentRepIndex ?? -1) + 1
+        if finishedIdx >= totalReps - 1 {
+            // Last rep done — spec §BETWEEN: auto-progress to POST.
+            // S4 wires the POST body; S3 lands the state transition
+            // and clears the countdown. The POST body's stub is the
+            // "S4 fills this" placeholder, identical to the S1 stub.
+            state = .post
+            return
+        }
+        // Otherwise advance LIVE for the next rep.
+        currentRepIndex = finishedIdx
+        state = .live
+    }
+
+    /// V0.54 S3 (2026-09-09): the `Next rep` pill — short-circuits
+    /// the countdown (spec §BETWEEN: "non-blocking, exists for cases
+    /// where the send-off is already past"). Fires from any
+    /// remaining-countdown position. If the just-finished rep is
+    /// the last, transitions to POST.
+    func nextRep() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        countdownRemainingMs = nil
+        let finishedIdx = (currentRepIndex ?? -1) + 1
+        let totalReps = currentSet?.reps ?? 0
+        if totalReps > 0 && finishedIdx >= totalReps - 1 {
+            state = .post
+            return
+        }
+        currentRepIndex = finishedIdx
+        state = .live
+    }
+
+    /// V0.54 S3 (2026-09-09): swap two lanes' wave_assignment rows
+    /// (spec §3: "Tap a lane chip → quick-action menu with the
+    /// other lanes' names → tap to move."). The in-memory
+    /// `waveAssignmentsByLane` is the source of truth for the UI —
+    /// the DB write is a separate follow-up (V0.55 candidate per
+    /// spec §11 "Ask first: removing wave drag-and-drop").
+    /// `a` and `b` are lane numbers (1-indexed).
+    func swapLanes(a: Int, b: Int) {
+        guard a != b,
+                        let aName = waveAssignmentsByLane[a],
+                        let bName = waveAssignmentsByLane[b] else {
+            return
+        }
+        waveAssignmentsByLane[a] = bName
+        waveAssignmentsByLane[b] = aName
+        Haptics.tap()
     }
 
     /// S1 stub-body escape hatch: when the LIVE/BETWEEN/POST stub
@@ -170,6 +469,9 @@ final class SessionConsoleViewModel: ObservableObject {
     /// surface so the S1 acceptance harness can re-enter PRE without
     /// dismissing the cover.
     func resetToPre() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        countdownRemainingMs = nil
         state = .pre
     }
 
@@ -222,7 +524,9 @@ final class SessionConsoleViewModel: ObservableObject {
     #if DEBUG
     func seedV54DemoConsole() {
         let args = ProcessInfo.processInfo.arguments
-        if args.contains("-v54-demo-console-jodie09") || args.contains("-v54-demo-console-live-jodie09") {
+        if args.contains("-v54-demo-console-jodie09")
+            || args.contains("-v54-demo-console-live-jodie09")
+            || args.contains("-v54-demo-console-between-jodie09") {
             seedV54DemoConsoleJodie09()
         } else {
             seedV54DemoConsoleThreshold()
@@ -470,9 +774,36 @@ final class SessionConsoleViewModel: ObservableObject {
         // `-v54-demo-console-live-jodie09` wins over `-v54-demo-
         // console-live` (the original S1 flag) for harness
         // predictability — same -live semantics, different seed.
-        if ProcessInfo.processInfo.arguments.contains("-v54-demo-console-live")
-            || ProcessInfo.processInfo.arguments.contains("-v54-demo-console-live-jodie09") {
+        //
+        // V0.54 S3 (2026-09-09): `-v54-demo-console-between-jodie09`
+        // lands in BETWEEN for the screenshot harness. After seeding
+        // the rich workout + LIVE state, we run `liveEnter()` to
+        // populate `intervalMs` / `waveAssignmentsByLane`, then
+        // force the state to `.between` with a non-zero countdown.
+        // The seeded interval is the parent set's "1:30" → 90000 ms,
+        // matching the wireframe spec §BETWEEN L120-136.
+        if ProcessInfo.processInfo.arguments.contains("-v54-demo-console-between-jodie09") {
             state = .live
+            liveEnter()
+            currentRepIndex = 0
+            state = .between
+            countdownRemainingMs = intervalMs ?? 90_000
+        } else if ProcessInfo.processInfo.arguments.contains("-v54-demo-console-live")
+            || ProcessInfo.processInfo.arguments.contains("-v54-demo-console-live-jodie09") {
+            // V0.54 S3 (2026-09-09): the LIVE seed must run
+            // `liveEnter()` too — without it, `waveAssignmentsByLane`
+            // stays empty and the WaveChipStrip (rendered above the
+            // stopwatch) is invisible. The LIVE screenshot now proves
+            // WaveAllocator's output surfaces in the Console's
+            // first-rep header (spec §3 / decision 11). For the
+            // -between flag we set state = .live first so liveEnter's
+            // `currentSet = resolvedSet` writes fire correctly — the
+            // between flag then overrides state. For the -live flag
+            // we stay in .live and liveEnter's state-machine
+            // transitions are no-ops (it only mutates `intervalMs`,
+            // `waveAssignmentsByLane`, and the best-effort DB write).
+            state = .live
+            liveEnter()
         } else {
             state = .pre
         }

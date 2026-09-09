@@ -446,26 +446,20 @@ private struct RepGroupRowView: View {
                             .foregroundColor(Color.textMuted)
                     }
 
-                    // V0.53.3 (2026-09-08, caption-wrap completion): the above-set
-                    // "(note)" caption — sibling of the V0.53.2 below-set
-                    // wrap fix — now also wraps multi-line via
-                    // .lineLimit(nil) + fixedSize. The V0.53.2 pass
-                    // landed on the 3 below-set paths (lines 511-521,
-                    // 2142-2152, 2264-2274, 2469-2479) and missed
-                    // this one — the "(note)" inside the header HStack
-                    // still truncated mid-number ("Each: 50 @ 65% / 50 @
-                    // 70% / 50 @ 75%" → "Each: 50 @ 65% / 50 @ 70% /…").
-                    // Wrapping here keeps the header from competing with
-                    // the segmented control's space; the caption drops to
-                    // a multi-line below the ×N + parent distance row.
-                    if let note = rg.note {
-                        Text("(\(note))")
-                            .font(.caption)
-                            .italic()
-                            .foregroundColor(Color.textFaint)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    // V0.54 S3 (2026-09-09, jodie-09 dedupe nit): the
+                    // "(note)" caption that V0.53.3 added to the header
+                    // HStack has been removed. The V0.53.2 below-set
+                    // italic caption (line 665 in this file) is the
+                    // canonical render path — matching the V0.53.x
+                    // builder convention. Keeping the header-side
+                    // duplicate produced a double render of
+                    // "Each: 50 @ 65% / 70% / 75%" on the 6×100 set
+                    // (the user's repro screenshot showed the caption
+                    // twice — once beside the spine, once below the
+                    // rep cards). The below-set render handles wrap
+                    // and italic identically, so the only loss is the
+                    // header-side position. Pure visual dedupe — no
+                    // data or accessibility impact.
 
                     ForEach(rg.gear ?? [], id: \.self) { gear in
                         GearBadge(gear: gear, optional: rg.gearOptional ?? false)

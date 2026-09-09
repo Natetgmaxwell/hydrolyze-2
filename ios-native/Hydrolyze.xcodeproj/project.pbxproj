@@ -51,6 +51,7 @@
 		4B9A611012E4CC4F6AA27AE0 /* SessionConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68572AE70FBB109091D94F2 /* SessionConsoleView.swift */; };
 		4BED39CD2EEF1833AC3A96A9 /* MyScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF122EA41003564C5520C06 /* MyScheduleView.swift */; };
 		4E4C788802BF1959ABFC99A2 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = B785FD52B8AAC2796EF6C35B /* Color+Hex.swift */; };
+		4ED54C38C3BD605B97EBD70A /* V0543SessionConsoleStateMachineSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA8288580A7B0F81D5B0E6F4 /* V0543SessionConsoleStateMachineSmoke.swift */; };
 		4FFDB32855E9F9462D291774 /* build_and_run_recoverysignature.sh in Resources */ = {isa = PBXBuildFile; fileRef = F4843BBD2FEF6AF58952FAB7 /* build_and_run_recoverysignature.sh */; };
 		52097E02FF93302A145F9E4F /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCC2E5E797656F432A0858C /* AuthManager.swift */; };
 		54B53CC34EDC25C4E355C112 /* WorkoutParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B40787D34BE7E13CCAD72D /* WorkoutParser.swift */; };
@@ -87,6 +88,7 @@
 		88641505D11203855C8272C2 /* TrainingSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52A4B3670041A064FEE0BD7C /* TrainingSchedule.swift */; };
 		8B46FF1084182DB66281D3BA /* AuthTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78DB0B15D4B4229D74DE05F8 /* AuthTextField.swift */; };
 		8FC0A053C3A2E2B4D02D9539 /* ThreeMTReviewSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425417DFAF0A9A64A6374435 /* ThreeMTReviewSupport.swift */; };
+		91C6D76FCA61DA5717664FCC /* WaveChipStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF6CCC611FAE45608BBA0CBF /* WaveChipStrip.swift */; };
 		9776C8384338B70C24FA43CC /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBCD81FD87A2BA882885F663 /* Workout.swift */; };
 		98834E941E23401C1F9B4A8E /* JetBrainsMonoNerdFont-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 839E1BC1A61ABB522454DEE7 /* JetBrainsMonoNerdFont-Bold.ttf */; };
 		98D0936CCB3BE6463B5A0ECE /* SessionReviewViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D353FF572767DA374F6433AF /* SessionReviewViewModel.swift */; };
@@ -304,11 +306,13 @@
 		D662EC6A41D34AFB29805D1C /* Prediction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Prediction.swift; sourceTree = "<group>"; };
 		DBCD81FD87A2BA882885F663 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		DC9FC4386910B6A7B249B8C3 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		DF6CCC611FAE45608BBA0CBF /* WaveChipStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveChipStrip.swift; sourceTree = "<group>"; };
 		E054B0B3F7353601DA86C879 /* Coach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Coach.swift; sourceTree = "<group>"; };
 		E3B318621C603AC7D8FAEBA1 /* HydrolyzeColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrolyzeColors.swift; sourceTree = "<group>"; };
 		E6229921666375F026D5209E /* FragmentTimeRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FragmentTimeRecord.swift; sourceTree = "<group>"; };
 		E695D2E4174F8C368AFB7740 /* build_and_run_parserzone.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_parserzone.sh; sourceTree = "<group>"; };
 		E8D42BD09217EC1098E3901C /* ChartDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartDataService.swift; sourceTree = "<group>"; };
+		EA8288580A7B0F81D5B0E6F4 /* V0543SessionConsoleStateMachineSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V0543SessionConsoleStateMachineSmoke.swift; sourceTree = "<group>"; };
 		EDFB5B2739D0F6DF48812557 /* WorkoutPreviewBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPreviewBuilder.swift; sourceTree = "<group>"; };
 		F0E11B7104A97D4F39692D1C /* SwimmerUpcomingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwimmerUpcomingView.swift; sourceTree = "<group>"; };
 		F24A9DE7AED9F499FFF52E9C /* build_and_run_dropruledisplay.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_and_run_dropruledisplay.sh; sourceTree = "<group>"; };
@@ -362,6 +366,7 @@
 			isa = PBXGroup;
 			children = (
 				440B045FCE0E8B5689D67EB7 /* AttendanceBreadcrumb.swift */,
+				DF6CCC611FAE45608BBA0CBF /* WaveChipStrip.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -571,6 +576,7 @@
 				39EB36ADDE0560C444A699F6 /* V0531DesignARepCardLayoutSmoke.swift */,
 				B5C719107D86EF0CF21440DF /* V0532RepCardModeSelectionSmoke.swift */,
 				1649077A181309BB971AE569 /* V0533FragmentDistanceLabelSmoke.swift */,
+				EA8288580A7B0F81D5B0E6F4 /* V0543SessionConsoleStateMachineSmoke.swift */,
 				EF69CCB3B0B19C51E8A84D20 /* CLI */,
 			);
 			name = Tests;
@@ -959,6 +965,7 @@
 				B7E47F35F585923599AD2151 /* VolumeButtonService.swift in Sources */,
 				FA91467231FEDE548780E34F /* WaveAllocator.swift in Sources */,
 				0D7498B11EC7438A96B9E109 /* WaveAssignment.swift in Sources */,
+				91C6D76FCA61DA5717664FCC /* WaveChipStrip.swift in Sources */,
 				9776C8384338B70C24FA43CC /* Workout.swift in Sources */,
 				B4373B99275F13CC5A37D24D /* WorkoutBuilderView.swift in Sources */,
 				85D16209535C8B195B66E230 /* WorkoutCard.swift in Sources */,
@@ -997,6 +1004,7 @@
 				AA55B3B7E1FE07CFD4EA45F5 /* V0531DesignARepCardLayoutSmoke.swift in Sources */,
 				E868BEBBF2D5280DDFDC52FA /* V0532RepCardModeSelectionSmoke.swift in Sources */,
 				61AA6BE0070D774DC72BD9F1 /* V0533FragmentDistanceLabelSmoke.swift in Sources */,
+				4ED54C38C3BD605B97EBD70A /* V0543SessionConsoleStateMachineSmoke.swift in Sources */,
 				86D02092BD9FAA9D4FB2185F /* WorkoutParser3MTCLITest.swift in Sources */,
 				A655A7B13E6C0360C4808B68 /* WorkoutParserZoneCLITest.swift in Sources */,
 			);
