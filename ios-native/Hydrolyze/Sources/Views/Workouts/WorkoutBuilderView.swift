@@ -1,4 +1,5 @@
 import SwiftUI
+import os.log
 
 /// WorkoutBuilderView — natural language workout creation with live preview.
 /// Uses debounced input to call the Edge Function parser and renders via WorkoutPreview.
@@ -37,6 +38,24 @@ struct WorkoutBuilderView: View {
                         }
                     }
                     .foregroundColor(Color.statusError)
+                }
+            }
+            // V0.54 S3.3c (2026-09-10): standard iOS keyboard accessory
+            // with a Done button. Coaches typing a practice hit "Done"
+            // to dismiss the software keyboard, which exposes the
+            // Save & Schedule / Save as Draft buttons in the pinned
+            // CTA footer. Without this, after a multi-line paste the
+            // only path to Save was "drag the ScrollView" — and the
+            // coach on a phone in a busy pool deck doesn't know that.
+            // ToolbarItemGroup(placement: .keyboard) attaches the
+            // bar to whichever field (title or practice) is focused.
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isTextFieldFocused = false
+                    }
+                    .fontWeight(.semibold)
                 }
             }
         }
@@ -158,6 +177,14 @@ struct WorkoutBuilderView: View {
                 }
                 .padding(16)
             }
+            // V0.54 S3.3c (2026-09-10): dismissing the keyboard by
+            // dragging the ScrollView is one of two standard iOS
+            // affordances for "I'm done typing, I want to tap Save".
+            // Without this, the software keyboard stays up and all
+            // taps route to UIRemoteKeyboardWindow — the pinned CTA
+            // footer in the parent VStack is unreachable on iPhone.
+            // `.interactively` matches Notes / Mail / Messages feel.
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 
@@ -168,6 +195,7 @@ struct WorkoutBuilderView: View {
         ScrollView {
             inputColumnContent
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     /// iPad: preview side is its own ScrollView so it can scroll independently
@@ -177,6 +205,7 @@ struct WorkoutBuilderView: View {
         ScrollView {
             previewColumnContent
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     /// Shared input-side VStack. Title, syntax hints, text editor, parse
@@ -199,6 +228,12 @@ struct WorkoutBuilderView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.divider, lineWidth: 1)
                 )
+                // V0.54 S3.3c (2026-09-10): bind the title field to the same
+                // FocusState as the practice TextEditor so a single keyboard
+                // toolbar / Done button dismisses either input. Without this,
+                // tapping the title keeps the keyboard up but `Done` only
+                // sees the TextEditor's focus flag.
+                .focused($isTextFieldFocused)
 
             syntaxHintsCard
 
@@ -674,8 +709,14 @@ final class WorkoutBuilderViewModel: ObservableObject {
             isSaving = false
             return id
         } catch {
-            print("[WorkoutBuilderView] saveWorkout error: \(error)")
-            parseError = "Couldn't save workout. Check your connection and try again."
+            // V0.54 S3.3c (2026-09-10): surface the underlying error
+            // so on-device failures are diagnosable from the in-app
+            // parseStatusLine (line ~345). The previous "Check your
+            // connection" banner was the only on-device signal and
+            // it told us nothing — one reproduction got a 121s hang
+            // then a cancel with no further detail.
+            os_log("[WorkoutBuilder] saveWorkout error: %{public}@", log: .default, type: .error, String(describing: error))
+            parseError = "Couldn't save workout: \(error.localizedDescription)"
             isSaving = false
             return nil
         }
