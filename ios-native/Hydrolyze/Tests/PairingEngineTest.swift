@@ -182,7 +182,13 @@ final class PairingEngineTest: XCTestCase {
                 sigmaMs: 2000,
                 sampleSize: 0,
                 source: .curve,
-                maturity: .none
+                maturity: .none,
+                // T3/T4 (2026-06-20) added suit + start calibration deltas to
+                // Prediction. nil = no calibration data, which is the correct
+                // fixture for these pairing-invariant scenarios (they assert on
+                // assignment topology, not on calibrated times).
+                suitDeltaMs: nil,
+                startDeltaMs: nil
             )
         }
         return preds

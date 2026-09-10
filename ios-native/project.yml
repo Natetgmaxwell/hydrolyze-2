@@ -39,12 +39,37 @@ targets:
     type: bundle.unit-test
     platform: iOS
     sources:
+      # 2026-09-10: Hydrolyze/Tests holds THREE idioms, only one of which can
+      # live in an XCTest bundle:
+      #   1. *Test.swift            — real XCTest (@testable import Hydrolyze). KEEP.
+      #   2. *Smoke.swift           — standalone scripts with TOP-LEVEL code. They
+      #                               do NOT @testable-import; they REDECLARE
+      #                               production enums/structs and assert on the
+      #                               copy. They cannot compile into a bundle
+      #                               ("expressions are not allowed at the top
+      #                               level") and they cannot fail when production
+      #                               breaks. Run them with their own runner.
+      #   3. CLI/*CLITest.swift     — standalone CLI harnesses, written because
+      #                               "no Xcode required" on the orchestrator Mac.
+      #                               Same top-level-code problem.
+      # Excluding 2 and 3 is what makes `xcodebuild test` runnable at all.
       - path: Hydrolyze/Tests
+        excludes:
+          - "CLI/**"
+          - "*Smoke.swift"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.hydrolyze.tests
         SWIFT_VERSION: "5.9"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        # 2026-09-10: without this the test bundle cannot code sign and
+        # `xcodebuild test` dies before running a single test:
+        #   "Cannot code sign because the target does not have an Info.plist
+        #    file and one is not being generated automatically."
+        # The app target supplies its own INFOPLIST_FILE; the test bundle has
+        # none, so it must generate one. This is why the test target had never
+        # been buildable.
+        GENERATE_INFOPLIST_FILE: "YES"
         # Test target needs to access Hydrolyze's internal types
         # (PairingEngine, Prediction, WaveAssignment, Lap). The
         # @testable import in the test file + bundle.unit-test type

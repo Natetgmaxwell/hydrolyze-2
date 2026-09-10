@@ -9,6 +9,7 @@
 #     1. git state        — confirm HEAD and working tree on macstudio
 #     2. xcodegen         — regenerate Hydrolyze.xcodeproj from project.yml
 #     3. xcodebuild       — compile for iOS Simulator (Debug)
+#     3b. xcodebuild test — run the XCTest bundle (SKIP_TESTS=1 to bypass)
 #     4. install + launch — simctl install/launch on the booted simulator
 #
 # LESSON ENCODED (2026-07-14)
@@ -32,7 +33,8 @@
 #   non-zero BLOCKED — any phase failed; printed error precedes exit
 #
 # REQUIREMENTS
-#   - SSH alias 'macstudio' resolves in ~/.ssh/config
+#   - SSH alias 'macstudio-tailnet' resolves in ~/.ssh/config
+#     (the bare 'macstudio' LAN alias is DEAD — it hangs ~75s then times out)
 #   - macstudio has /opt/homebrew/bin/xcodegen installed
 #   - macstudio has an iOS Simulator booted (default: iPhone 15 Pro)
 #   - Hydrolyze.xcodeproj was previously generated (so DerivedData exists)
@@ -60,9 +62,22 @@ APP_BUNDLE='/Users/nathanmaxwell/Library/Developer/Xcode/DerivedData/Hydrolyze-g
 # Bundle ID — must match PRODUCT_BUNDLE_IDENTIFIER in project.yml.
 BUNDLE_ID='com.hydrolyze.mobile'
 
-# SSH alias. macstudio is configured in ~/.ssh/config.
-# Override with SSH_HOST=... for alternate routes (e.g. tailnet IP).
-SSH_HOST="${SSH_HOST:-macstudio}"
+# SSH alias.
+# 2026-09-10: the bare `macstudio` alias points at LAN 192.168.1.46, which is
+# UNREACHABLE — ssh hangs ~75s then times out. `macstudio-tailnet` (Tailscale
+# 100.64.127.83) is the working route and is the only correct default.
+SSH_HOST="${SSH_HOST:-macstudio-tailnet}"
+
+# Remote environment prefix, prepended to every remote command.
+#   PATH        — /opt/homebrew/bin is NOT on the non-interactive SSH PATH, and
+#                 /usr/local/bin/node (v21.6.1) shadows homebrew's v25.9.0.
+#   DEVELOPER_DIR — macstudio has Xcode 26.6 (stable) AND 27.0 (beta), and
+#                 xcode-select points at the BETA. Unpinned builds silently
+#                 change SDK; beta-Xcode archives are App-Store-rejected.
+#                 Override with XCODE_APP=/Applications/Xcode-beta.app to test
+#                 against the beta deliberately.
+XCODE_APP="${XCODE_APP:-/Applications/Xcode.app}"
+REMOTE_ENV="export PATH=/opt/homebrew/bin:\$PATH; export DEVELOPER_DIR='${XCODE_APP}/Contents/Developer';"
 
 # xcodegen absolute path — NOT on non-interactive SSH PATH.
 XCODEGEN='/opt/homebrew/bin/xcodegen'
@@ -105,7 +120,7 @@ run_remote() {
   fi
   # -tt not used; BatchMode preferred for non-interactive. We rely on
   # ~/.ssh/config for identity, port, and any keepalive options.
-  ssh "$SSH_HOST" "$cmd"
+  ssh "$SSH_HOST" "${REMOTE_ENV} $cmd"
 }
 
 # ---------------------------------------------------------------------------
@@ -154,7 +169,7 @@ phase_xcodegen() {
     echo 'PHASE 2 OK (dry-run): xcodegen would run.'
     return 0
   fi
-  if ! ssh "$SSH_HOST" "cd '${PROJECT_ROOT}' && ${XCODEGEN} generate" \
+  if ! ssh "$SSH_HOST" "${REMOTE_ENV} cd '${PROJECT_ROOT}' && ${XCODEGEN} generate" \
        >"$xcodegen_out" 2>&1; then
     echo 'BLOCKED in PHASE 2: xcodegen generate failed.' >&2
     echo '--- last 30 lines of xcodegen output ---' >&2
@@ -192,7 +207,7 @@ phase_xcodebuild() {
   fi
   # We let the full output stream to the temp file. `tail -40` is then
   # printed after — xcodebuild output is huge and we only want the tail.
-  if ! ssh "$SSH_HOST" "cd '${PROJECT_ROOT}' && xcodebuild \
+  if ! ssh "$SSH_HOST" "${REMOTE_ENV} cd '${PROJECT_ROOT}' && xcodebuild \
       -project Hydrolyze.xcodeproj \
       -scheme Hydrolyze \
       -destination 'generic/platform=iOS Simulator' \
@@ -242,6 +257,52 @@ IPAD_UDID='7135C236-4F54-47D3-8609-3F6808A35149'
 # before scp. Both are in /tmp so they do not pollute the repo.
 LOCAL_SCREENSHOT_DIR='/tmp/hydrolyze-screenshots'
 REMOTE_SCREENSHOT_DIR='/tmp/hydrolyze-screenshots-remote'
+
+# ---------------------------------------------------------------------------
+# PHASE 3b: xcodebuild test  (added 2026-09-10)
+# ---------------------------------------------------------------------------
+# A green build proves compilation, not correctness. Until 2026-09-10 this
+# chain had no test step at all — and the first run revealed the test target
+# had NEVER been buildable (no Info.plist -> code-sign failure) and the one
+# real XCTest had been uncompilable for ~3 months. See the "test gate" section
+# of the ios-build-verification-outside-xcode skill.
+#
+# Set SKIP_TESTS=1 to bypass (e.g. when iterating on pure UI chrome).
+phase_test() {
+  echo
+  echo 'PHASE 3b: xcodebuild test (iOS Simulator)'
+  echo '--------------------------------------------------------------'
+  if [[ "${SKIP_TESTS:-0}" -eq 1 ]]; then
+    echo 'PHASE 3b SKIPPED (SKIP_TESTS=1).'
+    return 0
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo 'PHASE 3b OK (dry-run): xcodebuildmcp simulator test would run.'
+    return 0
+  fi
+  local t_out
+  t_out="$(mktemp -t xctest.XXXXXX)"
+  if ! ssh "$SSH_HOST" "${REMOTE_ENV} cd '${PROJECT_ROOT}' && xcodebuildmcp simulator test \
+      --project-path '${PROJECT_ROOT}/Hydrolyze.xcodeproj' \
+      --scheme Hydrolyze \
+      --simulator-name '${SIM_NAME:-iPhone 17 Pro Max}' \
+      --configuration Debug" >"$t_out" 2>&1; then
+    echo 'BLOCKED in PHASE 3b: tests failed.' >&2
+    tail -40 "$t_out" >&2 || true
+    rm -f "$t_out"
+    return 1
+  fi
+  # xcodebuildmcp exits 0 even on test failure; the verdict is in the text.
+  if grep -qE '^\s*❌|Test failed' "$t_out"; then
+    echo 'BLOCKED in PHASE 3b: tests reported failure.' >&2
+    tail -40 "$t_out" >&2 || true
+    rm -f "$t_out"
+    return 1
+  fi
+  grep -E '✅|tests passed|Compiler Errors' "$t_out" | tail -5 || tail -10 "$t_out"
+  rm -f "$t_out"
+  echo 'PHASE 3b OK: tests green.'
+}
 
 phase_install_launch() {
   echo
@@ -448,6 +509,7 @@ echo "  bundle id   : $BUNDLE_ID"
 phase_git_state
 phase_xcodegen
 phase_xcodebuild
+phase_test
 phase_install_launch
 
 echo
