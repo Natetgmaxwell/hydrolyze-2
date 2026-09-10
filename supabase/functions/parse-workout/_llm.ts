@@ -185,7 +185,7 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
 2. **Time-based sets**: "Free - 8:00 kick on side" = freestyle kicking for 8 minutes. distance=null, the time is a DURATION.
 3. **Per-rep-range instructions**: "1-2 = 2 uw kicks + 2 fast arms" after "10 x 25 @ 30" describes specific reps. Attach to the parent set's note.
 4. **Implicit inheritance (ditto)**: A quote mark (") means "same as above." Resolve it — do not pass the literal quote through.
-5. **Round multipliers**: "twice through" / "2 x through" AFTER a block means repeat the block. "N rounds:" BEFORE a block means the block runs N times. Neither creates a set, neither multiplies reps.
+5. **Round multipliers**: "twice through" / "2 x through" AFTER a block and "N rounds:" BEFORE a block both mean the block runs N times — MULTIPLY each repGroup's reps in that block by N (2 × 50m under "2 rounds:" → reps=4). Neither marker creates its own set. Match the regex engine's locked bench semantics (real-input-13: 2 rounds × 2 × 50m → reps 4).
 6. **Composite sets / fragments**:
    - Inline parens: "4 x (75 fast / 25 easy)" → 1 repGroup, reps=4, distance=100, fragments=[{distance:75, stroke:null, intensity:{type:"sprint",label:"fast"}}, {distance:25, stroke:null, intensity:{type:"easy",label:"easy"}}]
    - "Each N: 25 Drill/25 Build/.../25 Easy" → 4 fragments on the parent repGroup (the slash-separated distance-prefixed pattern is ALWAYS composite — see rule 18).
@@ -238,7 +238,7 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
     - '8 × 50 @ 75% on 1:00' → '{intensity: percent_range "75%", interval: "1:00"}'.
     - '4 × 50 @ 1:00' (no percent) → '{intensity: null, interval: "1:00"}'.
     - '4 × 100 @ 1:30 @ 80%' → '{intensity: percent_range "80%", interval: "1:30"}' (interval precedes intensity — read both '@' clauses).
-    - '4 × 100 @ 80–85% on 3 rounds' → '{intensity: percent_range "80–85%", interval: null}' (the '3 rounds' is a SECTION directive, not a per-rg modifier).
+    - '4 × 100 @ 80–85% on 3 rounds' → '{intensity: percent_range "80–85%", interval: null}' ('3 rounds' is not part of the intensity; it multiplies the block's reps per rule 5).
 24. **Race rhythm / event rhythm / race pace / NN-pace intensity vocabulary**. All four are SYNONYMS for the same race_pace intensity tier:
     - 'race rhythm' → '{type: "race_pace", label: "race rhythm"}'
     - 'event rhythm' → '{type: "race_pace", label: "event rhythm"}'
