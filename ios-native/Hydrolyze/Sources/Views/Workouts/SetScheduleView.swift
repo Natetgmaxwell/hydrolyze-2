@@ -306,7 +306,7 @@ final class SetScheduleViewModel: ObservableObject {
         defer { isSaving = false }
 
         do {
-            let resolvedCoachId = try await authManager.ensureCoach()
+            let resolvedCoachId = try await authManager.ensureCoachWithRetry()
             let formatter = ISO8601DateFormatter()
             let dateStr = String(formatter.string(from: selectedDate).prefix(10))
             if let existingId = workoutId {
@@ -337,7 +337,7 @@ final class SetScheduleViewModel: ObservableObject {
         defer { isSaving = false }
 
         do {
-            let resolvedCoachId = try await authManager.ensureCoach()
+            let resolvedCoachId = try await authManager.ensureCoachWithRetry()
             if let existingId = workoutId {
                 _ = try await workoutService.updateWorkout(workoutId: existingId, updates: ["status": "draft"])
                 return existingId

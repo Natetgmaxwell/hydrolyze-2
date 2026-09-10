@@ -1,5 +1,6 @@
 import SwiftUI
 import os.log
+import Supabase
 
 /// WorkoutBuilderView — natural language workout creation with live preview.
 /// Uses debounced input to call the Edge Function parser and renders via WorkoutPreview.
@@ -680,7 +681,13 @@ final class WorkoutBuilderViewModel: ObservableObject {
     func saveWorkout(authManager: AuthManager) async -> String? {
         isSaving = true
         do {
-            let resolvedCoachId = try await authManager.ensureCoach()
+            // V0.54 S3.3d (2026-09-10): use the bounded-retry wrapper
+            // so a wedged iOS URLSession connection (HTTP/3 QUIC) can't
+            // hang the save path for 60s+ per attempt. S3.3c observed
+            // 18 stacked ~121s GETs to /rest/v1/coaches ending in
+            // cancel — the banner only showed the .single() decode
+            // error, not the underlying transport failure.
+            let resolvedCoachId = try await authManager.ensureCoachWithRetry()
             let id: String
             if let existingId = workoutId {
                 _ = try await workoutService.updateWorkout(workoutId: existingId, updates: [
@@ -716,10 +723,41 @@ final class WorkoutBuilderViewModel: ObservableObject {
             // it told us nothing — one reproduction got a 121s hang
             // then a cancel with no further detail.
             os_log("[WorkoutBuilder] saveWorkout error: %{public}@", log: .default, type: .error, String(describing: error))
-            parseError = "Couldn't save workout: \(error.localizedDescription)"
+            // V0.54 S3.3d (2026-09-10): S3.3c's banner only printed
+            // `error.localizedDescription` which is the wrapper text
+            // (e.g. "Cannot coerce the result to a single JSON
+            // object") — it hid the actual cause. Pattern-match
+            // PostgrestError, URLError, TimeoutError, DecodingError,
+            // AuthServiceError so the banner includes the underlying
+            // code/message instead.
+            parseError = Self.formatSaveError(error)
             isSaving = false
             return nil
         }
+    }
+
+    /// V0.54 S3.3d (2026-09-10): convert a save-path error into a
+    /// user-facing string that includes the underlying PostgREST /
+    /// URLSession / decode cause. See S3.3d commit note.
+    private static func formatSaveError(_ error: Error) -> String {
+        let nsError = error as NSError
+        if let postgrest = error as? PostgrestError {
+            let code = postgrest.code.map { " [PostgREST \($0)]" } ?? ""
+            return "Couldn't save workout: \(postgrest.message)\(code)"
+        }
+        if let urlError = error as? URLError {
+            return "Couldn't save workout (network): \(urlError.code.rawValue) \(urlError.localizedDescription)"
+        }
+        if let timeout = error as? TimeoutError {
+            return "Couldn't save workout: \(timeout.localizedDescription). Check connection."
+        }
+        if let decoding = error as? DecodingError {
+            return "Couldn't save workout (response decode failed): \(String(describing: decoding))"
+        }
+        if let authError = error as? AuthServiceError, let desc = authError.errorDescription {
+            return "Couldn't save workout: \(desc)"
+        }
+        return "Couldn't save workout: \(nsError.domain) #\(nsError.code) — \(nsError.localizedDescription)"
     }
 
     func loadWorkout(id: String) async {

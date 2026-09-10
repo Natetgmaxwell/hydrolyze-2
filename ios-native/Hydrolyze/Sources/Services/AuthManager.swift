@@ -325,6 +325,77 @@ final class AuthManager {
         return result
     }
 
+    /// V0.54 S3.3d (2026-09-10): bounded-retry wrapper around
+    /// `ensureCoach()`. The save path runs this on every tap, and on
+    /// the S3.3c build a wedged iOS URLSession connection (HTTP/3
+    /// QUIC against flidjtldfvrrntzwtnsq.supabase.co) stacked 18
+    /// ~121s GETs to /rest/v1/coaches that all cancelled without
+    /// surfacing an error — the user saw the .single() decode error
+    /// instead. This wrapper:
+    ///   1. Caches the result so the second save tap is instant.
+    ///   2. Bounds each attempt to 10s via Task group cancellation
+    ///      so a wedged connection surfaces as URLError(.timedOut)
+    ///      within seconds, not minutes.
+    ///   3. Retries once on timeout/transport errors with a fresh
+    ///      attempt (often enough to escape a sticky QUIC state).
+    ///   4. Surfaces the original error after the budget is exhausted
+    ///      so the caller's error formatter can print the real cause.
+    func ensureCoachWithRetry(maxAttempts: Int = 2, perAttemptTimeout: TimeInterval = 10) async throws -> String {
+        if let existing = coachId {
+            return existing
+        }
+        var lastError: (any Error)?
+        for attempt in 1...maxAttempts {
+            do {
+                return try await withTimeout(perAttemptTimeout) {
+                    try await self.ensureCoach()
+                }
+            } catch is TimeoutError {
+                lastError = TimeoutError(interval: perAttemptTimeout)
+                print("[AuthManager] ensureCoachWithRetry attempt \(attempt) timed out after \(perAttemptTimeout)s")
+                continue
+            } catch {
+                lastError = error
+                throw error
+            }
+        }
+        throw lastError ?? AuthServiceError.coachResolutionFailed
+    }
+
+    /// V0.54 S3.3d (2026-09-10): local `withTimeout` (supabase-swift's
+    /// `withTimeout` is `package`-scoped, not public). Cancels the
+    /// inner task group when the deadline elapses so URLSession tasks
+    /// get a `Task.checkCancellation()` propagated into the URLSession
+    /// async-await bridge, which terminates the in-flight request.
+    /// Operation is `@MainActor`-isolated because the only caller
+    /// (`ensureCoachWithRetry`) is itself MainActor — AuthManager is a
+    /// `@MainActor` class.
+    private func withTimeout<T: Sendable>(
+        _ interval: TimeInterval,
+        operation: @escaping @MainActor @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            defer { group.cancelAll() }
+            let deadline = Date(timeIntervalSinceNow: interval)
+            group.addTask { try await operation() }
+            group.addTask {
+                let remaining = deadline.timeIntervalSinceNow
+                if remaining > 0 {
+                    try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                }
+                try Task.checkCancellation()
+                throw TimeoutError(interval: interval)
+            }
+            // Race to the first result — the winner's value wins, the
+            // loser is cancelled by `defer { group.cancelAll() }`.
+            guard let result = try await group.next() else {
+                throw TimeoutError(interval: interval)
+            }
+            try Task.checkCancellation()
+            return result
+        }
+    }
+
     private func resolveCoachAndReturn(user: User) async throws {
         let coach = try await authService.getOrCreateCoach(
             userId: user.id.uuidString,
@@ -355,4 +426,13 @@ enum AuthServiceError: LocalizedError {
         case .swimmerNotLinked: return "No swimmer account linked to your sign-in. Ask your coach to invite you."
         }
     }
+}
+
+/// V0.54 S3.3d (2026-09-10): thrown by AuthManager.withTimeout when an
+/// attempt exceeds its budget. The save path surfaces this in the
+/// banner so the user can tell the failure is a transport timeout, not
+/// an RLS / payload / PostgREST error.
+struct TimeoutError: Error, LocalizedError {
+    let interval: TimeInterval
+    var errorDescription: String? { "Request timed out after \(Int(interval))s" }
 }
