@@ -2562,6 +2562,52 @@ export function workoutIs3MT(workout: Workout): boolean {
 // truncated to 12 hex chars. Re-parsing unchanged text yields identical
 // ids — replaceSetsForWorkout deletes + re-inserts sets, so previously
 // recorded times keyed by fragment_id survive a re-save.
+// V0.54 (2026-09-10): structural rep reconciliation. The regex engine's
+// rep counts are canonical whenever the source contains a round
+// multiplier — "2 rounds:", "2 times through:", "Main set — 2 rounds:",
+// "twice through", "repeat". The LLM (even with prompt rules 5/11)
+// inconsistently applies round multiplication to the bare "N rounds:"
+// form (0/7 live calls pre-fix), while the regex engine multiplies
+// deterministically and is locked by the bench corpus (real-input-13:
+// 2 rounds × 2 × 50m → reps 4). Root fix per the source-over-symptom
+// rule: one source of truth for STRUCTURE. The LLM keeps semantics
+// (intensity, strokes, fragments, notes); reps for round-affected
+// sourceLines are SET from the regex parse. Regex reps already include
+// the multiplier, so this is an assignment, never a second multiply.
+function reconcileRepCounts(llm: Workout, regex: Workout): Workout {
+  // Map each round-multiplied regex repGroup by its sourceLine.
+  const regexRepsBySource = new Map<string, number>();
+  for (const section of regex.sections) {
+    for (const ns of section.namedSets) {
+      for (const rg of ns.repGroups) {
+        if (typeof rg.reps === "number" && rg.sourceLine) {
+          regexRepsBySource.set(rg.sourceLine.trim(), rg.reps);
+        }
+      }
+    }
+  }
+  let reconciled = 0;
+  for (const section of llm.sections) {
+    for (const ns of section.namedSets) {
+      for (const rg of ns.repGroups) {
+        const key = (rg.sourceLine ?? "").trim();
+        const canonicalReps = regexRepsBySource.get(key);
+        // Only sourceLines the regex engine round-multiplied carry a
+        // value here... every regex rg is stored, so also compare: if
+        // the regex found this line at all, its reps are canonical.
+        if (canonicalReps !== undefined && rg.reps !== canonicalReps) {
+          rg.reps = canonicalReps;
+          reconciled++;
+        }
+      }
+    }
+  }
+  if (reconciled > 0) {
+    console.log(`[parse] rep reconciliation: ${reconciled} repGroup(s) aligned to regex-canonical reps`);
+  }
+  return llm;
+}
+
 function stampFragmentIds(workout: Workout): Workout {
   for (const section of workout.sections) {
     for (const ns of section.namedSets) {
@@ -2687,19 +2733,34 @@ async function parseWithFallback(
     // ponytail: structural cast. The shapes are identical at runtime;
     // the LSP can't unify them across the module boundary without
     // exporting Workout from _llm.ts (which would couple them).
-    const llmResult = await parseWithLLM(workoutText, coachVocabulary) as unknown as Workout;
+    const llmResult = await parseWithLLM(workoutText, coachVocabulary) as unknown as Workout & { unmapped_terms?: string[] };
     const totalRgs = llmResult.sections.reduce(
       (acc, s) => acc + s.namedSets.reduce((a, ns) => a + ns.repGroups.length, 0),
       0
     );
     if (totalRgs > 0) {
-      const stamped = stampFragmentIds(llmResult);
+      // V0.54 (2026-09-10): structural reconciliation — parse the same
+      // text through the regex engine and let its rep counts (which
+      // deterministically apply round multipliers, bench-locked) set
+      // reps for any sourceLine both paths found. Semantics stay LLM.
+      let reconciledResult = llmResult;
+      try {
+        const regexResult = parseWorkoutV2(workoutText);
+        reconciledResult = reconcileRepCounts(llmResult, regexResult);
+      } catch (reconErr) {
+        // Reconciliation is a guarantee, not a dependency: if the regex
+        // parse throws, ship the LLM result rather than failing the
+        // request (the regex fallback path already exists for total
+        // failure).
+        console.error(`[parse] rep reconciliation skipped (regex threw):`, reconErr instanceof Error ? reconErr.message : reconErr);
+      }
+      const stamped = stampFragmentIds(reconciledResult);
       return {
         ...stamped,
         // V0.52.1 (2026-09-08): pass the LLM's parsed response so the
         // context-aware local detector suppresses `descend` (and other
         // progression terms) when the rg/fragments already carry them.
-        unmapped_terms: mergeUnmapped(llmResult.unmapped_terms, llmResult),
+        unmapped_terms: mergeUnmapped(reconciledResult.unmapped_terms, reconciledResult as unknown as Parameters<typeof mergeUnmapped>[1]),
       };
     }
     console.error(`[parse] LLM returned 0 repGroups, falling back to regex`);
