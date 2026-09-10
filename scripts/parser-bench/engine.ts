@@ -511,6 +511,16 @@ function isSectionHeader(line: RawLine): boolean {
   const emDashMatch = t.match(/^([\w\s\-:/]+?)\s+—\s+(.+)$/);
   if (emDashMatch) {
     const left = emDashMatch[1].trim();
+    // ponytail (2026-09-10): a decorated round marker ("Main set — 2
+    // times through:", "Main set — 2 rounds:") is NOT a section header.
+    // The em-dash branch consumed it before the round-multiplier
+    // detector in parseWorkoutV2 could fire, so the multiplier never
+    // applied and every rep inside the round stayed at reps=1. Exclude
+    // right sides that are pure round-multiplier tails; the main loop's
+    // decorated roundMatch alternative handles them.
+    if (/^\d+\s*(?:times\s+through|rounds?|x\s*(?:thru|through))\s*:?\s*$/i.test(emDashMatch[2])) {
+      return false;
+    }
     if (left.length >= 3 && !/\d+\s*[x×]/.test(left)) {
       return true;
     }
@@ -1964,12 +1974,19 @@ function parseWorkoutV2(input: string): Workout {
       }
 
       // Round multiplier detection: "3 times through:", "2 Rounds:",
-      // "3x through", "2x through:", "each round", "repeat"
+      // "3x through", "2x through:", "each round", "repeat",
+      // "Main set — 2 times through:" (decorated, 2026-09-10)
       const roundMatch =
         line.text.match(/^(\d+)\s*times?\s+through\s*:?\s*$/i) ||
         line.text.match(/^(\d+)\s+rounds?\s*:?\s*$/i) ||
         line.text.match(/^(\d+)\s*[x×]\s*(?:thru|through)\s*:?\s*$/i) ||
-        line.text.match(/^(two|three|four|five|one)\s+rounds?\s*:?\s*$/i);
+        line.text.match(/^(two|three|four|five|one)\s+rounds?\s*:?\s*$/i) ||
+        // decorated form: "<Name> — N times through:" / "N rounds:".
+        // isSectionHeader no longer consumes these, so they land here.
+        // The section name is used as the pending label for the round.
+        line.text.match(
+          /^(?:[\w\s\-:/]{3,}?)\s+—\s+(\d+)\s*(?:times\s+through|rounds?|x\s*(?:thru|through))\s*:?\s*$/i,
+        );
       if (roundMatch) {
         const wordToNum: Record<string, number> = { two: 2, three: 3, four: 4, five: 5, one: 1 };
         const captured = roundMatch[1];
@@ -2191,6 +2208,25 @@ function parseWorkoutV2(input: string): Workout {
           if (segs.some((s) => /(?:x|×)\s*\d+/.test(s))) return false;
           return true;
         })();
+      // ponytail (2026-09-10): bare-effort-rung detector, companion to the
+      // !isBareEffortRung exclusion below. Strip the leading "<N>m" and an
+      // optional trailing "@ M:SS"/"@ N sec" interval; if ALL remaining
+      // tokens are intensity/pacing vocabulary, bare numbers ("100" as in
+      // "100 race pace", "9/10" effort), or fraction tokens ("9/10"), the
+      // line is a ladder rung SET, not an instruction note.
+      const isBareEffortRung = (() => {
+        const m = lineText.match(/^(\d+(?:\.\d+)?)\s*m?\b\s*(.*)$/i);
+        if (!m) return false;
+        if ((parseIntSafe(m[1]) ?? 999) > 200) return false; // not a swim distance
+        let rest = m[2].trim();
+        // strip a trailing send-off/rest interval
+        rest = rest.replace(/@\s*(?:\d+:\d{2}(?:\.\d+)?|\d+\s*(?:sec|sec)s?|:\d{2})\s*$/i, "").trim();
+        if (rest.length === 0) return true; // pure "25m" rung
+        const tokens = rest.split(/\s+/);
+        const INTENSITY_TOKEN_RE =
+          /^(?:\d+|\d+\/\d+|at|race|pace|rhythm|effort|sprint|fast|faster|slow|slower|easy|easier|hard|harder|max|maximal|maximum|moderate|strong|stronger|steady|cruise|tempo|build|descend|control(?:led)?|relax(?:ed)?|smooth|quality|tough|all[-\s]?out|very|pace)$/i;
+        return tokens.every((tok) => INTENSITY_TOKEN_RE.test(tok));
+      })();
       const isInstructionLine =
         !THREE_MT_RE.test(lineText) && // V0.38: a 3MT line is a SET, never an instruction
         !/\d+\s*[x×]\s*\d+/.test(lineText) && // no NxM pattern
@@ -2201,6 +2237,16 @@ function parseWorkoutV2(input: string): Workout {
         !/\d+\s*[x×]\s*\(/.test(lineText) &&
         // rule (f) exclusion (see above).
         !looksLikeRuleF &&
+        // ponytail (2026-09-10): bare effort rung exclusion. A line that
+        // is ONLY "<N>m + intensity descriptors" ("25m fast", "20m easy",
+        // "25m fast 100 race pace 9/10") is a SET — the smallest rung of
+        // a ladder like 100/50/25 — not an instruction note. Object-noun
+        // lines ("15 fast breakout", "10m underwater dolphin") keep their
+        // instruction treatment: their remaining words name a skill, not
+        // an intensity. The allowlist is deliberately narrow intensity /
+        // pacing vocabulary plus bare numbers ("100", "9/10") and an
+        // optional trailing "@ interval".
+        !isBareEffortRung &&
         (
           // Pattern 1: starts with a coaching word → instruction
           /^\s*(?:build|descend|hold|focus|maintain|strong|smooth|underwater|breakout|streamline|dolphin|easy|fast|slow|controlled|relaxed|perfect|race|quality|explosive|turn|push|dive|kick|drill|scull|breathe|negative|positive|long|short|tall|high|low|tight|loose|steady|consistent|gradual|progressive|activation|recovery)\b/i.test(lineText) ||
