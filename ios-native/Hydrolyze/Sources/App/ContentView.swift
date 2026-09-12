@@ -163,6 +163,15 @@ struct ContentView: View {
                 || args.contains("-v0532-mode-progression") {
                 return .builderJodie09
             }
+            // V0.54 details-tidy (2026-09-12): rich-renderer test
+            // routes to the builder with the new seed function. Same
+            // builder surface as the v46 case, but the seed is the
+            // rich Descend + fragment + verbatim workout (not the
+            // Slice 5 Threshold Tuesday or the jodie-09 Purposeful
+            // Threshold).
+            if args.contains("-rich-test") {
+                return .builder
+            }
             // V0.54 (2026-09-08): dedicated harness for the
             // Session Console's PRE state — the SessionConsoleView
             // itself reads `-v54-demo-console` for its seeded

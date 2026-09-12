@@ -111,6 +111,19 @@ struct WorkoutBuilderView: View {
                 viewModel.seedV0532ModeProgression()
                 return
             }
+            // V0.54 details-tidy (2026-09-12): rich-renderer verification
+            // harness. Seeds a fully-formed ParsedWorkout matching the
+            // user-stated spec `4x25 free as 12.5 strong / 12.5 easy,
+            // descend 1-4, race rhythm` so the details-page rich-renderer
+            // can be verified without depending on the parser round-trip.
+            // Unlike the v053* modes, this DOES NOT force preview-only —
+            // the full builder with action buttons renders, so the
+            // seeded workout can be saved as draft and then opened in
+            // the WorkoutDetailView for details-page verification.
+            if ProcessInfo.processInfo.arguments.contains("-rich-test") {
+                viewModel.seedRichTestWorkout()
+                return
+            }
             #endif
 
             // Phase 2.7 performance: warm up the parse-workout Edge Function on
@@ -145,6 +158,12 @@ struct WorkoutBuilderView: View {
         // V0.53.2 (2026-09-08): extended to the new mode-isolation
         // harnesses (-v0532-mode-uniform, -v0532-mode-progression)
         // — same preview-only constraint, same screenshot strategy.
+        // V0.54 details-tidy (2026-09-12): -rich-test gets the FULL
+        // builder (with action buttons) so the seeded workout can be
+        // saved as a draft and verified on the WorkoutDetailView
+        // surface — the v053* modes are preview-only because they're
+        // single-purpose screenshot harnesses, but -rich-test is an
+        // end-to-end verification flow.
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-v0531-design-a-builder")
@@ -1252,6 +1271,105 @@ final class WorkoutBuilderViewModel: ObservableObject {
         let parsed = ParsedWorkout(title: nil, sections: [section], degraded: nil, degradedReason: nil)
 
         title = "Threshold Tuesday"
+        workoutText = text
+        parsedWorkout = parsed
+        parseSuccess = true
+        isPendingParse = false
+        cache[cacheKey(for: text)] = CachedParse(trimmedText: text, workout: parsed)
+        lastSentText = text
+    }
+
+    /// V0.54 details-tidy (2026-09-12): rich-renderer verification
+    /// harness. Seeds the exact workout the user specified for the
+    /// rich-renderer test:
+    ///   `4x25 free as 12.5 strong / 12.5 easy, descend 1-4, race rhythm`
+    ///
+    /// The ParsedWorkout is built to exercise all four rich-renderer
+    /// rules on the WorkoutDetailView:
+    ///   1. fragment math visibly sums (25m parent = 12.5 + 12.5)
+    ///   2. ×N exemplar shown on each fragment row
+    ///   3. DESCEND shown as ladder (1-4 progression), not flattened %
+    ///      range
+    ///   4. coach verbatim words ("race rhythm") preserved
+    ///
+    /// NOT preview-only (see scrollableContent): the full builder
+    /// renders with Save buttons, so the seeded workout can be saved
+    /// as a draft and then opened in the WorkoutDetailView for the
+    /// actual verification surface.
+    func seedRichTestWorkout() {
+        let text = """
+        4x25 free as 12.5 strong / 12.5 easy, descend 1-4, race rhythm
+        """
+        // Build the fragment tree the parser would have emitted.
+        // 4 reps × 2 fragments = 8 timed leaves. Each fragment is one
+        // addressed timing slot.
+        let fragment0 = ParsedFragment(
+            id: "frag_rich_0",
+            distance: 13,            // V0.53.3 server rounds 12.5 → 13 for the wire
+            distanceLabel: "12.5",   // verbatim source-text for display
+            stroke: "Free",
+            instruction: nil,
+            intensity: ParsedIntensity(type: .build, label: "strong"),
+            intensityType: "build",
+            intensityLabel: "strong",
+            startType: "wall",
+            suit: nil,
+            gear: nil,
+            descriptor: "strong",
+            confidence: 1.0,
+            restAfter: nil
+        )
+        let fragment1 = ParsedFragment(
+            id: "frag_rich_1",
+            distance: 13,
+            distanceLabel: "12.5",
+            stroke: "Free",
+            instruction: nil,
+            intensity: ParsedIntensity(type: .easy, label: "easy"),
+            intensityType: "easy",
+            intensityLabel: "race rhythm",  // verbatim word from coach text
+            startType: "wall",
+            suit: nil,
+            gear: nil,
+            descriptor: "race rhythm",
+            confidence: 1.0,
+            restAfter: nil
+        )
+        // Mode 3 (per-rep progression) — Descend ladder with explicit
+        // per-rep targets so the ProgressionRepGroupRow renders the
+        // chevron + numeric label per card, NOT a flattened range.
+        let richSet = ParsedRepGroup(
+            reps: 4,
+            distance: 25,
+            stroke: "Free",
+            interval: nil,
+            intensity: nil,            // ladder-driven, no flat intensity
+            pacing: nil,
+            pattern: [],
+            patternType: nil,
+            connectors: nil,
+            note: "Descend: 1 = race rhythm / 2 = race rhythm / 3 = race rhythm / 4 = race rhythm",
+            gear: nil,
+            gearOptional: false,
+            descend: "1-4",
+            details: nil,
+            dive: false,
+            suit: false,
+            ambiguousTerm: nil,
+            fragments: [fragment0, fragment1],
+            sourceLine: nil,
+            zoneTerm: "firm",
+            perRepTargets: ["race rhythm", "race rhythm", "race rhythm", "race rhythm"]
+        )
+        let section = ParsedSection(
+            title: nil,
+            namedSets: [
+                ParsedNamedSet(label: nil, note: nil, repGroups: [richSet])
+            ]
+        )
+        let parsed = ParsedWorkout(title: nil, sections: [section], degraded: nil, degradedReason: nil)
+
+        title = "Rich Test"
         workoutText = text
         parsedWorkout = parsed
         parseSuccess = true
