@@ -118,7 +118,7 @@ export const _PROGRESSION_LABEL_SET: ReadonlySet<string> = PROGRESSION_LABELS;
 export function extractUnmappedTerms(
   workoutText: string,
   vocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
-  parsed?: { sections?: ReadonlyArray<{ namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }> }> } | null,
+  parsed?: { sections?: ReadonlyArray<{ namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; descend?: string | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }> }> } | null,
 ): string[] {
   const lower = workoutText.toLowerCase();
   const mapped = new Set(
@@ -170,7 +170,18 @@ export function extractUnmappedTerms(
       const checkRg = (rg: Record<string, unknown>) => {
         const rgType = (rg as { intensity_type?: string | null }).intensity_type;
         const rgIntensity = (rg as { intensity?: { type?: string } | null }).intensity;
-        if (rgType === label || rgIntensity?.type === label) { honored = true; return; }
+        // V0.54 details-tidy (2026-09-12): also honor the rg-level
+        // descend field. Without this, the dialect-detector sees
+        // "descend" as unmapped even after reconcileRepCounts sets
+        // rg.descend="1-4" from the regex engine for plain
+        // "descend 1-4" input (the LLM emits fragments only and
+        // doesn't surface rg-level intensity.type="descend").
+        const rgDescend = (rg as { descend?: string | null }).descend;
+        if (
+          rgType === label ||
+          rgIntensity?.type === label ||
+          (typeof rgDescend === "string" && rgDescend.length > 0)
+        ) { honored = true; return; }
         for (const f of (rg as { fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }).fragments ?? []) {
           if (f.intensity?.type === label) { honored = true; return; }
         }
@@ -263,7 +274,26 @@ export function scrubUnmappedTerms(
       const checkRg = (rg: Record<string, unknown>) => {
         const rgType = (rg as { intensity_type?: string | null }).intensity_type;
         const rgIntensity = (rg as { intensity?: { type?: string } | null }).intensity;
-        if (rgType === t || rgIntensity?.type === t) { honored = true; return; }
+        // V0.54 details-tidy (2026-09-12): also honor the rg-level
+        // descend field (reconcileRepCounts may set rg.descend="1-4"
+        // from the regex engine when the LLM left it null — without
+        // this, the dialect-detector would still see "descend" as
+        // unmapped because neither rg.intensity.type nor fragments
+        // carry the progression type for plain "descend 1-4" input).
+        // rg.descend is set for descend / build / progressive ladder
+        // headers alike (parseWorkoutV2's descendMatch regex fires
+        // for "desc N-M", "build N-M", "progressive N-M" alike — see
+        // _dialect-terms.ts:90), so honor it for every progression
+        // term without per-type branching.
+        const rgDescend = (rg as { descend?: string | null }).descend;
+        if (
+          rgType === t ||
+          rgIntensity?.type === t ||
+          (typeof rgDescend === "string" && rgDescend.length > 0)
+        ) {
+          honored = true;
+          return;
+        }
         for (const f of (rg as { fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }).fragments ?? []) {
           if (f.intensity?.type === t) { honored = true; return; }
         }
