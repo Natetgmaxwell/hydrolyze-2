@@ -310,7 +310,29 @@ struct WorkoutsListView: View {
 
     private var workoutList: some View {
         List {
-            if viewModel.workouts.isEmpty && !viewModel.isLoading {
+            // V0.55 (2026-09-12): signed in but AuthManager hasn't resolved
+            // the coach row yet. Show the retry state instead of the
+            // misleading "No workouts yet — plan a session." empty (which
+            // is reserved for genuinely-empty rosters).
+            if authManager.coachId == nil && !viewModel.isLoading {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle.badge.exclamationmark.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(Color.accentAmber)
+                    Text("Couldn't load your account")
+                        .font(.body)
+                        .foregroundColor(Color.textMuted)
+                    Button("Retry") {
+                        Task { await authManager.retryResolveCoach() }
+                    }
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+                    .padding(.top, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 60)
+                .listRowBackground(Color.bgBase)
+            } else if viewModel.workouts.isEmpty && !viewModel.isLoading {
                 VStack(spacing: 8) {
                     Text(emptyStateMessage)
                         .font(.body)

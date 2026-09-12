@@ -90,6 +90,15 @@ struct SquadManagementView: View {
                     ProgressView()
                         .tint(Color.textMuted)
                         .padding(.top, 40)
+                } else if coachId == nil && !viewModel.isLoading {
+                    // V0.55 (2026-09-12): signed in but AuthManager hasn't
+                    // resolved the coach row yet. Surface as a retry state
+                    // instead of the misleading "No squads yet." — that's
+                    // reserved for genuinely-empty rosters.
+                    UnresolvedCoachState(
+                        message: "We couldn't load your account. Tap retry.",
+                        onRetry: { Task { await authManager.retryResolveCoach() } }
+                    )
                 } else if viewModel.squads.isEmpty {
                     emptyState
                 } else {

@@ -9,19 +9,46 @@ final class SupabaseService {
 
     // Copy of RN app credentials — REPLACE with real keys before shipping.
     private let supabaseURL = URL(string: "https://flidjtldfvrrntzwtnsq.supabase.co/")!
-    private let anonKey = "eyJhbG...RldE"
+    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsaWRqdGxkZnZycm50end0bnNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MjcyODMsImV4cCI6MjA3NzEwMzI4M30.kRhOyhPLVmVww6W03wMrlZnX0yeD6F73_cUpaOaRldE"
+
+    /// V0.55 (2026-09-12): cached access token for PostgREST queries.
+    /// supabase-swift 2.47.0's SupabaseClient.handleTokenChanged()
+    /// listener sets functions/realtime/realtimeV2 auth tokens on
+    /// signedIn but SKIPS the PostgREST client (see Sources/Supabase/
+    /// SupabaseClient.swift L401-405 — only `functions.setAuth`,
+    /// `realtime.setAuth`, `realtimeV2.setAuth` — no `rest.setAuth`).
+    /// Without an explicit token closure, PostgREST GETs go out with
+    /// the anon key (RLS denies → empty `[]`). The fix is to provide
+    /// an `accessToken` closure to SupabaseClient that reads from
+    /// this cached token. We maintain it by subscribing to
+    /// `authStateChanges` in init() and updating on every signedIn /
+    /// tokenRefreshed / signedOut event.
+    private let cachedAccessToken = TokenCache()
 
     /// Supabase client — thread-safe singleton.
     /// Auth uses PKCE flow (same as RN app). Sessions persist in the iOS Keychain by default.
     let client: SupabaseClient
 
     private init() {
+        let tokenBox = cachedAccessToken
+        let anonKeyCopy = anonKey
         let authOptions = SupabaseClientOptions.AuthOptions(
             flowType: .pkce,
             // ponytail: opt-in to the new session behavior (supabase-swift PR #822/#844).
             // The locally stored session is always emitted, even if expired.
             // AuthManager.checkSession() handles the expiry check.
-            emitLocalSessionAsInitialSession: true
+            emitLocalSessionAsInitialSession: true,
+            // V0.55 (2026-09-12): WORKAROUND for supabase-swift 2.47.0
+            // PostgREST-not-receiving-auth-token bug (see cachedAccessToken
+            // doc-comment above). This closure is called by PostgREST on
+            // every request to read the current bearer token. Reading
+            // from our cached atomic avoids the SessionManager.session()
+            // path that throws sessionMissing when called before the
+            // signedIn event has propagated to the auth client's storage.
+            accessToken: {
+                let tok = tokenBox.value
+                return tok.isEmpty ? anonKeyCopy : tok
+            }
         )
 
         let clientOptions = SupabaseClientOptions(
@@ -63,6 +90,29 @@ final class SupabaseService {
             supabaseKey: anonKey,
             options: clientOptions
         )
+
+        // V0.55 (2026-09-12): start the auth-state listener that keeps
+        // cachedAccessToken up-to-date. We capture the auth client from
+        // the freshly-initialized SupabaseClient and listen for
+        // signedIn / tokenRefreshed / signedOut to mirror the current
+        // access token into our LockIsolated cache. The PostgREST
+        // client reads from this cache on every request via the
+        // accessToken closure set above — see the cachedAccessToken
+        // doc-comment for the underlying bug this works around.
+        Task { [client] in
+            for await (event, session) in client.auth.authStateChanges {
+                let newToken: String
+                switch event {
+                case .signedIn, .tokenRefreshed, .initialSession:
+                    newToken = session?.accessToken ?? ""
+                case .signedOut:
+                    newToken = ""
+                default:
+                    continue
+                }
+                tokenBox.setValue(newToken)
+            }
+        }
     }
 
     /// URLSession used by every supabase-swift request. Short timeouts
@@ -78,5 +128,30 @@ final class SupabaseService {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.urlCache = nil
         return URLSession(configuration: config)
+    }
+}
+
+/// V0.55 (2026-09-12): thread-safe bearer-token cache. We use an
+/// NSLock-protected class instead of `swift-atomics`' `Atomic` or
+/// `swift-concurrency-extras`' `LockIsolated` because those are not
+/// exported into the Supabase module's public interface (and adding
+/// a new dependency for one type isn't worth the project.yml churn).
+/// The PostgREST accessToken closure reads from here on every
+/// request; the authStateChanges listener writes to it on every
+/// signedIn / tokenRefreshed / signedOut event.
+private final class TokenCache: @unchecked Sendable {
+    private var token: String = ""
+    private let lock = NSLock()
+
+    var value: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return token
+    }
+
+    func setValue(_ newValue: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        token = newValue
     }
 }

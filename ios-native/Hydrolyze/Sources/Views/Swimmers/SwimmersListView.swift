@@ -209,6 +209,16 @@ struct SwimmersListView: View {
                     ProgressView()
                         .tint(Color.textMuted)
                         .padding(.top, 40)
+                } else if coachId == nil && !viewModel.isLoading {
+                    // V0.55 (2026-09-12): signed in but AuthManager hasn't
+                    // resolved the coach row yet. Surface as a retry state
+                    // instead of the misleading "roster's empty" — that's
+                    // for genuinely-empty rosters (filter excluded them,
+                    // or this is a brand-new account).
+                    UnresolvedCoachState(
+                        message: "We couldn't load your account. Tap retry.",
+                        onRetry: { Task { await authManager.retryResolveCoach() } }
+                    )
                 } else if viewModel.allSwimmers.isEmpty, let errorMessage = viewModel.errorMessage {
                     errorState(errorMessage)
                 } else if viewModel.filteredSwimmers.isEmpty {

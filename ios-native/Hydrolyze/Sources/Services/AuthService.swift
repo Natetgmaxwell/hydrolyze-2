@@ -21,15 +21,51 @@ final class AuthService {
 
     /// Fetches the coach record for a given auth user ID.
     /// Creates the coach row if it doesn't exist yet (getOrCreateCoach pattern).
+    ///
+    /// V0.55 (2026-09-12): the prior implementation called `.single()`
+    /// on the SELECT, then `try? JSONDecoder().decode(...)` on the body.
+    /// Postgrest returned PGRST116 ("Cannot coerce the result to a single
+    /// JSON object") on zero rows — `.single()` throws BEFORE the
+    /// decoder's `try?` ever runs, so the INSERT-create fallback below
+    /// was unreachable. The whole "getOrCreate" pattern degenerated
+    /// into "get", and on transient failures left `coachId = nil` for
+    /// the rest of the session, blanking every list screen.
+    ///
+    /// Fix: do the lookup with `.limit(1)` (no `.single()`) so zero
+    /// rows is a non-throwing empty array. Only fall through to the
+    /// INSERT when the lookup returns zero rows OR decodes to nothing.
+    ///
+    /// V0.55 (2026-09-12, second-pass): supabase-swift 2.47.0's
+    /// SessionManager.session() can race the `signedIn` event — on
+    /// the very first call after sign-in, the lookup GET goes out
+    /// before the client's session store is updated, so the request
+    /// carries the anon key (RLS denies → empty `[]`). Without a
+    /// guard, the function then falls through to the INSERT, which
+    /// also fails RLS (42501). The dispatch's `resolveCoach` retry
+    /// only catches TimeoutError, not this case.
+    ///
+    /// Mitigation: retry the lookup a few times with small backoff
+    /// before giving up and inserting. By attempt 3 the client's
+    /// session loader has caught up and the GET carries the JWT.
+    /// (The SupabaseService-level TokenCache closes the real
+    /// long-term fix; the retry here is belt-and-braces for the
+    /// initial-login race.)
     func getOrCreateCoach(userId: String, name: String?) async throws -> Coach {
-        let response = try await supabase.from("coaches")
-            .select()
-            .eq("auth_id", value: userId)
-            .single()
-            .execute()
-
-        if let existing = try? JSONDecoder().decode(Coach.self, from: response.data) {
-            return existing
+        let lookupMaxAttempts = 4
+        let lookupBackoffNanos: UInt64 = 250_000_000  // 0.25s
+        for attempt in 1...lookupMaxAttempts {
+            let lookupResponse = try await supabase.from("coaches")
+                .select()
+                .eq("auth_id", value: userId)
+                .limit(1)
+                .execute()
+            let decoder = JSONDecoder()
+            if let existing = try? decoder.decode([Coach].self, from: lookupResponse.data).first {
+                return existing
+            }
+            if attempt < lookupMaxAttempts {
+                try await Task.sleep(nanoseconds: lookupBackoffNanos * UInt64(attempt))
+            }
         }
 
         struct InsertPayload: Encodable {

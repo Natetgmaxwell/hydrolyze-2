@@ -169,25 +169,43 @@ final class AuthManager {
         }
     }
 
-    private func resolveCoach(user: User) async {
-        print("[AuthManager] resolveCoach start: user.id=\(user.id.uuidString), email=\(String(describing: user.email))")
-        do {
-            let coach = try await authService.getOrCreateCoach(
-                userId: user.id.uuidString,
-                name: user.userMetadata["name"]?.stringValue
-            )
-            print("[AuthManager] resolveCoach success: coach.id=\(coach.id), name=\(String(describing: coach.name))")
-            self.coachId = coach.id
-            self.coachName = coach.name
-            self.needsOnboarding = coach.onboardingCompletedAt == nil
-            self.isLoading = false
-            // Load preferences in parallel with the rest of the post-signin
-            // work. Failure is non-fatal — we fall back to defaults.
-            await loadCoachPreferences(coachId: coach.id)
-        } catch {
-            print("[AuthManager] resolveCoach error: \(error)")
-            self.isLoading = false
+    /// V0.55 (2026-09-12): login-path coach resolution with bounded
+    /// retry. Mirrors `ensureCoachWithRetry` (which only guarded the
+    /// save path). One transient failure at sign-in used to leave
+    /// `coachId = nil` for the whole session; now we make up to two
+    /// attempts, each bounded to 10s, before giving up — and even on
+    /// final failure we keep `isLoading = false` so the UI is
+    /// reachable (the empty-state surface takes over with a retry).
+    func resolveCoach(user: User) async {
+        var lastError: (any Error)?
+        let perAttempt: TimeInterval = 10
+        for attempt in 1...2 {
+            do {
+                let coach = try await withTimeout(perAttempt) {
+                    try await self.authService.getOrCreateCoach(
+                        userId: user.id.uuidString,
+                        name: user.userMetadata["name"]?.stringValue
+                    )
+                }
+                print("[AuthManager] resolveCoach success: coach.id=\(coach.id), name=\(String(describing: coach.name))")
+                self.coachId = coach.id
+                self.coachName = coach.name
+                self.needsOnboarding = coach.onboardingCompletedAt == nil
+                self.isLoading = false
+                await loadCoachPreferences(coachId: coach.id)
+                return
+            } catch is TimeoutError {
+                lastError = TimeoutError(interval: perAttempt)
+                print("[AuthManager] resolveCoach attempt \(attempt) timed out after \(perAttempt)s")
+                continue
+            } catch {
+                lastError = error
+                print("[AuthManager] resolveCoach error: \(error)")
+                break
+            }
         }
+        self.isLoading = false
+        _ = lastError
     }
 
     /// PHASE 2.2: Resolve the swimmer for the current auth user.
@@ -405,6 +423,20 @@ final class AuthManager {
         self.coachName = coach.name
         self.needsOnboarding = coach.onboardingCompletedAt == nil
         self.isLoading = false
+    }
+
+    /// V0.55 (2026-09-12): public retry hook for the unresolved-coach
+    /// UI state. Called from `UnresolvedCoachState` when the coach is
+    /// signed in but `coachId` is still nil. We clear the cache and
+    /// re-run `resolveCoach` with the same bounded-retry shape as the
+    /// login path, so a wedged connection at sign-in can be un-wedged
+    /// without forcing a sign-out + sign-in cycle.
+    func retryResolveCoach() async {
+        guard let user = currentUser else { return }
+        print("[AuthManager] retryResolveCoach invoked")
+        self.coachId = nil
+        self.coachName = nil
+        await resolveCoach(user: user)
     }
 }
 

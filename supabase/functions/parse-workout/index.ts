@@ -16,7 +16,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { WORD_NUMBERS, SWIM_DISTANCES } from "../../hydrolyze-mobile/lib/constants/swim-constants.ts";
 import { LLMError, parseWithLLM, type CoachVocabularyEntry } from "./_llm.ts";
-import { extractUnmappedTerms } from "./_dialect-detector.ts";
+import { extractUnmappedTerms, scrubUnmappedTerms } from "./_dialect-detector.ts";
 import { normalizeFragmentDistances } from "./_decimal-distance-fix.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -121,6 +121,13 @@ interface RepGroup {
   gear: string[] | null;
   gearOptional: boolean;
   descend: string | null;
+  // V0.54 details-tidy (2026-09-12): explicit per-rep target labels
+  // for Mode 3 ladder chevrons. Synthesised from a descend ladder +
+  // percent range, or left null when the coach didn't pin a per-rep
+  // percent. Drives Mode 3 ProgressionRepGroupRow's chevron + per-rep
+  // target render — without this field, rg.descend fires Mode 3 but
+  // every card shows the chevron-only path.
+  per_rep_targets: string[] | null;
   details: string[] | null;
   dive: boolean;
   suit: boolean;
@@ -2575,35 +2582,162 @@ export function workoutIs3MT(workout: Workout): boolean {
 // sourceLines are SET from the regex parse. Regex reps already include
 // the multiplier, so this is an assignment, never a second multiply.
 function reconcileRepCounts(llm: Workout, regex: Workout): Workout {
-  // Map each round-multiplied regex repGroup by its sourceLine.
-  const regexRepsBySource = new Map<string, number>();
+  // Map each round-multiplied regex repGroup by its sourceLine. The
+  // regex engine emits a richer set of fields than the LLM sometimes
+  // does — descend ladder ("descend 1-4"), per_rep_targets, parent
+  // zone_term, intensity_type/label when the LLM only emits fragments
+  // — so we keep a small per-sourceLine map of every regex field that
+  // the LLM might leave null and reconcile them after reps land.
+  const regexRgsBySource = new Map<
+    string,
+    {
+      reps: number;
+      descend: string | null;
+      per_rep_targets: string[] | null;
+      zone_term: string | null;
+      intensity_type: string | null;
+      intensity_label: string | null;
+      note: string | null;
+    }
+  >();
   for (const section of regex.sections) {
     for (const ns of section.namedSets) {
       for (const rg of ns.repGroups) {
-        if (typeof rg.reps === "number" && rg.sourceLine) {
-          regexRepsBySource.set(rg.sourceLine.trim(), rg.reps);
-        }
+        if (!rg.sourceLine) continue;
+        const key = rg.sourceLine.trim();
+        // V0.54 details-tidy (2026-09-12): capture every regex
+        // repGroup by sourceLine so the reconciler can fill in
+        // descend + per_rep_targets + zone_term + intensity type/label
+        // when the LLM leaves them null. The regex engine's
+        // parseWorkoutV2 is the canonical source of these fields
+        // (index.ts:1726 sets descend from the descendMatch regex,
+        // and intensity_type/label from the intensity parser).
+        regexRgsBySource.set(key, {
+          reps: rg.reps ?? 1,
+          descend: rg.descend ?? null,
+          per_rep_targets: rg.per_rep_targets ?? null,
+          zone_term: rg.zone_term ?? null,
+          intensity_type: rg.intensity?.type ?? null,
+          intensity_label: rg.intensity?.label ?? null,
+          note: rg.note ?? null,
+        });
       }
     }
   }
-  let reconciled = 0;
+  let reconciledReps = 0;
+  let reconciledDescend = 0;
+  let reconciledPerRep = 0;
+  let reconciledZone = 0;
+  let reconciledIntensity = 0;
+  let reconciledNote = 0;
   for (const section of llm.sections) {
     for (const ns of section.namedSets) {
       for (const rg of ns.repGroups) {
         const key = (rg.sourceLine ?? "").trim();
-        const canonicalReps = regexRepsBySource.get(key);
-        // Only sourceLines the regex engine round-multiplied carry a
-        // value here... every regex rg is stored, so also compare: if
-        // the regex found this line at all, its reps are canonical.
-        if (canonicalReps !== undefined && rg.reps !== canonicalReps) {
-          rg.reps = canonicalReps;
-          reconciled++;
+        const regexRg = regexRgsBySource.get(key);
+        if (!regexRg) continue;
+
+        // Round-multiplied reps — assignment, never a second multiply.
+        if (typeof rg.reps !== "number" || rg.reps !== regexRg.reps) {
+          rg.reps = regexRg.reps;
+          reconciledReps++;
+        }
+
+        // V0.54 details-tidy (2026-09-12): the LLM frequently returns
+        // `descend: null` for plain "descend 1-4" phrasing (it expects
+        // the explicit "Descend: 1=N% / 2=N%" ladder form). The
+        // regex engine extracts "1-4" deterministically from the
+        // descMatch regex at index.ts:1409. When the LLM has no
+        // descend but the regex does, the regex value wins — Mode 3
+        // ladder only fires when rg.descend is non-nil.
+        if ((rg.descend == null || rg.descend === "") && regexRg.descend) {
+          rg.descend = regexRg.descend;
+          reconciledDescend++;
+          // V0.54 details-tidy: also stamp rg.intensity={type:"descend",
+          // label:"descend"} when rg.intensity is empty so the
+          // dialect-detector's "honored" check at
+          // _dialect-detector.ts:261 sees rg.intensity.type=descend
+          // and suppresses "descend" from unmapped_terms (the LLM
+          // normally emits the parent intensity itself for explicit
+          // Descend ladders; we mirror that contract so the coach's
+          // word doesn't appear in the "new words — pick a band"
+          // modal twice).
+          if (rg.intensity == null) {
+            rg.intensity = { type: "descend", label: "descend" };
+          }
+        }
+
+        // V0.54 details-tidy: same pattern for per_rep_targets. The
+        // regex engine synthesises per-rep targets from a descend
+        // ladder when intensity is a percent range. We adopt those
+        // targets when the LLM left them null — the Mode 3 ladder
+        // chevron + per-rep % labels render only when perRepTargets
+        // is non-nil.
+        if (
+          (rg.per_rep_targets == null || rg.per_rep_targets.length === 0) &&
+          regexRg.per_rep_targets != null &&
+          regexRg.per_rep_targets.length > 0
+        ) {
+          rg.per_rep_targets = regexRg.per_rep_targets;
+          reconciledPerRep++;
+        }
+
+        // V0.54 details-tidy: zone_term drives the colour of the
+        // parent distance chip on the details page header. When the
+        // LLM leaves it null, fall back to the regex engine's
+        // section-level parseZoneTerm result.
+        if ((rg.zone_term == null || rg.zone_term === "") && regexRg.zone_term) {
+          rg.zone_term = regexRg.zone_term;
+          reconciledZone++;
+        }
+
+        // V0.54 details-tidy (2026-09-12): for composite sets
+        // ("12.5 strong / 12.5 easy") the LLM emits intensity_type
+        // /intensity_label on the FRAGMENTS only and leaves the
+        // parent repGroup null. The parent rg.intensity stays null.
+        // Mode selection reads rg.intensity?.type; without it the
+        // Mode-3 promotion in repCardMode can't fire on rg-level
+        // signals. The regex engine emits a parent intensity when
+        // the line's last-anchored intensity word is unambiguous
+        // ("race rhythm" → race_pace). Adopt it as a fallback so
+        // the parent carries a meaningful type.
+        const rgHasIntensity =
+          (rg.intensity?.type ?? rg.intensity_type) != null;
+        if (!rgHasIntensity && regexRg.intensity_type) {
+          rg.intensity = {
+            type: regexRg.intensity_type,
+            label: regexRg.intensity_label ?? regexRg.intensity_type,
+          };
+          reconciledIntensity++;
+        }
+
+        // V0.54 details-tidy (2026-09-12): the LLM sometimes eats
+        // the trailing note ("race rhythm") when its parent fragment
+        // already labels that word as the fragment intensity. The
+        // regex engine's parse catches it. Adopt when the LLM
+        // missed it AND the regex had something different.
+        if (
+          (rg.note == null || rg.note === "") &&
+          regexRg.note &&
+          regexRg.note !== rg.note
+        ) {
+          rg.note = regexRg.note;
+          reconciledNote++;
         }
       }
     }
   }
-  if (reconciled > 0) {
-    console.log(`[parse] rep reconciliation: ${reconciled} repGroup(s) aligned to regex-canonical reps`);
+  const total =
+    reconciledReps +
+    reconciledDescend +
+    reconciledPerRep +
+    reconciledZone +
+    reconciledIntensity +
+    reconciledNote;
+  if (total > 0) {
+    console.log(
+      `[parse] rep reconciliation: ${reconciledReps} reps, ${reconciledDescend} descend, ${reconciledPerRep} per_rep_targets, ${reconciledZone} zone_term, ${reconciledIntensity} intensity, ${reconciledNote} note`,
+    );
   }
   return llm;
 }
@@ -2722,9 +2856,21 @@ async function parseWithFallback(
     } else {
       for (const t of localHitsPre) set.add(t);
     }
-    for (const t of llmTerms || []) {
-      const v = String(t).toLowerCase().trim();
-      if (v.length > 0) set.add(v);
+    // V0.54 details-tidy (2026-09-12): scrub the LLM-reported
+    // unmapped_terms against the reconciled parsed response so the
+    // `descend` / `build` / `progressive` ladder words the LLM
+    // included BUT we honored via reconcileRepCounts (rg.descend +
+    // rg.intensity.type="descend") drop out. Without this, the LLM
+    // emits "descend" once → set still contains it after the local
+    // Tier-1 walk. The LLM-side scrub at _llm.ts only sees the
+    // pre-reconcile result (rg.descend was null there), so it
+    // couldn't suppress — the engine must do it here, post-reconcile.
+    const llmScrubbed = scrubUnmappedTerms(
+      (llmTerms ?? []).map((t) => String(t).toLowerCase().trim()).filter((t) => t.length > 0),
+      parsedForContext ?? null,
+    );
+    for (const t of llmScrubbed) {
+      set.add(t);
     }
     return [...set];
   };
