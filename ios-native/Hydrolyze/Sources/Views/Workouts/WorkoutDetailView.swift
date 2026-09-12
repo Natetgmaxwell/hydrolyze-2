@@ -365,7 +365,11 @@ struct WorkoutDetailView: View {
                     .tint(Color.textMuted)
             }
         }
-        .navigationTitle(viewModel.workout?.title ?? "Workout")
+        .navigationTitle("")  // V0.54 details-tidy: blank nav title.
+        // The large in-content heading (metadataSection) carries the
+        // workout name. Showing it a second time in the nav bar was
+        // the V0.54 details-tidy defect 2 — pick one, per iOS HIG.
+        // .inline keeps the nav-bar compact (no large two-line title).
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -823,12 +827,23 @@ struct WorkoutDetailView: View {
                     Spacer()
 
                     if isTimeable {
-                        Image(systemName: "play.fill")
-                            .font(.caption)
-                            .foregroundColor(Color.textMuted)
+                        // V0.54 details-tidy: disclosure chevron (was
+                        // play.fill) with explicit 8pt trailing inset.
+                        // The prior rendering had the icon flush
+                        // against the right edge per the spec
+                        // "disclosure triangle flush against right
+                        // edge with no padding" defect — moving to
+                        // chevron.right (matches WorkoutsListView's
+                        // WorkoutRow disclosure, line 550) + 8pt
+                        // trailing padding gives the row the standard
+                        // list-row trailing inset.
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Color.textFaint)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.leading, 16)
+                .padding(.trailing, 8)  // standard list-row trailing inset
                 .padding(.vertical, 12)
                 .background(isTimeable ? Color.clear : Color.clear)
             }
@@ -892,17 +907,42 @@ struct WorkoutDetailView: View {
         .padding(.bottom, 8)
     }
 
-    /// V0.50 (2026-08-30): single-chip formatter for set-level
-    /// records. Mirrors FragmentCTARow's owned/unowned rendering
-    /// exactly: owned rows read "Jack 1:41.7", unowned read
-    /// "Saved 0:33.10" (same prefix the fragment rows use, so the
-    /// coach's eye never has to context-switch).
+    /// V0.50 (2026-08-30) → V0.54 details-tidy: single-chip formatter
+    /// for set-level records. Mirrors `FragmentCTARow.chipLabel(for:)`
+    /// (WorkoutPreview.swift:2687) so the coach's eye never has to
+    /// context-switch between fragment-row chips and set-row chips.
+    /// The prior version used `TimingSession.formatMs` (full
+    /// M:SS.HH) for BOTH owned and unowned rows — that violated the
+    /// spec example "Jack 1:41.7" which uses the compact sub-minute
+    /// form. Fix: owned rows now render "Name · 33.10" (middot
+    /// separator + compact owned time, per the established
+    /// FragmentCTARow pattern), unowned rows keep "Saved · 0:33.10"
+    /// (full form, with the "Saved" prefix preserved).
     private func setChipText(_ rec: FragmentTimeRecord) -> String {
-        let formatted = TimingSession.formatMs(rec.timeMs)
         if rec.hasOwner, let name = rec.swimmerName {
-            return "\(name) \(formatted)"
+            return "\(name) · \(compactOwnedTime(rec.timeMs))"
         }
-        return "Saved \(formatted)"
+        return "Saved · \(TimingSession.formatMs(rec.timeMs))"
+    }
+
+    /// V0.54 details-tidy: mirror of WorkoutPreview's `compactOwnedTime`
+    /// (file-scope helper at WorkoutPreview.swift:3724). Owned rows
+    /// drop the leading "0:" and the second hundredths digit for
+    /// sub-minute times (e.g. "33.10" for 33_100ms), matching the
+    /// spec example "Jack 1:41.7" for ≥1min and "33.10" for
+    /// sub-minute. Inline here instead of importing across files
+    /// because the helper is file-private in WorkoutPreview.swift.
+    private func compactOwnedTime(_ ms: Int) -> String {
+        let totalCs = ms / 10
+        let cs = totalCs % 100
+        let totalSec = totalCs / 100
+        let sec = totalSec % 60
+        let min = totalSec / 60
+        if min >= 1 {
+            let tenths = cs / 10
+            return String(format: "%d:%02d.%d", min, sec, tenths)
+        }
+        return String(format: "%02d.%02d", sec, cs)
     }
 
     // t_c74dffbc (2026-08-04): per-fragment timing launch. Builds a
@@ -1010,11 +1050,17 @@ struct WorkoutDetailView: View {
     }
 
     private func metadataSection(workout: Workout) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(workout.title ?? "Untitled")
                 .font(.titleMedium)
                 .foregroundColor(Color.textPrimary)
 
+            // V0.54 details-tidy: inline metadata now reads as a
+            // tinted status pill (was stray "·" middot dividers).
+            // Matches the WorkoutsListView status dot + label
+            // pattern (WorkoutsListView.swift:498-516) so the
+            // coach's eye gets one consistent status vocabulary
+            // across the list and the detail surface.
             HStack(spacing: 8) {
                 if let scheduledAt = workout.scheduledAt {
                     Text(formatDate(scheduledAt))
@@ -1023,21 +1069,40 @@ struct WorkoutDetailView: View {
                 }
 
                 if let amPm = workout.amPm {
-                    Text("·")
-                        .foregroundColor(Color.textFaint)
                     Text(amPm)
                         .font(.captionStrong)
                         .foregroundColor(Color.accentAmber)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.accentAmber.opacity(0.15))
+                        .clipShape(Capsule())
                 }
 
-                Text("·")
-                    .foregroundColor(Color.textFaint)
-                Text(workout.status.rawValue.capitalized)
-                    .font(.captionStrong)
-                    .foregroundColor(statusColor(workout.status))
+                statusPill(workout.status)
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    /// V0.54 details-tidy: small status pill (capsule + tint) replacing
+    /// the prior stray "·" middot + raw status text. Reuses the
+    /// existing `statusColor(_:)` helper for the per-status color
+    /// mapping (draft textFaint, scheduled textMuted, inProgress
+    /// accentAmber, complete statusSuccess) — same vocabulary as
+    /// the Workouts list dot + label.
+    private func statusPill(_ status: WorkoutStatus) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(statusColor(status))
+                .frame(width: 6, height: 6)
+            Text(status.rawValue.capitalized)
+                .font(.captionStrong)
+                .foregroundColor(statusColor(status))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(statusColor(status).opacity(0.12))
+        .clipShape(Capsule())
     }
 
     private func actionButtons(workout: Workout) -> some View {
