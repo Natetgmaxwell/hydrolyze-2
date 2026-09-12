@@ -626,8 +626,14 @@ private struct RepGroupRowView: View {
                     // fallback path today, so the demotion affects
                     // set 3 (the 6×100) the most.
 
+                    // V0.54 details-tidy (2026-09-12): dropped the
+                    // leading space inside the string — the HStack
+                    // spacing (2pt) already provides the gap before
+                    // "on", and the explicit space char stacked with
+                    // the HStack spacing produced a visible double
+                    // gap on the rendered surface (defect 3).
                     if let interval = rg.interval {
-                        Text(" on \(interval)")
+                        Text("on \(interval)")
                             .font(.captionStrong)
                             .foregroundColor(Color.textMuted)
                     }
@@ -929,21 +935,26 @@ private struct RepGroupRowView: View {
     }
 
     private var spineText: String {
-        let raw: String
+        // V0.54 details-tidy (2026-09-12): always carry the unit ("m")
+        // so the OUTER compact header reads "8×50m Free on 1:30" —
+        // consistent with WorkoutSet.label (which also emits "m") and
+        // consistent with the dispatched headerLine cases (Mode 1/2/3).
+        //
+        // The previous strip ("3×300" not "3×300m") assumed the stroke
+        // text would follow immediately and double the meter char with
+        // the stroke char ("Free" rendered as separate Text(spine) +
+        // Text(stroke), the strip made the joined visual read "3×300
+        // Free"). But the rendered HStack actually reads "3×300 Free"
+        // with HStack spacing — the trailing 'm' on the spine keeps the
+        // unit explicit ("3×300m Free"), matches WorkoutSet.label, and
+        // is required by V0.54 details-tidy defect 3.
         if let reps = rg.reps, let distance = rg.distance {
-            raw = "\(reps)×\(distance)m"
-        } else if let distance = rg.distance {
-            raw = "\(distance)m"
-        } else {
-            return ""
+            return "\(reps)×\(distance)m"
         }
-        // Distance is implicit meters — trim trailing 'm' so the spine reads
-        // "3×300" instead of "3×300m". Guards: only strip when the char
-        // before 'm' is a digit, so strokes like "IM" are untouched.
-        if raw.hasSuffix("m"), raw.count > 1, raw.dropLast().last?.isNumber == true {
-            return String(raw.dropLast())
+        if let distance = rg.distance {
+            return "\(distance)m"
         }
-        return raw
+        return ""
     }
 
     private var cleanDetails: [String] {
