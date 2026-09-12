@@ -2127,6 +2127,36 @@ func repCardMode(for rg: ParsedRepGroup) -> RepCardMode {
         return .track
     }
 
+    // V0.54 details-tidy (2026-09-12): iOS ParsedIntensityType is a
+    // closed enum (easy | aerobic | threshold | race_pace | pace_target
+    // | sprint | descend | build | negative_split | percent_range |
+    // 3mt). When the LLM emits an unknown intensity word — "strong",
+    // "race rhythm", "blast", "mod" — the iOS builder's
+    // `ParsedIntensityType(rawValue:) ?? .easy` collapses it to .easy.
+    // A "12.5 strong / 12.5 easy" set then degrades to a single
+    // collapsed card even though the COACH meant two distinct
+    // fragments.
+    //
+    // The discriminator we still have: the verbatim `intensityLabel`
+    // string. If fragments.count >= 2 AND the set of distinct
+    // non-empty labels is >= 2, the coach did say two different
+    // things — promote to .track so the connected segment track
+    // renders both.
+    //
+    // Conservative: we only count non-empty, non-nil labels so a
+    // fragment missing intensityLabel (a "rest" segment, for
+    // example) doesn't artificially inflate the distinct set. The
+    // same-gate as `repCardMode`'s existing nil-fragment handling.
+    let distinctIntensityLabels: Set<String> = Set(
+        fragments.compactMap { f in
+            let label = f.intensityLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (label?.isEmpty == false) ? label : nil
+        }
+    )
+    if fragments.count >= 2, distinctIntensityLabels.count >= 2 {
+        return .track
+    }
+
     // Rule 2: progression descriptor anywhere.
     let rgHasProgression =
         rg.descend != nil ||
