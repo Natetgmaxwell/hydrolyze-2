@@ -371,33 +371,40 @@ struct WorkoutDetailView: View {
                         .pickerStyle(.segmented)
                         .padding(.horizontal, 16)
 
-                        // V0.55 S0a: conditional rendering. Structured
-                        // (default) shows the existing WorkoutPreview
-                        // untouched — S1 will rework it into the
-                        // rep-identity card layout. As written shows
-                        // the new RawWorkoutTextView. The two panes
-                        // never coexist on screen at once.
+                        // V0.55 S1: shared render surface. Both
+                        // the details page and the builder preview
+                        // route through `WorkoutStructureView`, which
+                        // internally calls the single
+                        // `WorkoutPreviewBuilder.fromWorkoutAndSets`
+                        // projection. Adding a field to the
+                        // projection (e.g. a future zone-term round-
+                        // trip) now propagates to both surfaces from
+                        // exactly one call site — no drift risk. S2
+                        // will rework this into the rep-identity card
+                        // layout; S1 only extracts the existing
+                        // `WorkoutPreview` rendering behind the
+                        // shared surface. The `switch displayMode`
+                        // below routes between the structured
+                        // preview and the as-written surface
+                        // (S0a), exactly one of which renders at a
+                        // time.
                         switch displayMode {
                         case .structured:
-                            WorkoutPreview(
-                                workout: buildParsedWorkout(from: workout, sets: viewModel.sets),
-                                // t_c74dffbc (2026-08-04): per-fragment CTA. Tapping
-                                // a fragment builds a SetPrefill from the fragment's
-                                // metadata and launches the live stopwatch. The
-                                // workoutSetId is the repGroup's parent set; in
-                                // production the parsed ParsedRepGroup carries a
-                                // workoutSetId field. Here we resolve by index
-                                // against the workout's sets list.
+                            WorkoutStructureView(
+                                workout: workout,
+                                sets: viewModel.sets,
                                 onFragmentTap: { _, _, rgIdx, _, fragment in
                                     launchFragmentTiming(repGroupIndex: rgIdx, fragment: fragment)
                                 },
-                                // t_d59998d9 (2026-08-05): pass the local-state
-                                // recorded-times map so each fragment row can
-                                // show "Saved 0:42.31" once the stopwatch stops.
+                                // t_d59998d9 (2026-08-05): pass the
+                                // local-state recorded-times map so
+                                // each fragment row can show "Saved
+                                // 0:42.31" once the stopwatch stops.
                                 recordedTimesByFragmentId: recordedTimesByFragmentId,
-                                // V0.47 Slice 3 (2026-08-22): vocabulary card
-                                // is end-of-session only — read-only contexts
-                                // hide it. The detail view surfaces mappings
+                                // V0.47 Slice 3 (2026-08-22):
+                                // vocabulary card is end-of-session
+                                // only — read-only contexts hide it.
+                                // The detail view surfaces mappings
                                 // via the per-row "edit" link instead.
                                 showVocabularyCard: false
                             )
@@ -1253,16 +1260,6 @@ struct WorkoutDetailView: View {
             )
         }
         .padding(.horizontal, 16)
-    }
-
-    // V0.54 S2.1 (2026-09-08, jodie-09): delegate to the shared
-    // `WorkoutPreviewBuilder.fromWorkoutAndSets(_:_:)` helper so the
-    // Session Console and the WorkoutDetailView read the parsed
-    // workout through the exact same code path. Before this slice,
-    // each view built its own mapping and the DB-row → ParsedRepGroup
-    // rules could drift (e.g. one adds a field, the other forgets).
-    private func buildParsedWorkout(from workout: Workout, sets: [WorkoutSet]) -> ParsedWorkout {
-        WorkoutPreviewBuilder.fromWorkoutAndSets(workout, sets: sets)
     }
 
     private func formatDate(_ dateStr: String) -> String {

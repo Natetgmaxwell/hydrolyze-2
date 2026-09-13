@@ -2086,26 +2086,50 @@ func cardAccessibilityLabel(
 //                   carries its own target; a chevron shows direction.
 //                   No within-card track.
 //
-// Selection rule, in order:
+// Selection rule, in order (V0.55 S1 2026-09-13 — progression
+// hoisted FIRST so the descend ladder wins over distinct
+// intensity labels):
 //
-//   1. If rg has ≥2 fragments with ≥2 distinct intensity types →
-//      .track. This is the canonical within-rep split.
-//
-//   2. Else if any of these is true:
+//   1. If any of these is true:
 //        rg.descend != nil
 //        rg.pacing == "build"
 //        rg.intensity.type == "descend"
 //        rg.zoneTerm == "descend"
 //        any fragment.intensity.type == "descend" or "build"
 //      → .progression. The instruction varies across reps.
+//      The progression gate runs FIRST so a set like
+//      `4 x 25 as 12.5 strong / 12.5 easy, descend 1-4` renders
+//      the ladder, not a per-rep pair-track. The within-rep split
+//      (when present) becomes a sub-line under each ladder card.
+//
+//   2. Else if rg has ≥2 fragments with ≥2 distinct intensity types
+//      OR ≥2 distinct non-empty intensity labels → .track. This is
+//      the canonical within-rep split. The label-discriminator
+//      covers LLM-emitted intensity words ("strong", "race rhythm",
+//      "blast") that don't map to the closed `ParsedIntensityType`
+//      enum and would otherwise collapse to a single card.
 //
 //   3. Else → .uniform. Single fragment with no progression, or
 //      all-fragments-share-one-intensity, or no fragments at all.
 //
-// "Progression wins over track": when both apply (rare but possible —
-// e.g. a 2-fragment composite where one fragment has pacing "build"),
-// the coach's instruction is the progression, not the split. Rule 2
-// fires AFTER rule 1's check, so the more-specific intent wins.
+// V0.55 S1 (2026-09-13): "Progression wins over track" — the rule
+// is now CODIFIED as the first check, not a happen-to-fire-after
+// property. A set like `4 x 25 as 12.5 strong / 12.5 easy, descend
+// 1-4, race rhythm` carries BOTH distinct fragment intensity labels
+// ("strong" + "easy") AND a non-null descend ladder. The coach's
+// primary structure is the descend ladder — the within-rep split
+// (12.5 strong / 12.5 easy) is the implementation detail of "what to
+// do inside each rep of the ladder." Under the old ordering Rule 1
+// fired first → `.track` → the coach saw a per-rep pair-track with a
+// "↘ 1-4" note tacked on, which lies about the structure (the
+// within-rep split is NOT what changes across reps — the per-rep
+// intensity is constant; what changes is the SPEED within each
+// rep's two halves).
+//
+// Fix: hoist Rule 2 (progression descriptor) ahead of Rule 1 / 1.5
+// (distinct intensity labels). The progression descriptor, when
+// present, dominates. Distinct intensity labels only promote to
+// .track when NO progression applies.
 //
 // Progression-term detection reuses the canonical intensity taxonomy
 // the parser uses — `descend` / `build` / `ascend` are server-side
@@ -2114,6 +2138,31 @@ func cardAccessibilityLabel(
 // no progression type and stay timable).
 func repCardMode(for rg: ParsedRepGroup) -> RepCardMode {
     let fragments = rg.fragments ?? []
+
+    // V0.55 S1: progression wins over track. Hoisted to FIRST so the
+    // descend ladder renders even when distinct intensity labels also
+    // match (the "12.5 strong / 12.5 easy, descend 1-4" case). The
+    // within-rep split becomes a sub-line under the ladder card.
+    //
+    // rgHasProgression: descend ladder present, build pacing,
+    // descend intensity type, or descend zone term anywhere on the
+    // repGroup.
+    let rgHasProgression =
+        rg.descend != nil ||
+        rg.pacing == "build" ||
+        rg.intensity?.type == .descend ||
+        rg.zoneTerm == "descend"
+    // Fragment-level progression: only via intensity type, since
+    // ParsedFragment doesn't carry a pacing field (per-fragment
+    // pacing is rare in practice — the parser emits "build" as a
+    // rg-level pacing, not per-fragment). V0.53.2 narrows to the
+    // intensity.type check for the same reason.
+    let anyFragmentIsProgression = fragments.contains { f in
+        f.intensity?.type == .descend || f.intensity?.type == .build
+    }
+    if rgHasProgression || anyFragmentIsProgression {
+        return .progression
+    }
 
     // Count distinct intensity types among the fragments. nil
     // intensity fragments don't contribute a type (drills,
@@ -2143,6 +2192,12 @@ func repCardMode(for rg: ParsedRepGroup) -> RepCardMode {
     // things — promote to .track so the connected segment track
     // renders both.
     //
+    // V0.55 S1: this rule now runs AFTER the progression-descriptor
+    // gate above. Distinct labels only promote to .track when no
+    // progression applies. The coach's primary structure (ladder)
+    // wins; the within-rep split only renders when it's the ONLY
+    // variation.
+    //
     // Conservative: we only count non-empty, non-nil labels so a
     // fragment missing intensityLabel (a "rest" segment, for
     // example) doesn't artificially inflate the distinct set. The
@@ -2155,24 +2210,6 @@ func repCardMode(for rg: ParsedRepGroup) -> RepCardMode {
     )
     if fragments.count >= 2, distinctIntensityLabels.count >= 2 {
         return .track
-    }
-
-    // Rule 2: progression descriptor anywhere.
-    let rgHasProgression =
-        rg.descend != nil ||
-        rg.pacing == "build" ||
-        rg.intensity?.type == .descend ||
-        rg.zoneTerm == "descend"
-    // Fragment-level progression: only via intensity type, since
-    // ParsedFragment doesn't carry a pacing field (per-fragment
-    // pacing is rare in practice — the parser emits "build" as a
-    // rg-level pacing, not per-fragment). V0.53.2 narrows to the
-    // intensity.type check for the same reason.
-    let anyFragmentIsProgression = fragments.contains { f in
-        f.intensity?.type == .descend || f.intensity?.type == .build
-    }
-    if rgHasProgression || anyFragmentIsProgression {
-        return .progression
     }
 
     // Rule 3: uniform.

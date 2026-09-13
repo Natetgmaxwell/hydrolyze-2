@@ -17,9 +17,13 @@
 //      with the parent WorkoutSet.
 //   2. workout_sets.fragments column (JSONB) stores the array.
 //   3. WorkoutService.fetchWorkoutSets decodes `fragments` if present.
-//   4. WorkoutDetailView.buildParsedWorkout maps each fragment into
-//      a ParsedFragment on the ParsedRepGroup so WorkoutPreview's
-//      FragmentCTARow renders it.
+//   4. V0.55 S1: WorkoutStructureView (Views/Workouts/
+//      WorkoutStructureView.swift) routes each fragment into a
+//      ParsedFragment on the ParsedRepGroup via the single
+//      WorkoutPreviewBuilder.fromWorkoutAndSets projection so
+//      WorkoutPreview's FragmentCTARow renders it. The single
+//      shared render surface means WorkoutDetailView and
+//      WorkoutBuilderView cannot drift in fragment mapping.
 //
 // Until the DB column ships (documented as t_c74dffbc follow-up #3),
 // `fragments` is always nil and the FragmentCTARow never renders.

@@ -21,9 +21,14 @@ import Foundation
 ///     builder without re-implementing the fragment-mapping rules.
 ///
 /// The function is a static helper — no state, no DI. The legacy
-/// `WorkoutDetailView.buildParsedWorkout(from:sets:)` instance
-/// method is delegated to this static helper so behaviour stays
-/// identical.
+/// V0.55 S1: WorkoutDetailView + WorkoutBuilderView both render
+/// through `WorkoutStructureView` (Views/Workouts/
+/// WorkoutStructureView.swift), which calls this static helper for
+/// the DB-row → ParsedWorkout projection. The two surfaces cannot
+/// drift — there's exactly one projection site, one renderer. Before
+/// S1 the detail view used a private `buildParsedWorkout(from:sets:)`
+/// wrapper here; S1 deleted that wrapper in favour of routing
+/// through the shared render component.
 enum WorkoutPreviewBuilder {
     /// Build the parsed-workout tree that `WorkoutPreview` renders.
     /// Single section, one named set, one rep group per `WorkoutSet`.

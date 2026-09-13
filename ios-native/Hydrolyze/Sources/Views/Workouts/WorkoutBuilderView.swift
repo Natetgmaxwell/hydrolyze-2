@@ -3,7 +3,10 @@ import os.log
 import Supabase
 
 /// WorkoutBuilderView — natural language workout creation with live preview.
-/// Uses debounced input to call the Edge Function parser and renders via WorkoutPreview.
+/// Uses debounced input to call the Edge Function parser and renders via
+/// WorkoutStructureView (V0.55 S1) → WorkoutPreview. S1 routed the preview
+/// through the shared render surface so the builder and the details page
+/// cannot drift in their fragment-faithful projection.
 struct WorkoutBuilderView: View {
     var workoutId: String?
     @Environment(AuthManager.self) private var authManager
@@ -307,8 +310,20 @@ struct WorkoutBuilderView: View {
                 }
                 .padding(.vertical, 20)
             } else {
-                WorkoutPreview(
-                    workout: viewModel.parsedWorkout ?? ParsedWorkout(title: nil, sections: []),
+                // V0.55 S1: route through the shared
+                // `WorkoutStructureView` render surface. Both the
+                // builder preview and the details page now share
+                // the same component; the builder feeds it a
+                // pre-built `ParsedWorkout` (from the parser
+                // pipeline) via the `parsedWorkout:` initializer,
+                // the details page feeds it the DB-row
+                // `Workout` + `[WorkoutSet]` shape via the
+                // `workout:`/`sets:` initializer. One render
+                // surface, two call sites — both go through the
+                // same `WorkoutPreview` underneath. S2/S3/S4 build
+                // on top of this without drift risk.
+                WorkoutStructureView(
+                    parsedWorkout: viewModel.parsedWorkout ?? ParsedWorkout(title: nil, sections: []),
                     onRemoveRepGroup: { sectionIdx, namedSetIdx, rgIdx in
                         viewModel.removeRepGroup(
                             sectionIndex: sectionIdx,
