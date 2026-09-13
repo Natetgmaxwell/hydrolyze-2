@@ -213,6 +213,27 @@ final class WorkoutDetailViewModel: ObservableObject {
     }
 }
 
+/// V0.55 S0a (2026-09-13): segmented picker mode for the
+/// `WorkoutDetailView`. Default is `.structured` (today's behaviour).
+/// `.asWritten` swaps the existing `WorkoutPreview` for the new
+/// `RawWorkoutTextView` rendering. S1/S2 own the bidirectional
+/// linkage between the two surfaces; S0a only wires the toggle.
+enum WorkoutDisplayMode: String, CaseIterable, Identifiable {
+    case structured
+    case asWritten = "as_written"
+
+    var id: String { rawValue }
+
+    /// Picker labels — kept short for the segmented control. Plain
+    /// copy per the design-quality gate (no aphorisms).
+    var label: String {
+        switch self {
+        case .structured: return "Structured"
+        case .asWritten:  return "As written"
+        }
+    }
+}
+
 /// WorkoutDetailView — pushed from WorkoutsListView. Shows parsed workout + actions.
 struct WorkoutDetailView: View {
     let workoutId: String
@@ -264,6 +285,26 @@ struct WorkoutDetailView: View {
     // is pushed, the content fades + scales in over Animations.springSoft,
     // gated by Reduce Motion for a11y.
     @State private var animateIn: Bool = false
+    // V0.55 S0a (2026-09-13): segmented Structured | As written
+    // picker. Default `.structured` matches today's behaviour — the
+    // existing WorkoutPreview renders below the picker and the
+    // RawWorkoutTextView only appears when the user opts in.
+    // S2 will replace the picker copy / default / bidirectional
+    // linkage; S0a only adds the wire.
+    //
+    // Debug-only env override: launch with
+    // `-HYDROLYZE_FORCE_AS_WRITTEN 1` to skip the picker and render
+    // the As-written surface on first appearance. Used by the
+    // screenshot pipeline so we don't need to tap the segmented
+    // control over SSH (where system taps via simctl/idb can't land
+    // reliably on iOS 26). No-op when unset — production launches
+    // follow the user's tap.
+    @State private var displayMode: WorkoutDisplayMode = {
+        if ProcessInfo.processInfo.environment["HYDROLYZE_FORCE_AS_WRITTEN"] == "1" {
+            return .asWritten
+        }
+        return .structured
+    }()
 
     /// Wrapper for `.fullScreenCover(item:)` — needs Identifiable to drive the cover.
     /// Plain `String?` doesn't conform; without this the bottom TabView stays visible during timing.
@@ -313,29 +354,67 @@ struct WorkoutDetailView: View {
                 if let workout = viewModel.workout {
                     VStack(alignment: .leading, spacing: 20) {
                         metadataSection(workout: workout)
-                        WorkoutPreview(
-                            workout: buildParsedWorkout(from: workout, sets: viewModel.sets),
-                            // t_c74dffbc (2026-08-04): per-fragment CTA. Tapping
-                            // a fragment builds a SetPrefill from the fragment's
-                            // metadata and launches the live stopwatch. The
-                            // workoutSetId is the repGroup's parent set; in
-                            // production the parsed ParsedRepGroup carries a
-                            // workoutSetId field. Here we resolve by index
-                            // against the workout's sets list.
-                            onFragmentTap: { _, _, rgIdx, _, fragment in
-                                launchFragmentTiming(repGroupIndex: rgIdx, fragment: fragment)
-                            },
-                            // t_d59998d9 (2026-08-05): pass the local-state
-                            // recorded-times map so each fragment row can
-                            // show "Saved 0:42.31" once the stopwatch stops.
-                            recordedTimesByFragmentId: recordedTimesByFragmentId,
-                            // V0.47 Slice 3 (2026-08-22): vocabulary card
-                            // is end-of-session only — read-only contexts
-                            // hide it. The detail view surfaces mappings
-                            // via the per-row "edit" link instead.
-                            showVocabularyCard: false
-                        )
+                        // V0.55 S0a (2026-09-13): segmented picker —
+                        // `Structured | As written`. Default `.structured`
+                        // so today's WorkoutPreview stays the default
+                        // surface; the new RawWorkoutTextView renders
+                        // only when the user opts in. S2 replaces the
+                        // picker copy + wiring + adds bidirectional
+                        // linkage; S0a only adds the toggle. Segmented
+                        // style is the platform primitive per the
+                        // design-quality gate (no custom chrome).
+                        Picker("Display mode", selection: $displayMode) {
+                            ForEach(WorkoutDisplayMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16)
+
+                        // V0.55 S0a: conditional rendering. Structured
+                        // (default) shows the existing WorkoutPreview
+                        // untouched — S1 will rework it into the
+                        // rep-identity card layout. As written shows
+                        // the new RawWorkoutTextView. The two panes
+                        // never coexist on screen at once.
+                        switch displayMode {
+                        case .structured:
+                            WorkoutPreview(
+                                workout: buildParsedWorkout(from: workout, sets: viewModel.sets),
+                                // t_c74dffbc (2026-08-04): per-fragment CTA. Tapping
+                                // a fragment builds a SetPrefill from the fragment's
+                                // metadata and launches the live stopwatch. The
+                                // workoutSetId is the repGroup's parent set; in
+                                // production the parsed ParsedRepGroup carries a
+                                // workoutSetId field. Here we resolve by index
+                                // against the workout's sets list.
+                                onFragmentTap: { _, _, rgIdx, _, fragment in
+                                    launchFragmentTiming(repGroupIndex: rgIdx, fragment: fragment)
+                                },
+                                // t_d59998d9 (2026-08-05): pass the local-state
+                                // recorded-times map so each fragment row can
+                                // show "Saved 0:42.31" once the stopwatch stops.
+                                recordedTimesByFragmentId: recordedTimesByFragmentId,
+                                // V0.47 Slice 3 (2026-08-22): vocabulary card
+                                // is end-of-session only — read-only contexts
+                                // hide it. The detail view surfaces mappings
+                                // via the per-row "edit" link instead.
+                                showVocabularyCard: false
+                            )
                             .padding(.horizontal, 16)
+                        case .asWritten:
+                            // Raw text lives on `workout.description`
+                            // (the `workout_text` column in Postgres).
+                            // Empty / nil → show a single-line note so
+                            // the surface isn't blank.
+                            let raw = (workout.description?.isEmpty == false)
+                                ? workout.description!
+                                : "No raw text recorded for this workout."
+                            RawWorkoutTextView(rawText: raw)
+                                .background(Color.bgRaised)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .padding(.horizontal, 16)
+                        }
                         if let errorMessage = viewModel.errorMessage {
                             Text(errorMessage)
                                 .font(.caption)
