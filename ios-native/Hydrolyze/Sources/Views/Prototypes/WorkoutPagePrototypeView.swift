@@ -31,23 +31,20 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Shared palette tokens (cya-from-the-brief + on-brand neutrals)
-// These are local to the prototype on purpose — the production
-// Hydrolyze palette (HydrolyzeColors.swift) is teal+coral, not cyan.
-// Nathan explicitly called cyan #09d4ee as the prototype accent for
-// this side-by-side. The CTAs in the prototype use cyan; production
-// stays on accentAction. Once a winner is picked the colors fold back
-// into HydrolyzeColors under new semantic names.
-private enum ProtoPalette {
-    static let accent   = Color(red: 0.035, green: 0.831, blue: 0.933) // #09d4ee
-    static let bgBase   = Color(red: 0.024, green: 0.055, blue: 0.094) // #060e18
-    static let bgRaised = Color.white.opacity(0.05)
-    static let divider  = Color.white.opacity(0.08)
-    static let textPri  = Color.white
-    static let textMuted = Color.white.opacity(0.62)
-    static let textFaint = Color.white.opacity(0.42)
-    static let past     = Color.white.opacity(0.28) // completed fragments
-}
+// MARK: - Token usage note
+// V0.55 proto (2026-09-23): the previous iteration drifted into
+// cyan + amber + raw hex, which violates the design-guide rule
+// "Every color in the app must come from here. Rule: don't use
+// raw hex at the call site" (HydrolyzeColors.swift L4-5).
+//
+// Restyle (2026-09-23, Nathan pick: Native List + token system):
+// this prototype now reads the SAME tokens production code uses,
+// so the visual comparison is honest about what the page will
+// look like when it ships. Tokens are referenced directly via
+// Color.bgBase, Color.textPrimary, Color.accentAction, etc.
+// No local palette, no raw hex. Coral accentAction is reserved
+// for the bottom CTA and the active rep pill — two spots, well
+// under the 20% rule.
 
 // MARK: - Test workout (locked above)
 // Built so each variant renders identically, no variant owns the data.
@@ -168,7 +165,7 @@ struct WorkoutPagePrototypeView: View {
         // reach all three — switching variants is a single segmented
         // tap instead of relaunching the app three times.
         ZStack {
-            ProtoPalette.bgBase.ignoresSafeArea()
+            Color.bgBase.ignoresSafeArea()
             VStack(spacing: 0) {
                 picker
                 switch variant {
@@ -191,7 +188,7 @@ struct WorkoutPagePrototypeView: View {
         .pickerStyle(.segmented)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(ProtoPalette.bgBase)
+        .background(Color.bgBase)
     }
 }
 
@@ -217,7 +214,7 @@ private struct NativeListVariant: View {
                 }
             } header: {
                 Text("WARM-UP · 400 m")
-                    .font(.footnote).foregroundStyle(ProtoPalette.textMuted)
+                    .font(.footnote).foregroundStyle(Color.textMuted)
             }
             Section {
                 ForEach(Array(workout.main.enumerated()), id: \.offset) { _, s in
@@ -225,7 +222,7 @@ private struct NativeListVariant: View {
                 }
             } header: {
                 Text("MAIN SET · 800 m")
-                    .font(.footnote).foregroundStyle(ProtoPalette.textMuted)
+                    .font(.footnote).foregroundStyle(Color.textMuted)
             }
             Section {
                 ForEach(Array(workout.cooldown.enumerated()), id: \.offset) { _, s in
@@ -233,12 +230,12 @@ private struct NativeListVariant: View {
                 }
             } header: {
                 Text("COOL-DOWN · 300 m")
-                    .font(.footnote).foregroundStyle(ProtoPalette.textMuted)
+                    .font(.footnote).foregroundStyle(Color.textMuted)
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(ProtoPalette.bgBase)
+        .background(Color.bgBase)
         .safeAreaInset(edge: .bottom) {
             BottomCTA(workout: workout)
         }
@@ -254,35 +251,35 @@ private struct SetRow: View {
             HStack(spacing: 6) {
                 Text("\(set.reps)×")
                     .font(.system(.title3, design: .default).weight(.semibold).monospacedDigit())
-                    .foregroundStyle(isActive ? ProtoPalette.accent : ProtoPalette.textPri)
+                    .foregroundStyle(Color.textPrimary)
                 Text("\(set.distance) m")
                     .font(.system(.title3, design: .default).weight(.semibold).monospacedDigit())
-                    .foregroundStyle(isActive ? ProtoPalette.accent : ProtoPalette.textPri)
+                    .foregroundStyle(Color.textPrimary)
                 Text(set.stroke)
-                    .font(.callout).foregroundStyle(ProtoPalette.textMuted)
+                    .font(.callout).foregroundStyle(Color.textMuted)
                 Spacer(minLength: 8)
                 if !set.sendOff.isEmpty {
                     Text(set.sendOff)
                         .font(.footnote.monospaced())
-                        .foregroundStyle(ProtoPalette.textMuted)
+                        .foregroundStyle(Color.textMuted)
                 }
             }
             // Fragment math + verbatim cues (live only when present)
             if let f = set.fragmentText {
                 Text(f)
                     .font(.footnote)
-                    .foregroundStyle(ProtoPalette.textMuted)
+                    .foregroundStyle(Color.textMuted)
                 // Visible sum: 12.5 + 12.5 = 25 (per fragment block)
                 HStack(spacing: 4) {
-                    Text("12.5 strong").foregroundStyle(ProtoPalette.textFaint)
-                    Text("+").foregroundStyle(ProtoPalette.textFaint)
-                    Text("12.5 easy").foregroundStyle(ProtoPalette.textFaint)
-                    Text("= 25 m").foregroundStyle(ProtoPalette.accent)
+                    Text("12.5 strong").foregroundStyle(Color.textFaint)
+                    Text("+").foregroundStyle(Color.textFaint)
+                    Text("12.5 easy").foregroundStyle(Color.textFaint)
+                    Text("= 25 m").foregroundStyle(Color.textPrimary)
                 }
                 .font(.footnote.monospaced())
             }
             ForEach(set.notes, id: \.self) { n in
-                Text(n).font(.footnote).foregroundStyle(ProtoPalette.textMuted)
+                Text(n).font(.footnote).foregroundStyle(Color.textMuted)
             }
             // Per-fragment identity strip (active set only).
             if let reps = set.fragmentReps {
@@ -292,15 +289,16 @@ private struct SetRow: View {
                             .font(.system(.footnote, design: .monospaced).weight(.semibold))
                             .frame(minWidth: 28, minHeight: 28)
                             .background(
-                                r.isActive ? ProtoPalette.accent : (r.isCompleted ? ProtoPalette.past : ProtoPalette.bgRaised)
+                                r.isActive ? Color.accentAction : (r.isCompleted ? Color.textFaint : Color.bgRaised)
                             )
-                            .foregroundStyle(r.isActive ? ProtoPalette.bgBase : ProtoPalette.textPri)
+                            .foregroundStyle(r.isActive ? Color.textOnAccent : Color.textPrimary)
                             .clipShape(Capsule())
                     }
                 }
             }
         }
         .padding(.vertical, 4)
+        .listRowBackground(isActive ? Color.bgSelected : Color.clear)
     }
 
     private var isActive: Bool {
@@ -336,17 +334,17 @@ private struct BottomCTA: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .padding(.horizontal, 16)
-                .background(ProtoPalette.accent)
-                .foregroundStyle(ProtoPalette.bgBase)
+                .background(Color.accentAction)
+                .foregroundStyle(Color.bgBase)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
             VStack(spacing: 2) {
-                Text("REST").font(.caption2.weight(.semibold)).foregroundStyle(ProtoPalette.textFaint)
-                Text(":\(String(format: "%02d", restSeconds))").font(.title3.monospacedDigit()).foregroundStyle(ProtoPalette.textPri)
+                Text("REST").font(.caption2.weight(.semibold)).foregroundStyle(Color.textFaint)
+                Text(":\(String(format: "%02d", restSeconds))").font(.title3.monospacedDigit()).foregroundStyle(Color.textPrimary)
             }
             .frame(width: 72, height: 48)
-            .background(ProtoPalette.bgRaised)
+            .background(Color.bgRaised)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(.horizontal, 16)
@@ -388,7 +386,7 @@ private struct TypedScrollVariant: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
         }
-        .background(ProtoPalette.bgBase)
+        .background(Color.bgBase)
         .safeAreaInset(edge: .bottom) {
             BottomCTA(workout: workout)
         }
@@ -398,20 +396,20 @@ private struct TypedScrollVariant: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("NOW")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(ProtoPalette.accent)
+                .foregroundStyle(Color.accentAction)
                 .monospaced()
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("REP 2 OF 4")
                     .font(.system(.largeTitle, design: .default).weight(.semibold))
-                    .foregroundStyle(ProtoPalette.accent)
+                    .foregroundStyle(Color.accentAction)
                     .monospacedDigit()
                 Text("· 25 m free")
                     .font(.title3)
-                    .foregroundStyle(ProtoPalette.textPri)
+                    .foregroundStyle(Color.textPrimary)
             }
             Text("race rhythm · :45 send-off")
                 .font(.subheadline)
-                .foregroundStyle(ProtoPalette.textMuted)
+                .foregroundStyle(Color.textMuted)
         }
         .padding(.top, 8)
     }
@@ -421,9 +419,9 @@ private struct TypedScrollVariant: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title.uppercased())
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(ProtoPalette.textMuted)
+                .foregroundStyle(Color.textMuted)
                 .monospaced()
-            Divider().overlay(ProtoPalette.divider)
+            Divider().overlay(Color.divider)
             content()
         }
     }
@@ -436,23 +434,23 @@ private struct SetBlock: View {
             HStack(spacing: 6) {
                 Text("\(set.reps)×")
                     .font(.title3.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(isActive ? ProtoPalette.accent : ProtoPalette.textPri)
+                    .foregroundStyle(isActive ? Color.accentAction : Color.textPrimary)
                 Text("\(set.distance) m")
                     .font(.title3.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(isActive ? ProtoPalette.accent : ProtoPalette.textPri)
+                    .foregroundStyle(isActive ? Color.accentAction : Color.textPrimary)
                 Text(set.stroke)
                     .font(.callout)
-                    .foregroundStyle(ProtoPalette.textMuted)
+                    .foregroundStyle(Color.textMuted)
                 Spacer(minLength: 8)
                 Text(set.sendOff)
                     .font(.footnote.monospaced())
-                    .foregroundStyle(ProtoPalette.textMuted)
+                    .foregroundStyle(Color.textMuted)
             }
             if let f = set.fragmentText {
-                Text(f).font(.footnote).foregroundStyle(ProtoPalette.textMuted)
+                Text(f).font(.footnote).foregroundStyle(Color.textMuted)
             }
             ForEach(set.notes, id: \.self) { n in
-                Text(n).font(.footnote).foregroundStyle(ProtoPalette.textMuted)
+                Text(n).font(.footnote).foregroundStyle(Color.textMuted)
             }
         }
     }
@@ -493,7 +491,7 @@ private struct FreeChoiceVariant: View {
             .padding(.horizontal, 18)
             .padding(.top, 10)
         }
-        .background(ProtoPalette.bgBase)
+        .background(Color.bgBase)
         .safeAreaInset(edge: .bottom) {
             BottomCTA(workout: workout)
         }
@@ -507,7 +505,7 @@ private struct FreeChoiceVariant: View {
     private func sectionHeader(_ s: String) -> some View {
         Text(s.uppercased())
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(ProtoPalette.textMuted)
+            .foregroundStyle(Color.textMuted)
             .monospaced()
     }
 }
@@ -518,19 +516,19 @@ private struct ProgressHeader: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("NOW · REP 2 OF 4")
                 .font(.system(.title, design: .default).weight(.bold).monospaced())
-                .foregroundStyle(ProtoPalette.accent)
+                .foregroundStyle(Color.accentAction)
             Text("25 m free · descend 1–4 · race rhythm")
                 .font(.subheadline)
-                .foregroundStyle(ProtoPalette.textMuted)
+                .foregroundStyle(Color.textMuted)
             // Coach-voice verbatim + math line.
             HStack(spacing: 6) {
-                Text("12.5 strong").foregroundStyle(ProtoPalette.textPri)
-                Text("+").foregroundStyle(ProtoPalette.textFaint)
-                Text("12.5 easy").foregroundStyle(ProtoPalette.textPri)
-                Text("= 25 m").foregroundStyle(ProtoPalette.accent)
+                Text("12.5 strong").foregroundStyle(Color.textPrimary)
+                Text("+").foregroundStyle(Color.textFaint)
+                Text("12.5 easy").foregroundStyle(Color.textPrimary)
+                Text("= 25 m").foregroundStyle(Color.textPrimary)
             }
             .font(.footnote.monospaced())
-            Divider().overlay(ProtoPalette.divider).padding(.top, 4)
+            Divider().overlay(Color.divider).padding(.top, 4)
         }
     }
 }
@@ -547,18 +545,18 @@ private struct SetRowFree: View {
                         .font(.headline.monospacedDigit())
                 } icon: {
                     Image(systemName: "figure.pool.swim")
-                        .foregroundStyle(ProtoPalette.accent)
+                        .foregroundStyle(Color.textFaint)
                 }
                 Spacer(minLength: 8)
                 Text(set.intensity)
                     .font(.footnote.weight(.semibold).monospaced())
-                    .foregroundStyle(isHero ? ProtoPalette.accent : ProtoPalette.textMuted)
+                    .foregroundStyle(isHero ? Color.textPrimary : Color.textMuted)
             }
             if !set.sendOff.isEmpty {
-                Text(set.sendOff).font(.footnote.monospaced()).foregroundStyle(ProtoPalette.textMuted)
+                Text(set.sendOff).font(.footnote.monospaced()).foregroundStyle(Color.textMuted)
             }
             if let f = set.fragmentText {
-                Text(f).font(.footnote).foregroundStyle(ProtoPalette.textMuted)
+                Text(f).font(.footnote).foregroundStyle(Color.textMuted)
             }
             // Per-rep identity strip (only on hero set so the rest can
             // scroll). Each pill is a real Button so haptics + tap
@@ -572,8 +570,8 @@ private struct SetRowFree: View {
                             Text("\(r.ordinal)")
                                 .font(.system(.headline, design: .monospaced).weight(.semibold))
                                 .frame(width: 48, height: 48)
-                                .background(r.isActive ? ProtoPalette.accent : (r.isCompleted ? ProtoPalette.past : ProtoPalette.bgRaised))
-                                .foregroundStyle(r.isActive ? ProtoPalette.bgBase : ProtoPalette.textPri)
+                                .background(r.isActive ? Color.accentAction : (r.isCompleted ? Color.textFaint : Color.bgRaised))
+                                .foregroundStyle(r.isActive ? Color.textOnAccent : Color.textPrimary)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
@@ -582,7 +580,7 @@ private struct SetRowFree: View {
                 .padding(.top, 2)
             }
             ForEach(set.notes.filter { $0 != set.intensity }, id: \.self) { n in
-                Text(n).font(.footnote).foregroundStyle(ProtoPalette.textMuted)
+                Text(n).font(.footnote).foregroundStyle(Color.textMuted)
             }
         }
         .padding(.vertical, 8)
