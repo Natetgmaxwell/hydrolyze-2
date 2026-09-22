@@ -139,7 +139,7 @@ struct ContentView: View {
     /// builder with the jodie-09 Purposeful Threshold workout seeded
     /// in (see `seedV0531DesignABuilder`).
     private enum V46DemoSurface: String, CaseIterable {
-        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer, console
+        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer, console, workoutPagePrototype
 
         static func detect() -> V46DemoSurface? {
             let args = ProcessInfo.processInfo.arguments
@@ -196,6 +196,20 @@ struct ContentView: View {
                 || args.contains("-v54-demo-console-between-jodie09") {
                 return .console
             }
+            // V0.55 proto (2026-09-23): native SwiftUI workout-page
+            // prototype (3 variants in a segmented picker). Routed
+            // here so the prototype file (which lives under
+            // Views/Prototypes/) is reachable without an AuthManager
+            // sign-in, the same pattern every prior screenshot harness
+            // uses. See WorkoutPagePrototypeView.swift for the
+            // rationale and the locked test workout.
+            //
+            // Accepts `-prototype-workout-page`, `-prototype-workout-page=typed`,
+            // `-prototype-workout-page=free` — all route here. The view
+            // itself reads the qualifier and picks the default variant.
+            if args.contains(where: { $0.hasPrefix("-prototype-workout-page") }) {
+                return .workoutPagePrototype
+            }
             return nil
         }
     }
@@ -226,6 +240,12 @@ struct ContentView: View {
             NavigationStack {
                 SessionConsoleView(workoutId: "v54-demo-workout")
             }
+        case .workoutPagePrototype:
+            // V0.55 proto (2026-09-23): native SwiftUI workout-page
+            // prototype with three variants. DEBUG-only, no AuthManager
+            // involvement, no network. The segmented picker inside the
+            // prototype swaps variants without an app relaunch.
+            WorkoutPagePrototypeView()
         }
     }
 
