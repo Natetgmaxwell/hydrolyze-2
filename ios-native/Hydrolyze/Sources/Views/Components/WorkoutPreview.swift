@@ -2926,22 +2926,19 @@ private struct PairRepGroupRow: View {
                         onAggregateChipTap(title, records)
                     }
                 )
-                // ×N badge trailing the exemplar. Same amber tint
-                // the ×N prefix uses elsewhere — visual continuity
-                // with the header's leading ×N. The coach reads "1
-                // card + ×4" and knows: one swim shown, four in the
-                // set, all identical.
-                Text("× \(reps)")
-                    .font(.numeric)
-                    .foregroundColor(Color.accentAmber)
-                    .padding(.leading, 4)
-                    .accessibilityLabel("\(reps) identical reps")
+                // V0.55 S2b (2026-09-22, fact 154): the trailing ×N chip
+                // was removed. The set-level header above already carries
+                // the multiplier (L3048 "4×" before "25m Free"); the
+                // trailing chip duplicated it as "× 4". Rule from S3.1:
+                // say the multiplier ONCE, at set level. Accessibility
+                // label "N identical reps" stays — that one was already
+                // a single string per card, kept on the header line for
+                // VoiceOver.
             } else {
                 // Non-exemplar path (legacy): 4 cards for a 4-rep set
                 // when reps differ per-card (today only Mode 3 fires
                 // this). Mode 1/2 with reps == 1 also hit this path.
                 let count = repCardCount(reps: reps)
-                let isCollapsed = count == 1 && (reps ?? 1) > 1
                 ForEach(0..<count, id: \.self) { repIdx in
                     let repNumber = repIdx + 1
                     RepCard(
@@ -2961,13 +2958,10 @@ private struct PairRepGroupRow: View {
                         }
                     )
                 }
-                if isCollapsed, let reps = reps {
-                    Text("× \(reps)")
-                        .font(.numeric)
-                        .foregroundColor(Color.accentAmber)
-                        .padding(.leading, 4)
-                        .accessibilityLabel("\(reps) reps")
-                }
+                // V0.55 S2b: the collapsed ×N trailing chip (which
+                // fired when isCollapsed was true: count == 1 && reps > 1)
+                // was removed. Set-level header already carries the
+                // multiplier; the trailing chip was a literal duplicate.
             }
             // V0.53.2 (2026-09-08, caption-wrap nit): the rg's `note`
             // (e.g. "Each: 50 @ 65% / 50 @ 70% / 50 @ 75%") — when
@@ -3171,12 +3165,12 @@ private struct UniformRepGroupRow: View {
                         onAggregateChipTap(title, records)
                     }
                 )
-                // ×N trailing badge — same affordance as Mode 1.
-                Text("× \(reps)")
-                    .font(.numeric)
-                    .foregroundColor(Color.accentAmber)
-                    .padding(.leading, 4)
-                    .accessibilityLabel("\(reps) identical reps")
+                // V0.55 S2b (2026-09-22, fact 154): trailing ×N chip
+                // removed. The header above (L3236 "4×" before
+                // "25m Free") already carries the multiplier. Mode 2
+                // shares Mode 1's exemplar-collapse rule; both were
+                // duplicating the set header. Accessibility label
+                // "N identical reps" stays on the header line.
             } else {
                 // Non-exemplar path (legacy / reps == 1): one card
                 // per rep. Mode 3 is dispatched separately above, so
