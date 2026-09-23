@@ -657,13 +657,7 @@
         "reps": 4,
         "distance": 100,
         "interval": "1:35",
-        "stroke": null
-      },
-      {
-        "reps": 1,
-        "distance": 100,
-        "interval": null,
-        "stroke": "Drill",
+        "stroke": null,
         "fragments": [
           {
             "distance": 50,
@@ -1145,7 +1139,7 @@
       }
     ],
     "expectedUnmappedTerms": [],
-    "expectedSectionCountMin": 8
+    "expectedSectionCountMin": 6
   },
   "commit-jodie-08-aug.txt": {
     "expectedRepGroups": [

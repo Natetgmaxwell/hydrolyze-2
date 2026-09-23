@@ -135,6 +135,12 @@ export const TIER2_ABBREVIATION_EXCLUSIONS: ReadonlyArray<RegExp> = [
 // the workout text itself.
 export const TIER2_LLM_OVER_EMIT_EXCLUSIONS: ReadonlyArray<RegExp> = [
   /\b(?:breakout|genuine|velocity|turnover|shutdown|finish(?:ing)?|controlled|pursuit|acceleration|execution|order|target|hold|settle|surge|rhythm|slightly)\b/i,
+  // V0.52.5 (2026-09-23): drill / body-position cues. The LLM picks
+  // these up from the workout text and re-emits as unmapped_terms.
+  // They're not intensity words — they're movement cues the LLM should
+  // never surface to the coach as "unknown". jodie-05 leaked `hips`
+  // on the bench (D_noise 1.0 -> 0.5). Single-word body cues.
+  /\b(?:hips|kick(?:\s+timing)?|catch(?:ing)?|bodyline|body\s+line|body\s+position|shoulder(?:s)?|elbow(?:s)?|rotation|body\s+roll|streamline|extension|finish(?:es|ing)?)\b/i,
   // "race" alone (without "rhythm"/"pace") isn't a tier-1 — it's a
   // generic modifier.
   /^\s*race\s*$/i,

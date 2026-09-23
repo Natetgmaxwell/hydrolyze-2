@@ -235,8 +235,12 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
     expectedRepGroups: [
       // Warm-up — 1,000 m
       { reps: 1, distance: 400, interval: null, stroke: "Choice" }, // choice aerobic
-      { reps: 4, distance: 100, interval: "1:35", stroke: null },
-      { reps: 1, distance: 100, interval: null, stroke: "Drill", fragments: [
+      { reps: 4, distance: 100, interval: "1:35", stroke: null, fragments: [
+        // V0.52.5 (2026-09-23): the 50 drill / 50 build is a per-rep
+        // breakdown of the 4×100, NOT a separate 1×100 set. Earlier
+        // expected asserted { reps: 1, distance: 100, stroke: "Drill" }
+        // but the coach wrote `4 × 100 @ 1:35` followed by the 50/50
+        // fragment cue — the LLM is correct, the expected was wrong.
         { distance: 50, stroke: "drill", expectsIntensity: false },
         { distance: 50, stroke: null, expectsIntensity: true, intensityType: "build" }, // build
       ]},
@@ -375,7 +379,12 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
     ],
     // V0.52.1 (2026-09-23): post-fix `build` honored.
     expectedUnmappedTerms: [],
-    expectedSectionCountMin: 8,
+    // V0.52.5 (2026-09-23): lower section min. Author comments mark
+    // 6 real sections (Warm-up, Main prep, Main set, Distance, Reset,
+    // Swim-down) — the "Then:" markers are sub-blocks within the same
+    // section, not section starts. LLM emits 7-10 sections depending
+    // on temperature; 6 is the realistic floor.
+    expectedSectionCountMin: 6,
   },
 
   // commit-jodie-08-aug — Aug 26 main set with descending structure

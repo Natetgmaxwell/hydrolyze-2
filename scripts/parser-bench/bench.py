@@ -424,6 +424,118 @@ def _aggregate(axis_scores: dict[str, Optional[float]]) -> float:
     return total_v / total_w if total_w > 0 else 0.0
 
 
+def _aggregate_samples(samples: list[dict]) -> dict:
+    """V0.52.5 (2026-09-23): consensus-sampling aggregator. Takes N
+    per-sample axis dicts, returns median score per axis + the spread
+    (max - min) so callers can see which files are stochastic.
+
+    For axes where applicable=False across all samples, returns
+    applicable=False. For axes where some samples are applicable and
+    others aren't (shouldn't happen in normal runs but defensive), the
+    median is computed over the applicable subset only.
+
+    Discrete axes (D_noise noise_leaks) use majority vote instead of
+    median: the most-common outcome wins. The score reported is the
+    median of applicable scores; noise_leaks is the majority vote (set
+    of words that leak in the majority of samples)."""
+    if not samples:
+        return {"applicable": False}
+    axes = ["A_structure", "B_fragments", "C_intensity", "D_noise", "E_section"]
+    out_axes: dict[str, dict] = {}
+    for axis in axes:
+        applicable_scores: list[float] = []
+        applicable_flags: list[bool] = []
+        for s in samples:
+            ax = s.get("axes", {}).get(axis, {})
+            applicable_flags.append(bool(ax.get("applicable", True)))
+            if ax.get("applicable", True) and ax.get("score") is not None:
+                applicable_scores.append(float(ax["score"]))
+        if not any(applicable_flags):
+            out_axes[axis] = {"applicable": False}
+            continue
+        if applicable_scores:
+            applicable_scores.sort()
+            n = len(applicable_scores)
+            median = applicable_scores[n // 2] if n % 2 == 1 else (applicable_scores[n // 2 - 1] + applicable_scores[n // 2]) / 2
+            spread = max(applicable_scores) - min(applicable_scores)
+        else:
+            median = None
+            spread = 0.0
+        # Discrete majority vote for D_noise noise_leaks.
+        noise_leaks_votes: list[tuple] = []
+        for s in samples:
+            ax = s.get("axes", {}).get(axis, {})
+            if ax.get("applicable"):
+                noise_leaks_votes.append(tuple(sorted(ax.get("noise_leaks") or [])))
+        # Most common tuple = majority vote.
+        majority_leaks: list[str] = []
+        if noise_leaks_votes:
+            from collections import Counter
+            cnt = Counter(noise_leaks_votes)
+            top = cnt.most_common(1)[0]
+            majority_leaks = list(top[0])
+        out_axes[axis] = {
+            "applicable": True,
+            "score": median,
+            "spread": round(spread, 3),
+            "n_samples": len(applicable_scores),
+            "noise_leaks": majority_leaks,
+        }
+        # D_noise match flag from majority leaks.
+        if axis == "D_noise":
+            out_axes[axis]["match"] = len(majority_leaks) == 0
+            out_axes[axis]["score"] = 1.0 if len(majority_leaks) == 0 else 0.0
+    aggregate = _aggregate({
+        "A": out_axes["A_structure"].get("score"),
+        "B": out_axes["B_fragments"].get("score"),
+        "C": out_axes["C_intensity"].get("score"),
+        "D": out_axes["D_noise"].get("score") if out_axes["D_noise"].get("applicable") else None,
+        "E": out_axes["E_section"].get("score"),
+    })
+    return {"axes": out_axes, "aggregate_score": aggregate}
+
+
+def run_jodie_samples(input_file: Path, expected: dict, samples: int = 1, refresh: bool = True) -> dict:
+    """V0.52.5 (2026-09-23): consensus-sampling variant of run_jodie.
+    Calls the live edge function N times and returns the median per axis
+    + spread (max-min). Used to kill MiniMax-M3 stochasticity at
+    temperature=0 (verified 2026-09-23 — same prompt still varies).
+    When samples=1, behaves identically to run_jodie."""
+    if samples <= 1:
+        return run_jodie(input_file, expected, refresh=refresh)
+    sample_results: list[dict] = []
+    text = input_file.read_text("utf-8")
+    for i in range(samples):
+        parsed, elapsed = _call_edge_fn(text)
+        actual = _flat_rgs(parsed)
+        used: set[int] = set()
+        a = axis_structure(actual, expected)
+        b = axis_fragments(actual, expected, used)
+        c = axis_fragment_intensity(parsed, expected)
+        d = axis_noise(parsed, expected)
+        e = axis_section(parsed, expected)
+        sample_results.append({
+            "sample_idx": i,
+            "elapsed_s": round(elapsed, 2),
+            "axes": {
+                "A_structure": a, "B_fragments": b, "C_intensity": c, "D_noise": d, "E_section": e,
+            },
+            "aggregate_score": _aggregate({
+                "A": a["score"], "B": b["score"], "C": c.get("score"),
+                "D": d.get("score") if d.get("applicable") else None,
+                "E": e["score"],
+            }),
+        })
+    consensus = _aggregate_samples(sample_results)
+    return {
+        "corpus": "jodie",
+        "file": input_file.name,
+        "samples": sample_results,
+        "axes": consensus["axes"],
+        "aggregate_score": consensus["aggregate_score"],
+    }
+
+
 # ─── Diff against a previous run ──────────────────────────────────────────────
 
 def diff_against(prev_file: Path, current_results: list[dict]) -> dict:
@@ -459,6 +571,8 @@ def main() -> int:
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--strict", action="store_true",
                         help="Exit 1 if any file scores < 0.85 OR has unmapped_terms noise leaks. For CI.")
+    parser.add_argument("--samples", type=int, default=1,
+                        help="V0.52.5 (2026-09-23): consensus-sample the LLM call N times per Jodie file, take median per axis. Kills MiniMax-M3 stochasticity at temperature=0. Default 1 (no consensus).")
     args = parser.parse_args()
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -479,7 +593,10 @@ def main() -> int:
         for name in sorted(expected_jodie):
             f = BENCH_DIR / name
             if not f.exists(): continue
-            results.append(run_jodie(f, expected_jodie[name], refresh=args.refresh_jodie))
+            if args.samples > 1:
+                results.append(run_jodie_samples(f, expected_jodie[name], samples=args.samples, refresh=args.refresh_jodie))
+            else:
+                results.append(run_jodie(f, expected_jodie[name], refresh=args.refresh_jodie))
 
     if args.corpus in ("stress", "all"):
         for name in sorted(expected_stress):
@@ -563,6 +680,17 @@ def main() -> int:
             return 3
         else:
             print(f"\n[OK] all {n} files ≥ 0.85 aggregate + zero noise leaks")
+    if args.samples > 1:
+        # Print spread summary (per-file stochasticity diagnostic).
+        print(f"\n=== SPREAD (samples={args.samples}) ===")
+        for r in results:
+            if "samples" not in r: continue
+            spreads = []
+            for ax_name, ax in r["axes"].items():
+                if ax.get("applicable") and ax.get("spread", 0) > 0:
+                    spreads.append(f"{ax_name.split('_')[0]}={ax['spread']:.2f}")
+            if spreads:
+                print(f"   {r['file']:<40} aggregate={r['aggregate_score']:.2f}  spread: {' '.join(spreads)}")
     return 0
 
 
