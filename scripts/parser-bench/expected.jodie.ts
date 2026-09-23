@@ -141,9 +141,8 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
       ]},
       { reps: 4, distance: 100, interval: null, stroke: null }, // Final race skill
     ],
-    // V0.52: 'max', 'easy', 'strong' resolve silently; 'build' /
-    // 'descend' are progressions (kept in unmapped_terms until mapped).
-    expectedUnmappedTerms: ["build", "descend"],
+    // V0.52.1 (2026-09-23): post-fix `build`/`descend` honored by rg.intensity_type.
+    expectedUnmappedTerms: [],
     expectedSectionCountMin: 5,
   },
 
@@ -227,7 +226,7 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
     // 'build', 'descend' are progressions. 'progressive' is now a
     // progression too (moved from Tier-1). So unmapped_terms collapses
     // to just the progression words.
-    expectedUnmappedTerms: ["build", "descend", "progressive"],
+    expectedUnmappedTerms: ["progressive"],
     expectedSectionCountMin: 4,
   },
 
@@ -269,9 +268,8 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
       // Swim-down
       { reps: 1, distance: 400, interval: null, stroke: null }, // 400-600 easy
     ],
-    // V0.52: 'easy', 'strong', 'threshold' resolve silently. 'build' /
-    // 'descend' are progressions.
-    expectedUnmappedTerms: ["build", "descend"],
+    // V0.52.1 (2026-09-23): post-fix progressions honored.
+    expectedUnmappedTerms: [],
     expectedSectionCountMin: 5,
   },
 
@@ -304,11 +302,8 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
       // Swim-down
       { reps: 1, distance: 400, interval: null, stroke: null, exclude: true }, // "Swim-down — 400-600" not a set
     ],
-    // V0.52: 'dps' is excluded (descriptive cue, not intensity word).
-    // 'activation' is now excluded from TIER1_TERMS. 'relaxed',
-    // 'easy', 'strong', 'max' all silently resolve. 'build' stays as
-    // a progression.
-    expectedUnmappedTerms: ["build"],
+    // V0.52.1 (2026-09-23): post-fix all progressions honored.
+    expectedUnmappedTerms: [],
     expectedSectionCountMin: 5,
   },
 
@@ -378,10 +373,8 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
       // Swim-down
       { reps: 1, distance: 400, interval: null, stroke: "Kick" }, // kick/scull
     ],
-    // V0.52: 'moderate', 'easy', 'strong', 'all-out', 'relaxed',
-    // 'race rhythm', 'fast' all silently resolve. 'build' is the only
-    // progression in this file.
-    expectedUnmappedTerms: ["build"],
+    // V0.52.1 (2026-09-23): post-fix `build` honored.
+    expectedUnmappedTerms: [],
     expectedSectionCountMin: 8,
   },
 
@@ -408,7 +401,7 @@ export const EXPECTED_JODIE: Record<string, JodieExpected> = {
     ],
     // V0.52: 'mod' is now a Tier-2 abbreviation (excluded). 'fnt' is
     // excluded. 'descend' + 'progressive' are progressions.
-    expectedUnmappedTerms: ["descend", "progressive"],
+    expectedUnmappedTerms: ["progressive"],
     expectedSectionCountMin: 2,
   },
 

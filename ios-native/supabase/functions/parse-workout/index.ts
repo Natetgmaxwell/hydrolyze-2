@@ -16,7 +16,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { WORD_NUMBERS, SWIM_DISTANCES } from "../../hydrolyze-mobile/lib/constants/swim-constants.ts";
 import { LLMError, parseWithLLM, type CoachVocabularyEntry } from "./_llm.ts";
-import { extractUnmappedTerms } from "./_dialect-detector.ts";
+import { extractUnmappedTerms, scrubUnmappedTerms } from "./_dialect-detector.ts";
 import { normalizeFragmentDistances } from "./_decimal-distance-fix.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────

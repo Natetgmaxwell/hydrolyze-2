@@ -304,10 +304,7 @@
         "stroke": null
       }
     ],
-    "expectedUnmappedTerms": [
-      "build",
-      "descend"
-    ],
+    "expectedUnmappedTerms": [],
     "expectedSectionCountMin": 5
   },
   "commit-jodie-03-sep.txt": {
@@ -644,8 +641,6 @@
       }
     ],
     "expectedUnmappedTerms": [
-      "build",
-      "descend",
       "progressive"
     ],
     "expectedSectionCountMin": 4
@@ -807,10 +802,7 @@
         "stroke": null
       }
     ],
-    "expectedUnmappedTerms": [
-      "build",
-      "descend"
-    ],
+    "expectedUnmappedTerms": [],
     "expectedSectionCountMin": 5
   },
   "commit-jodie-05-aug.txt": {
@@ -915,9 +907,7 @@
         "exclude": true
       }
     ],
-    "expectedUnmappedTerms": [
-      "build"
-    ],
+    "expectedUnmappedTerms": [],
     "expectedSectionCountMin": 5
   },
   "commit-jodie-06-aug.txt": {
@@ -1154,9 +1144,7 @@
         "stroke": "Kick"
       }
     ],
-    "expectedUnmappedTerms": [
-      "build"
-    ],
+    "expectedUnmappedTerms": [],
     "expectedSectionCountMin": 8
   },
   "commit-jodie-08-aug.txt": {
@@ -1243,7 +1231,6 @@
       }
     ],
     "expectedUnmappedTerms": [
-      "descend",
       "progressive"
     ],
     "expectedSectionCountMin": 2
