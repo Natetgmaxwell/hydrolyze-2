@@ -168,7 +168,8 @@ def axis_structure(actual: list[dict], expected: dict) -> dict:
     return {
         "matched": len(matched),
         "expected": expected_count,
-        "score": len(matched) / max(1, expected_count),
+        "score": len(matched) / max(1, expected_count) if expected_count > 0 else None,
+        "applicable": expected_count > 0,
         "rg_findings": rg_findings,
     }
 
@@ -227,7 +228,8 @@ def axis_fragments(actual: list[dict], expected: dict, used_indices: set[int]) -
     return {
         "matched": matched_count,
         "total": total_count,
-        "score": matched_count / max(1, total_count),
+        "score": matched_count / max(1, total_count) if total_count > 0 else None,
+        "applicable": total_count > 0,
         "findings": findings,
     }
 
@@ -274,7 +276,8 @@ def axis_fragment_intensity(parsed: dict, expected: dict) -> dict:
     return {
         "matched": matched,
         "total": total,
-        "score": matched / max(1, total),
+        "score": matched / max(1, total) if total > 0 else None,
+        "applicable": total > 0,
         "findings": findings,
     }
 
@@ -319,6 +322,7 @@ def axis_section(parsed: dict, expected: dict) -> dict:
         "section_min": min_required,
         "section_ok": section_ok,
         "notes_inversion_ok": notes_inversion_ok,
+        "applicable": True,
         "score": (1.0 if section_ok else 0.0) * (1.0 if notes_inversion_ok else 0.0),
     }
 
@@ -338,7 +342,9 @@ def run_real_input(input_file: Path, expected: dict) -> dict:
         "corpus": "real",
         "file": input_file.name,
         "axes": {"A_structure": a, "B_fragments": b, "C_intensity": c, "D_noise": d, "E_section": e},
-        "aggregate_score": _aggregate({"A": a["score"], "B": b["score"], "C": 1.0, "D": 1.0, "E": e["score"]}),
+        "aggregate_score": _aggregate({
+            "A": a["score"], "B": b["score"], "C": None, "D": None, "E": e["score"],
+        }),
     }
 
 
@@ -368,8 +374,8 @@ def run_jodie(input_file: Path, expected: dict, refresh: bool = True) -> dict:
         "aggregate_score": _aggregate({
             "A": a["score"],
             "B": b["score"],
-            "C": c.get("score", 1.0),
-            "D": d.get("score", 1.0) if d.get("applicable") else 1.0,
+            "C": c.get("score"),
+            "D": d.get("score") if d.get("applicable") else None,
             "E": e["score"],
         }),
     }
@@ -380,7 +386,7 @@ def run_stress(input_file: Path, expected: dict) -> dict:
     actual = _flat_rgs(parsed)
     used: set[int] = set()
     a = axis_structure(actual, expected)
-    b = {"applicable": False, "matched": 0, "total": 0, "score": 1.0, "findings": []}
+    b = axis_fragments(actual, expected, used)
     c = {"applicable": False}
     d = {"applicable": False}
     e = axis_section(parsed, expected)
@@ -388,14 +394,25 @@ def run_stress(input_file: Path, expected: dict) -> dict:
         "corpus": "stress",
         "file": input_file.name,
         "axes": {"A_structure": a, "B_fragments": b, "C_intensity": c, "D_noise": d, "E_section": e},
-        "aggregate_score": _aggregate({"A": a["score"], "B": 1.0, "C": 1.0, "D": 1.0, "E": e["score"]}),
+        "aggregate_score": _aggregate({
+            "A": a["score"], "B": b["score"], "C": None, "D": None, "E": e["score"],
+        }),
     }
 
 
-def _aggregate(axis_scores: dict[str, float]) -> float:
-    """Simple weighted mean — structure is the load-bearing axis."""
+def _aggregate(axis_scores: dict[str, Optional[float]]) -> float:
+    """Weighted mean of applicable axes. None scores are skipped (axis not
+    asserted for this corpus). Structure is the load-bearing axis."""
     weights = {"A": 0.45, "B": 0.15, "C": 0.15, "D": 0.10, "E": 0.15}
-    return sum(axis_scores[k] * weights[k] for k in weights)
+    total_w = 0.0
+    total_v = 0.0
+    for k, w in weights.items():
+        v = axis_scores.get(k)
+        if v is None:
+            continue
+        total_v += v * w
+        total_w += w
+    return total_v / total_w if total_w > 0 else 0.0
 
 
 # ─── Diff against a previous run ──────────────────────────────────────────────
@@ -410,8 +427,10 @@ def diff_against(prev_file: Path, current_results: list[dict]) -> dict:
         prev_r = prev_by_file.get(cur["file"])
         if not prev_r: continue
         for axis in ("A_structure", "B_fragments", "C_intensity", "D_noise", "E_section"):
-            prev_score = prev_r["axes"].get(axis, {}).get("score", 1.0)
-            cur_score = cur["axes"].get(axis, {}).get("score", 1.0)
+            prev_score = prev_r["axes"].get(axis, {}).get("score")
+            cur_score = cur["axes"].get(axis, {}).get("score")
+            if prev_score is None or cur_score is None:
+                continue
             if cur_score + 0.05 < prev_score:
                 regressions.append({
                     "file": cur["file"], "axis": axis,
@@ -429,6 +448,8 @@ def main() -> int:
                         help="Re-POST Jodie files to the live edge function (otherwise use /tmp cache)")
     parser.add_argument("--diff", type=str, help="Path to a previous run JSON to diff against")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--strict", action="store_true",
+                        help="Exit 1 if any file scores < 0.85 OR has unmapped_terms noise leaks. For CI.")
     args = parser.parse_args()
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -470,7 +491,7 @@ def main() -> int:
     for axis in ("A_structure", "B_fragments", "C_intensity", "D_noise", "E_section"):
         scores = [r["axes"].get(axis, {}).get("score") for r in results
                   if r["axes"].get(axis, {}).get("applicable", True) and r["axes"].get(axis, {}).get("score") is not None]
-        agg["axis_means"][axis] = sum(scores) / max(1, len(scores))
+        agg["axis_means"][axis] = sum(scores) / max(1, len(scores)) if scores else None
 
     # Save run
     date = time.strftime("%Y-%m-%d")
@@ -494,15 +515,17 @@ def main() -> int:
         print(f"{'corpus':<8} {'file':<40} {'A':>5} {'B':>5} {'C':>5} {'D':>5} {'E':>5}  {'agg':>5}")
         for r in results:
             axes = r["axes"]
-            def s(k): 
-                v = axes.get(k, {}).get("score")
-                return f"{v:.2f}" if isinstance(v, (int, float)) else "—"
+            def s(k):
+                v = axes.get(k, {})
+                if not v.get("applicable", True) or v.get("score") is None:
+                    return "—"
+                return f"{v['score']:.2f}"
             print(f"{r['corpus']:<8} {r['file']:<40} {s('A_structure'):>5} {s('B_fragments'):>5} {s('C_intensity'):>5} {s('D_noise'):>5} {s('E_section'):>5}  {r['aggregate_score']:.2f}")
         print(f"\n=== AGGREGATE ===")
         print(f"  files:           {agg['files']}")
         print(f"  mean_aggregate:  {agg['mean_aggregate']:.3f}")
         for k, v in agg["axis_means"].items():
-            print(f"  {k:<16} {v:.3f}")
+            print(f"  {k:<16} {v:.3f}" if v is not None else f"  {k:<16} —")
         print(f"\nRun saved: {run_path}")
 
     if args.diff:
@@ -514,6 +537,23 @@ def main() -> int:
             return 2
         else:
             print(f"\n[OK] no regressions vs {diff['prev_file']}")
+
+    if args.strict:
+        # Per-file gate: any file with aggregate < 0.85 OR noise leaks → fail.
+        failing: list[tuple[str, str, float]] = []
+        for r in results:
+            if r["aggregate_score"] < 0.85:
+                failing.append((r["file"], "aggregate", r["aggregate_score"]))
+            d = r["axes"].get("D_noise", {})
+            if d.get("applicable") and d.get("noise_leaks"):
+                failing.append((r["file"], "noise_leaks", 0.0))
+        if failing:
+            print(f"\n!!! STRICT MODE FAIL ({len(failing)} files below threshold):")
+            for f, axis, score in failing:
+                print(f"   {f:<40} {axis:<14}  score={score:.2f}")
+            return 3
+        else:
+            print(f"\n[OK] all {n} files ≥ 0.85 aggregate + zero noise leaks")
     return 0
 
 
