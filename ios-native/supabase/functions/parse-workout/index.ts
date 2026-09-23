@@ -2645,10 +2645,15 @@ async function parseWithFallback(
     } else {
       for (const t of localHitsPre) set.add(t);
     }
-    for (const t of llmTerms || []) {
-      const v = String(t).toLowerCase().trim();
-      if (v.length > 0) set.add(v);
-    }
+    // V0.52.1 (2026-09-23): the LLM-reported unmapped_terms used to
+    // flow through unfiltered. That leaked noise (`a1`, `a2`, `dps`,
+    // `fnt`, `mod`, `progressive`, `race rhythm`, `max`, `easy`,
+    // `strong`, ...) onto the iOS end-of-session card. Run
+    // scrubUnmappedTerms with parsed-context suppression before
+    // merging the LLM's terms — Tier-2 / zone-code / abbreviation /
+    // already-honored-progression exclusions all apply.
+    const llmTermsScrubbed = scrubUnmappedTerms(llmTerms || [], parsedForContext ?? null);
+    for (const t of llmTermsScrubbed) set.add(t);
     return [...set];
   };
 
