@@ -222,12 +222,25 @@ export function scrubUnmappedTerms(
   parsed?: { sections?: ReadonlyArray<{ namedSets?: ReadonlyArray<{ repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }>; repGroups?: ReadonlyArray<{ intensity?: { type?: string } | null; intensity_type?: string | null; fragments?: ReadonlyArray<{ intensity?: { type?: string } | null }> }> }> } | null,
 ): string[] {
   if (!Array.isArray(terms)) return [];
+  // V0.52.4 (2026-09-23): also drop any word that's a Tier-2 silent
+  // default (DEFAULT_RPE_BY_TERM keys). These resolve silently via the
+  // engine; the LLM echoing them as unmapped is a leak. Previously only
+  // TIER2_LLM_OVER_EMIT_EXCLUSIONS + TIER2_ABBREVIATION_EXCLUSIONS were
+  // applied — words like "smooth", "easy", "strong", "recovery",
+  // "threshold", "race pace", "blast" etc. leaked through. jodie-06
+  // leaked `smooth` on one of the deterministic bench runs (0.222
+  // regression) because of this.
+  const silentDefaults = new Set(
+    Object.keys(DEFAULT_RPE_BY_TERM).map((t) => t.toLowerCase().replace(/\s+/g, " ").trim())
+  );
   const out = new Set<string>();
   for (const raw of terms) {
     const t = String(raw).toLowerCase().trim();
     if (t.length === 0) continue;
     // Reject multi-word phrases (any whitespace inside = reject).
     if (/\s/.test(t)) continue;
+    // V0.52.4: drop Tier-2 silent defaults (smooth, easy, strong, etc.).
+    if (silentDefaults.has(t)) continue;
     let keep = true;
     // V0.52 (2026-09-08): apply BOTH exclusion sets. The
     // LLM-over-emit list catches descriptive words the LLM

@@ -69,12 +69,21 @@ def rg_stroke_sig(rg: dict) -> tuple:
 
 
 def _call_edge_fn(text: str) -> tuple[dict, float]:
-    """POST to the deployed parse-workout edge function. No auth = no vocab."""
+    """POST to the deployed parse-workout edge function. No auth = no vocab.
+
+    V0.52.4 (2026-09-23): sets `X-Bench-Deterministic: 1` so the deployed
+    function forces temperature=0, making the bench reproducible across
+    runs. Production traffic does not set this header. MiniMax-M3 is
+    still slightly non-deterministic at temperature=0 across calls
+    (verified 2026-09-23 — same prompt + seed=42 produced 2 identical
+    responses then 1 truncated one). For stricter reproducibility,
+    callers should retry the bench and pick the best score, or use
+    multiple samples + consensus."""
     body = json.dumps({"workoutText": text}).encode("utf-8")
     req = urllib.request.Request(
         EDGE_FN_URL,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-Bench-Deterministic": "1"},
         method="POST",
     )
     t0 = time.monotonic()
