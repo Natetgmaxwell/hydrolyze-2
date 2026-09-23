@@ -1,0 +1,489 @@
+{
+  "date": "2026-09-23",
+  "commit": "f608622",
+  "corpus": "jodie",
+  "aggregate": {
+    "files": 9,
+    "mean_aggregate": 0.25714387464387467,
+    "axis_means": {
+      "A_structure": 0.0,
+      "B_fragments": 0.0,
+      "C_intensity": 0.6772554605887939,
+      "D_noise": 0.2222222222222222,
+      "E_section": 0.8888888888888888
+    }
+  },
+  "results": [
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-01-sep.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [],
+          "expected": [],
+          "match": true,
+          "noise_leaks": [],
+          "missing_asks": [],
+          "score": 1.0
+        },
+        "E_section": {
+          "section_count": 1,
+          "section_min": 1,
+          "section_ok": true,
+          "notes_inversion_ok": true,
+          "score": 1.0
+        }
+      },
+      "aggregate_score": 0.25
+    },
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-02-sep.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 7,
+          "total": 10,
+          "score": 0.7,
+          "findings": [
+            {
+              "frag_idx": 0,
+              "status": "MISSING_INTENSITY"
+            },
+            {
+              "frag_idx": 0,
+              "status": "MISSING_FRAGMENT"
+            },
+            {
+              "frag_idx": 1,
+              "status": "MISSING_FRAGMENT"
+            }
+          ]
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [],
+          "expected": [
+            "build",
+            "descend"
+          ],
+          "match": false,
+          "noise_leaks": [],
+          "missing_asks": [
+            "build",
+            "descend"
+          ],
+          "score": 0.0
+        },
+        "E_section": {
+          "section_count": 6,
+          "section_min": 5,
+          "section_ok": true,
+          "notes_inversion_ok": true,
+          "score": 1.0
+        }
+      },
+      "aggregate_score": 0.255
+    },
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-03-sep.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 24,
+          "total": 26,
+          "score": 0.9230769230769231,
+          "findings": [
+            {
+              "frag_idx": 0,
+              "status": "MISSING_FRAGMENT"
+            },
+            {
+              "frag_idx": 1,
+              "status": "MISSING_FRAGMENT"
+            }
+          ]
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [
+            "progressive"
+          ],
+          "expected": [
+            "build",
+            "descend",
+            "progressive"
+          ],
+          "match": false,
+          "noise_leaks": [],
+          "missing_asks": [
+            "build",
+            "descend"
+          ],
+          "score": 0.0
+        },
+        "E_section": {
+          "section_count": 7,
+          "section_min": 4,
+          "section_ok": true,
+          "notes_inversion_ok": true,
+          "score": 1.0
+        }
+      },
+      "aggregate_score": 0.28846153846153844
+    },
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-04-sep.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [],
+          "expected": [
+            "build",
+            "descend"
+          ],
+          "match": false,
+          "noise_leaks": [],
+          "missing_asks": [
+            "build",
+            "descend"
+          ],
+          "score": 0.0
+        },
+        "E_section": {
+          "section_count": 0,
+          "section_min": 5,
+          "section_ok": false,
+          "notes_inversion_ok": true,
+          "score": 0.0
+        }
+      },
+      "aggregate_score": 0.0
+    },
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-05-aug.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 6,
+          "total": 6,
+          "score": 1.0,
+          "findings": []
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [],
+          "expected": [
+            "build"
+          ],
+          "match": false,
+          "noise_leaks": [],
+          "missing_asks": [
+            "build"
+          ],
+          "score": 0.0
+        },
+        "E_section": {
+          "section_count": 6,
+          "section_min": 5,
+          "section_ok": true,
+          "notes_inversion_ok": true,
+          "score": 1.0
+        }
+      },
+      "aggregate_score": 0.3
+    },
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-06-aug.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 3,
+          "total": 3,
+          "score": 1.0,
+          "findings": []
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [
+            "progressive",
+            "silent"
+          ],
+          "expected": [
+            "progressive"
+          ],
+          "match": false,
+          "noise_leaks": [
+            "silent"
+          ],
+          "missing_asks": [],
+          "score": 0.0
+        },
+        "E_section": {
+          "section_count": 1,
+          "section_min": 1,
+          "section_ok": true,
+          "notes_inversion_ok": true,
+          "score": 1.0
+        }
+      },
+      "aggregate_score": 0.3
+    },
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-07-aug.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 5,
+          "total": 9,
+          "score": 0.5555555555555556,
+          "findings": [
+            {
+              "frag_idx": 0,
+              "status": "MISSING_FRAGMENT"
+            },
+            {
+              "frag_idx": 1,
+              "status": "MISSING_FRAGMENT"
+            },
+            {
+              "frag_idx": 0,
+              "status": "MISSING_FRAGMENT"
+            },
+            {
+              "frag_idx": 1,
+              "status": "MISSING_FRAGMENT"
+            }
+          ]
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [
+            "moderate"
+          ],
+          "expected": [
+            "build"
+          ],
+          "match": false,
+          "noise_leaks": [
+            "moderate"
+          ],
+          "missing_asks": [
+            "build"
+          ],
+          "score": 0.0
+        },
+        "E_section": {
+          "section_count": 10,
+          "section_min": 8,
+          "section_ok": true,
+          "notes_inversion_ok": true,
+          "score": 1.0
+        }
+      },
+      "aggregate_score": 0.23333333333333334
+    },
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-08-aug.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 4,
+          "total": 4,
+          "score": 1.0,
+          "findings": []
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [
+            "progressive"
+          ],
+          "expected": [
+            "descend",
+            "progressive"
+          ],
+          "match": false,
+          "noise_leaks": [],
+          "missing_asks": [
+            "descend"
+          ],
+          "score": 0.0
+        },
+        "E_section": {
+          "section_count": 2,
+          "section_min": 2,
+          "section_ok": true,
+          "notes_inversion_ok": true,
+          "score": 1.0
+        }
+      },
+      "aggregate_score": 0.3
+    },
+    {
+      "corpus": "jodie",
+      "file": "commit-jodie-09-purposethreshold.txt",
+      "elapsed_s": 0,
+      "axes": {
+        "A_structure": {
+          "matched": 0,
+          "expected": 0,
+          "score": 0.0,
+          "rg_findings": []
+        },
+        "B_fragments": {
+          "matched": 0,
+          "total": 0,
+          "score": 0.0,
+          "findings": []
+        },
+        "C_intensity": {
+          "matched": 11,
+          "total": 12,
+          "score": 0.9166666666666666,
+          "findings": [
+            {
+              "frag_idx": 1,
+              "status": "WRONG_INTENSITY_TYPE",
+              "got": "percent_range",
+              "expected": "aerobic"
+            }
+          ]
+        },
+        "D_noise": {
+          "applicable": true,
+          "actual": [],
+          "expected": [],
+          "match": true,
+          "noise_leaks": [],
+          "missing_asks": [],
+          "score": 1.0
+        },
+        "E_section": {
+          "section_count": 2,
+          "section_min": 2,
+          "section_ok": true,
+          "notes_inversion_ok": true,
+          "score": 1.0
+        }
+      },
+      "aggregate_score": 0.38749999999999996
+    }
+  ]
+}
