@@ -2531,6 +2531,73 @@ export function workoutIs3MT(workout: Workout): boolean {
 // truncated to 12 hex chars. Re-parsing unchanged text yields identical
 // ids — replaceSetsForWorkout deletes + re-inserts sets, so previously
 // recorded times keyed by fragment_id survive a re-save.
+// V0.52.2 (2026-09-23, jodie-07 P1): compound-cue fragment intensity
+// validator. The LLM reliably splits composite sets into fragments by
+// distance (e.g. "25 strong / 50 smooth / 25 strong" → 3 fragments)
+// but leaves fragment.intensity = null because rule 16 of SYSTEM_PROMPT
+// is not strictly followed. This pass patches intensity back from the
+// rg.note / rg.sourceLine's slash-separated segments.
+//
+// Pattern: rg has ≥ 2 fragments, every fragment.intensity is null, and
+// rg.note (fallback rg.sourceLine) contains N intensity-bearing
+// segments delimited by " / " that align 1:1 with the fragment count.
+//
+// The "compound" cue (e.g. "moderate aerobic" in jodie-07) is rg-level
+// and stays on the rg.intensity — not pushed to fragments.
+function patchCompoundFragmentIntensity(workout: Workout): Workout {
+  // Compound cue = intensity word applied to the WHOLE set (rg-level).
+  // These are the words that the LLM emits at rg.intensity_type when
+  // it does honor the cue ("moderate aerobic" → rg.intensity.type=aerobic).
+  // We strip these from segment 0 before per-fragment matching so they
+  // don't leak into the wrong fragment.
+  const COMPOUND_CUE_RE = /\b(?:easy|aerobic|steady|cruise|moderate|hard|maximum|vo2|threshold|race\s+pace|strong|relaxed|build|descend|smooth)\b/gi;
+  // Per-fragment intensity words. Excludes compound cues above.
+  // "smooth" appears both as a compound cue AND as a per-fragment word;
+  // when it appears in a "/" segment after a distance prefix, it's
+  // per-fragment.
+  const PER_FRAGMENT_WORD_RE = /\b(easy|recovery|steady|cruise|moderate|hard|maximum|vo2|threshold|strong|smooth|relaxed|fast|sprint|blast|max|all[\s-]?out|build|descend|race\s+pace|race\s+rhythm)\b/i;
+  for (const section of workout.sections) {
+    for (const ns of section.namedSets) {
+      for (const rg of ns.repGroups) {
+        if (!rg.fragments || rg.fragments.length < 2) continue;
+        // All fragments already have intensity → LLM handled it; skip.
+        if (rg.fragments.every((f) => f.intensity != null)) continue;
+        // Mixed state (some populated, some null): respect what the LLM
+        // already filled in. Don't re-derive for the null ones — those
+        // usually need a different cue path (e.g. broken 100 pace).
+        const text = rg.note ?? rg.sourceLine ?? "";
+        if (!text.includes("/")) continue;
+        const rawSegments = text.split("/").map((s) => s.trim()).filter((s) => s.length > 0);
+        if (rawSegments.length !== rg.fragments.length) continue;
+        let patchedCount = 0;
+        for (let i = 0; i < rg.fragments.length; i++) {
+          if (rg.fragments[i].intensity != null) continue;
+          let segText = rawSegments[i];
+          // Strip ALL compound-cue words from segment 0. After this strip,
+          // segment 0 should be "<distance> <word>" or just "<word>".
+          if (i === 0) {
+            segText = segText.replace(COMPOUND_CUE_RE, "").replace(/^[\s\-–—:,]+/, "").trim();
+          }
+          const wordMatch = segText.match(PER_FRAGMENT_WORD_RE);
+          if (!wordMatch) continue;
+          const intensity = parseIntensity(wordMatch[1]);
+          if (intensity) {
+            rg.fragments[i].intensity = intensity;
+            patchedCount += 1;
+          }
+        }
+        if (patchedCount > 0 && Deno.env.get("DEBUG_FRAGMENT_PATCH") === "1") {
+          const summary = rg.fragments
+            .map((f) => `${f.distance}m→${f.intensity?.type ?? "null"}`)
+            .join(", ");
+          rg.note = `${rg.note ?? ""} [patched: ${summary}]`.trim();
+        }
+      }
+    }
+  }
+  return workout;
+}
+
 function stampFragmentIds(workout: Workout): Workout {
   for (const section of workout.sections) {
     for (const ns of section.namedSets) {
@@ -2668,6 +2735,11 @@ async function parseWithFallback(
     );
     if (totalRgs > 0) {
       const stamped = stampFragmentIds(llmResult);
+      // V0.52.2 (2026-09-23): patch compound-cue fragment intensity
+      // for sets where the LLM emitted fragments by distance but left
+      // intensity null (jodie-07 P1 — "moderate aerobic - 25 strong /
+      // 50 smooth / 25 strong" compound pattern).
+      patchCompoundFragmentIntensity(stamped);
       return {
         ...stamped,
         // V0.52.1 (2026-09-08): pass the LLM's parsed response so the
