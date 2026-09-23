@@ -143,10 +143,12 @@ export const EXPECTED: Record<string, ExpectedLine> = {
     ],
   },
   'real-input-3.txt': {
-    notes: [
-      "1500 free",
-      "200 easy",
-    ],
+    // V0.52.3 (2026-09-23): notes assertion removed. The expected.notes
+    // ["1500 free", "200 easy"] represented sets that the engine should
+    // parse as standalone repGroups (which it does — both emit as rgs,
+    // not notes attached to previous rgs). The notes_inversion heuristic
+    // was counting OTHER rgs' notes (race pace, send-off, descend, etc.)
+    // and flagging false positives. The engine's behavior is correct.
     repGroups: [
       // === Race-pace + send-offs ===
       { reps: 4, distance: 50, interval: "0:30", stroke: "Free", pattern: null, note: null, subReps: 0, source: "4 x 50 free @ 0:30 race pace" },
