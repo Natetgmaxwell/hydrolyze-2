@@ -139,7 +139,7 @@ struct ContentView: View {
     /// builder with the jodie-09 Purposeful Threshold workout seeded
     /// in (see `seedV0531DesignABuilder`).
     private enum V46DemoSurface: String, CaseIterable {
-        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer, console, workoutPagePrototype
+        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer, console, workoutPagePrototype, workoutDetailNativeList
 
         static func detect() -> V46DemoSurface? {
             let args = ProcessInfo.processInfo.arguments
@@ -210,6 +210,16 @@ struct ContentView: View {
             if args.contains(where: { $0.hasPrefix("-prototype-workout-page") }) {
                 return .workoutPagePrototype
             }
+            // V0.56 S1 (2026-09-23): native-list workout-detail
+            // chrome screenshot harness. Same pattern as the proto
+            // harness — bypass login, mount a WorkoutDetailView
+            // preloaded with the rich-Descend test workout, capture
+            // the rendered surface. No DB round-trip, no auth,
+            // no pairing engine. The harness view lives in
+            // WorkoutDetailView.swift's bottom.
+            if args.contains("-detail-native-list") {
+                return .workoutDetailNativeList
+            }
             return nil
         }
     }
@@ -246,6 +256,15 @@ struct ContentView: View {
             // involvement, no network. The segmented picker inside the
             // prototype swaps variants without an app relaunch.
             WorkoutPagePrototypeView()
+        case .workoutDetailNativeList:
+            // V0.56 S1 (2026-09-23): the native-list workout-detail
+            // chrome — DEBUG-only screenshot harness. Seeds a fake
+            // rich-Descend workout (3 sets across 3 sections) into the
+            // WorkoutDetailViewModel directly, so the chrome renders
+            // without a real DB round-trip. No auth required.
+            NavigationStack {
+                WorkoutDetailView_NativeListHarness()
+            }
         }
     }
 
