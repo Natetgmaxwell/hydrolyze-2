@@ -37,6 +37,12 @@ struct NativeListRow: Identifiable {
     let id = UUID()
     let sourceSetIndex: Int
     let repGroup: ParsedRepGroup
+    /// V0.56 S2 (2026-09-23): optional override for the active-rep
+    /// index. Default `nil` = use the row's intrinsic
+    /// `(reps-1)/2` rule. The harness sets it to simulate "coach
+    /// has already swum the first N reps" without changing the
+    /// production rule. Production callers leave it nil.
+    var activeRepIdxOverride: Int?
 }
 
 struct WorkoutNativeListView: View {
@@ -107,8 +113,11 @@ struct WorkoutNativeListView: View {
     @ViewBuilder
     private func nativeSetRow(row: NativeListRow) -> some View {
         let rg = row.repGroup
-        let isActiveRow = isActiveRow(rg)
-        let fragmentActiveRepIdx = activeRepIdx(in: rg)
+        let isActiveRow = Self.isActiveRow(rg)
+        let fragmentActiveRepIdx = Self.activeRepIdx(
+            in: rg,
+            override: row.activeRepIdxOverride
+        )
         VStack(alignment: .leading, spacing: 6) {
             // Title row: reps × distance + stroke + send-off.
             // One multiplier per set (say-it-once). Mono digits
@@ -128,7 +137,7 @@ struct WorkoutNativeListView: View {
                         .foregroundStyle(Color.textMuted)
                 }
                 Spacer(minLength: 8)
-                if let iv = rg.interval, !iv.isEmpty {
+                if let iv = Self.formatInterval(rg.interval) {
                     Text(iv)
                         .font(.footnote.monospaced())
                         .foregroundStyle(Color.textMuted)
@@ -186,7 +195,11 @@ struct WorkoutNativeListView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func isActiveRow(_ rg: ParsedRepGroup) -> Bool {
+    /// V0.56 S2 (2026-09-23): static, so the CTA bar (harness + future
+    /// production wire-up) can reuse the SAME rule that lights up the
+    /// card highlight + the coral rep pill. Single source of truth
+    /// for "what is the next up row".
+    static func isActiveRow(_ rg: ParsedRepGroup) -> Bool {
         if let d = rg.descend, !d.isEmpty { return true }
         if let f = rg.fragments, !f.isEmpty { return true }
         return false
@@ -198,10 +211,43 @@ struct WorkoutNativeListView: View {
     /// the active rep is the lower-middle of the ladder. For
     /// non-descend sets we don't surface a rep pill (the active
     /// rep is the rep itself).
-    private func activeRepIdx(in rg: ParsedRepGroup) -> Int? {
+    static func activeRepIdx(in rg: ParsedRepGroup) -> Int? {
+        activeRepIdx(in: rg, override: nil)
+    }
+
+    /// V0.56 S2 (2026-09-23): same rule as the no-override form,
+    /// plus an explicit override path so the harness can simulate
+    /// "coach has already swum the first N reps" without changing
+    /// the production default. Production callers use the
+    /// no-override form (which always passes nil).
+    static func activeRepIdx(in rg: ParsedRepGroup, override: Int?) -> Int? {
+        if let override { return override }
         guard let reps = rg.reps, reps > 1 else { return nil }
         if rg.descend != nil { return (reps - 1) / 2 }  // 4 reps → 1, 6 reps → 2
         return nil
+    }
+
+    /// V0.56 S2 (2026-09-23): normalise the parser's interval string
+    /// to a single display form. The parser emits either `on 1:30`
+    /// or `on :45`; every display wants `mm:ss` zero-padded (so `:45`
+    /// becomes `0:45`, never confused with `1:45`). The As-written
+    /// surface must stay raw and renders the parser string verbatim.
+    /// Returns nil if no parseable `m:ss` content.
+    static func formatInterval(_ raw: String?) -> String? {
+        guard let raw = raw, !raw.isEmpty else { return nil }
+        var s = raw.trimmingCharacters(in: .whitespaces)
+        if let onRange = s.range(of: "on ", options: [.caseInsensitive]) {
+            s.removeSubrange(onRange)
+        }
+        s = s.trimmingCharacters(in: .whitespaces)
+        let parts = s.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return nil }
+        let secStr = parts[1]
+        guard let sec = Int(secStr), sec >= 0, sec < 60 else { return nil }
+        let minStr = parts[0]
+        let min = minStr.isEmpty ? 0 : (Int(minStr) ?? -1)
+        guard min >= 0 else { return nil }
+        return String(format: "%d:%02d", min, sec)
     }
 
     private func verbatimFragmentLine(_ fragments: [ParsedFragment]) -> String {
@@ -239,9 +285,7 @@ struct WorkoutNativeListView: View {
     private func shouldShowRepPills(_ rg: ParsedRepGroup) -> Bool {
         let reps = rg.reps ?? 1
         guard reps > 1 else { return false }
-        if let d = rg.descend, !d.isEmpty { return true }
-        if let f = rg.fragments, !f.isEmpty { return true }
-        return false
+        return Self.isActiveRow(rg)
     }
 }
 

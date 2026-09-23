@@ -922,6 +922,8 @@ struct WorkoutDetailView: View {
             Text(workout.title ?? "Untitled")
                 .font(.titleMedium)
                 .foregroundColor(Color.textPrimary)
+                .lineLimit(2)
+                .truncationMode(.tail)
 
             // V0.54 details-tidy: inline metadata now reads as a
             // tinted status pill (was stray "·" middot dividers).
@@ -1442,12 +1444,30 @@ private struct NextTimeableCTA: View {
     /// the live stopwatch session, so the CTA points at the next
     /// set the coach could launch — same shape as the prototype's
     /// `nextTimeable` helper.
+    ///
+    /// V0.56 S2 (2026-09-23): for descend/fragment sets we surface
+    /// the specific active rep (the same rep the coral pill marks
+    /// on the row card) so highlight + coral pill + CTA tell one
+    /// coherent story. Falls back to the first timeable set if
+    /// the active rule returns nothing.
     private var nextTimeable: WorkoutSet? {
         sets.first { s in
             let dist = s.distance ?? 0
             let hasFragments = (s.fragments ?? []).count > 0
             return dist > 0 || hasFragments
         }
+    }
+
+    /// V0.56 S2 (2026-09-23): REST pill interval normalised via
+    /// `WorkoutNativeListView.formatInterval` so it reads as
+    /// `0:15` / `1:30` (not the raw `:15` that previously read as
+    /// `1:15`). The set's `intervalText` carries the parser
+    /// string, e.g. `"on :45"`.
+    private var restLabel: String {
+        if let iv = WorkoutNativeListView.formatInterval(nextTimeable?.intervalText) {
+            return iv
+        }
+        return "0:15"
     }
 
     var body: some View {
@@ -1473,9 +1493,21 @@ private struct NextTimeableCTA: View {
                     + Text(
                         nextTimeable.map { s in
                             let dist = s.distance ?? 0
-                            let reps = s.reps
+                            let reps = s.reps ?? 1
                             let stroke = s.stroke ?? "Free"
                             let intensity = s.intensityLabel ?? ""
+                            // V0.56 S2 (2026-09-23): for descend sets
+                            // the coral pill marks the active rep —
+                            // surface it in the CTA so highlight + pill
+                            // + CTA tell one coherent story. Mirrors
+                            // the harness CTA format.
+                            if s.descend != nil, reps > 1 {
+                                let activeRep = (reps - 1) / 2 + 1
+                                let descendRange = s.descend ?? ""
+                                return "· Rep \(activeRep) of \(reps) · \(dist) m \(stroke)"
+                                    + (descendRange.isEmpty ? "" : " · descend \(descendRange)")
+                                    + (intensity.isEmpty ? "" : " — \(intensity)")
+                            }
                             return "· \(reps)× \(dist) m \(stroke) — \(intensity)"
                         } ?? "· next timeable"
                     )
@@ -1491,7 +1523,7 @@ private struct NextTimeableCTA: View {
             .buttonStyle(.plain)
             VStack(spacing: 2) {
                 Text("REST").font(.caption2.weight(.semibold)).foregroundColor(Color.textFaint)
-                Text(":15").font(.title3.monospacedDigit()).foregroundColor(Color.textPrimary)
+                Text(restLabel).font(.title3.monospacedDigit()).foregroundColor(Color.textPrimary)
             }
             .frame(width: 72, height: 48)
             .background(Color.bgRaised)
@@ -1639,13 +1671,32 @@ struct WorkoutDetailView_NativeListHarness: View {
         // renders identically because the visible surface is the
         // same per-row anatomy in both cases.
         let parsedLocal = parsed
+        // V0.56 S2 (2026-09-23): optional in-progress override.
+        // When `-detail-native-list-in-progress` is on the launch
+        // args, bump the active rep from the production default
+        // (rep 2 of 4 for reps=4) to rep 3 — simulates "coach has
+        // already swum reps 1+2". Production surfaces never read
+        // this arg; the override is harness-only.
+        let inProgressOverride: Int? = NextTimeableCTA_Harness.simulateInProgress
+            ? 2  // 0-indexed → rep 3 of 4
+            : nil
         let phases: [NativeListPhase] = parsedLocal.sections.enumerated().map { sectionIdx, section in
             var rows: [NativeListRow] = []
             var totalMeters = 0
             var totalReps = 0
             for ns in section.namedSets {
                 for rg in ns.repGroups {
-                    rows.append(NativeListRow(sourceSetIndex: 0, repGroup: rg))
+                    // Only override on the first active row in phase
+                    // order (matches what the harness CTA uses as
+                    // its source). Other rows keep `nil`.
+                    let isFirstActive = WorkoutNativeListView.isActiveRow(rg)
+                        && !rows.contains(where: { $0.activeRepIdxOverride != nil })
+                    let override: Int? = isFirstActive ? inProgressOverride : nil
+                    rows.append(NativeListRow(
+                        sourceSetIndex: 0,
+                        repGroup: rg,
+                        activeRepIdxOverride: override
+                    ))
                     totalMeters += (rg.distance ?? 0) * (rg.reps ?? 1)
                     totalReps += (rg.reps ?? 1)
                 }
@@ -1668,12 +1719,15 @@ struct WorkoutDetailView_NativeListHarness: View {
             .environment(\.defaultMinListRowHeight, 0)
             .contentMargins(.bottom, 140, for: .scrollContent)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                // Next-timeable CTA — the harness reuses the
-                // production NextTimeableCTA. The CTA needs
-                // WorkoutSet rows; for the harness we synthesise
-                // minimal non-composite sets so the CTA can render
-                // its "next timeable" label without DB shape.
-                NextTimeableCTA_Harness()
+                // V0.56 S2 (2026-09-23): the harness CTA now derives
+                // from the SAME active-row rule the list chrome uses
+                // (WorkoutNativeListView.isActiveRow). One source of
+                // truth for highlight + coral pill + CTA label. The
+                // harness walks the phases, picks the first active
+                // row, and if it's a descend set names the active
+                // rep explicitly. Production wire-up follows the V0.57
+                // DI seam.
+                NextTimeableCTA_Harness(phases: phases)
             }
             .navigationTitle("DESCEND 25 — race rhythm")
             .navigationBarTitleDisplayMode(.inline)
@@ -1681,18 +1735,100 @@ struct WorkoutDetailView_NativeListHarness: View {
     }
 }
 
-/// V0.56 S1 DEBUG-only. Renders the prototype-equivalent bottom
-/// CTA bar using the same coral + REST pill layout as the
-/// production NextTimeableCTA, but without needing the full
-/// Workout + WorkoutSet shape (the harness can't construct that).
+/// V0.56 S2 (2026-09-23): the harness CTA now derives its label
+/// from the active row (the same row the list highlights + lights
+/// the coral pill on). Walk the phases, take the first row where
+/// `WorkoutNativeListView.isActiveRow` returns true, and render a
+/// label that names the active rep when descend is present.
+///
+/// The label format mirrors the production `NextTimeableCTA`'s
+/// "· {reps}× {dist} m {stroke} — {intensity}" shape — except for
+/// descend sets we surface the specific rep the coral pill marks
+/// (e.g. "Rep 2 of 4 · 25 m Free · descend 1–4") so the coach's
+/// glance matches the screen.
 private struct NextTimeableCTA_Harness: View {
+    let phases: [NativeListPhase]
+
+    /// The first active row in phase order. Same single source of
+    /// truth the list chrome uses to light up the card. Returns
+    /// the underlying `NativeListRow` (so the CTA can read its
+    /// `activeRepIdxOverride`) plus the containing phase title.
+    private var activeRow: (row: NativeListRow, phaseTitle: String)? {
+        for phase in phases {
+            for row in phase.rows where WorkoutNativeListView.isActiveRow(row.repGroup) {
+                return (row, phase.title ?? "")
+            }
+        }
+        return nil
+    }
+
+    /// V0.56 S2 (2026-09-23): the harness can simulate "coach has
+    /// already swum reps 1+2" so the in-progress state (coral pill
+    /// on rep 3, CTA names rep 3) is screenshotable. Launch the app
+    /// with `-detail-native-list-in-progress` to enable. Production
+    /// surfaces never read this arg. `fileprivate` so the harness
+    /// host (`WorkoutDetailView_NativeListHarness.body`) can read
+    /// the same flag without changing the API.
+    fileprivate static var simulateInProgress: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-detail-native-list-in-progress")
+        #else
+        return false
+        #endif
+    }
+
+    /// Build the CTA suffix from the active row. Mirrors the
+    /// production `NextTimeableCTA` shape so the two read as the
+    /// same widget.
+    ///
+    /// V0.56 S2 (2026-09-23): honours `row.activeRepIdxOverride`
+    /// when set so the in-progress harness variant can light the
+    /// CTA on a different rep than the production default. The
+    /// override is propagated from the row's own field so the
+    /// pill highlight + CTA always agree.
+    private var activeLabel: String {
+        guard let active = activeRow else { return "· next timeable" }
+        let rg = active.row.repGroup
+        let dist = rg.distance ?? 0
+        let stroke = rg.stroke ?? "Free"
+        let intensity = rg.intensity?.label ?? ""
+        if rg.descend != nil,
+           let reps = rg.reps, reps > 1,
+           let activeIdx = WorkoutNativeListView.activeRepIdx(
+            in: rg,
+            override: active.row.activeRepIdxOverride
+           ) {
+            let activeRep = activeIdx + 1
+            let descendRange = rg.descend ?? ""
+            return "· Rep \(activeRep) of \(reps) · \(dist) m \(stroke)"
+                + (descendRange.isEmpty ? "" : " · descend \(descendRange)")
+                + (intensity.isEmpty ? "" : " — \(intensity)")
+        }
+        let reps = rg.reps ?? 1
+        return "· \(reps)× \(dist) m \(stroke)"
+            + (intensity.isEmpty ? "" : " — \(intensity)")
+    }
+
+    /// REST pill interval: derived from the active row's `interval`
+    /// via `formatInterval` so it reads as `0:15` / `1:30` (not the
+    /// raw `:15` that previously read as 1:15). Falls back to
+    /// `0:15` if the active row has no interval (matches the
+    /// pre-S2 fallback so the screen always has a sensible value).
+    private var restLabel: String {
+        if let active = activeRow,
+           let iv = WorkoutNativeListView.formatInterval(active.row.repGroup.interval) {
+            return iv
+        }
+        return "0:15"
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Button { } label: {
                 HStack {
                     Image(systemName: "play.fill")
                     Text("Start ").font(.headline)
-                    + Text("· 8 × 50 m Free — 100 pace")
+                    + Text(activeLabel)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -1705,7 +1841,7 @@ private struct NextTimeableCTA_Harness: View {
             .buttonStyle(.plain)
             VStack(spacing: 2) {
                 Text("REST").font(.caption2.weight(.semibold)).foregroundColor(Color.textFaint)
-                Text(":15").font(.title3.monospacedDigit()).foregroundColor(Color.textPrimary)
+                Text(restLabel).font(.title3.monospacedDigit()).foregroundColor(Color.textPrimary)
             }
             .frame(width: 72, height: 48)
             .background(Color.bgRaised)
