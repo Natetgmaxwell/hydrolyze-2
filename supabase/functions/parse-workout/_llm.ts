@@ -245,6 +245,7 @@ const SYSTEM_PROMPT = `You are an expert swimming workout parser. Convert raw co
     - 'race pace' → '{type: "race_pace", label: "race pace"}'
     - '200 pace' / '100 pace' / '800 pace' / '400 pace' / '50 pace' → '{type: "race_pace", label: "<distance> pace"}'
     'event' alone is NOT an intensity word — it is part of 'event rhythm'. 'race' alone is NOT an intensity word — it is part of 'race pace' / 'race rhythm'. 'pace' alone is NOT an intensity word — it is part of '<NN> pace' / 'race pace'. 'rhythm' alone is NOT an intensity word — it is part of 'event rhythm' / 'race rhythm'. NONE of these sub-words go in unmapped_terms; the engine resolves the full phrase silently via rule 6/24. (See rule 7 exclusion (5).)
+25. **Next-line fragment attachment**: when a line contains only fragment segments (distance-prefixed segments with slashes, like '50 drill / 50 build (single arm Fingers on shoulder)', '25 strong / 25 easy', or '50 at 200 pace :10') and the PREVIOUS non-empty line is a set with a rep count (like '4 × 100 @ 1:35' or '3 × broken 100:'), those segments are fragments of the previous set — emit them as fragments[] on that repGroup with per-fragment intensity per rule 6, NOT as standalone sets or notes. A 'broken 100' style parent ('3 × broken 100:') takes its continuation lines (each '50 at ... pace' line) as its fragments; map pace phrases per rule 21 (race_pace).
 
 ## Output shape (MUST follow exactly)
 
