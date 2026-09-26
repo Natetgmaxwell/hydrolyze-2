@@ -230,7 +230,16 @@ struct ContentView: View {
         case .today:     TodayView()
         case .timing:    v46DemoTimingRoot
         case .review:    SessionReviewView(sessionId: "v46-demo")
-        case .swimmers:  SwimmersListView()
+        case .swimmers:
+            // V0.52.6 (2026-09-27): mirror the .swimmer wiring so the
+            // demo harness surfaces the seeded coach's roster instead
+            // of falling through to the "Couldn't load your account"
+            // empty state. SwimmersListView already reads coachId
+            // from the AuthManager env and refetches on .onChange, so
+            // .environment + the seed task is sufficient.
+            SwimmersListView()
+                .environment(authManager)
+                .task { authManager.seedV46DemoStateIfNeeded() }
         case .workouts:  WorkoutsListView()
         case .builder:   WorkoutBuilderView(workoutId: nil)
         case .builderJodie09:
