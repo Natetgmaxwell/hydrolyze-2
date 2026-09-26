@@ -265,47 +265,24 @@ struct WorkoutsListView: View {
     }
 
     private var filterPills: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(WorkoutFilter.allCases, id: \.self) { filter in
-                    Button {
-                        // Micro-interaction: selection haptic on filter
-                        // change. Pairs with the .animation on the
-                        // pill's foreground/background so the swap
-                        // has a consistent tactile + visual feel.
-                        Haptics.selection()
-                        viewModel.selectedFilter = filter
-                    } label: {
-                        Text(filter.rawValue)
-                            .font(.captionStrong)
-                            .foregroundColor(viewModel.selectedFilter == filter ? Color.textPrimary : Color.textMuted)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                viewModel.selectedFilter == filter
-                                    ? Color.bgSelected
-                                    : Color.bgInset
-                            )
-                            .cornerRadius(8)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(
-                                        viewModel.selectedFilter == filter ? Color.textMuted : Color.divider,
-                                        lineWidth: 1
-                                    )
-                            )
-                            // Animate the foreground + background swap
-                            // when the selected filter changes, so the
-                            // pill "morphs" into the selected state
-                            // instead of jumping.
-                            .animation(Animations.snap, value: viewModel.selectedFilter)
-                    }
-                }
+        // V0.52.6 (2026-09-26): de-chrome — swap the custom horizontal
+        // pill bar for a native segmented Picker. The segmented control
+        // is iOS-canonical, has its own selection state + animation,
+        // respects Dynamic Type, and eliminates 40+ lines of bespoke
+        // stroke/background chrome. The haptics.onChange fires after
+        // the binding settles, matching the previous tactile feel.
+        Picker("Filter workouts", selection: $viewModel.selectedFilter) {
+            ForEach(WorkoutFilter.allCases, id: \.self) { filter in
+                Text(filter.rawValue.capitalized)
+                    .tag(filter)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
         }
-        .background(Color.bgBase)
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .onChange(of: viewModel.selectedFilter) { _, _ in
+            Haptics.selection()
+        }
     }
 
     private var workoutList: some View {
@@ -535,16 +512,6 @@ struct WorkoutRowView: View {
 
             Spacer()
 
-            if let amPm = workout.amPm {
-                Text(amPm)
-                    .font(.numericSmall)
-                    .foregroundColor(Color.accentAmber)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.accentAmber.opacity(0.15))
-                    .cornerRadius(4)
-            }
-
             // ponytail: chevron via SF Symbol instead of raw '>' text.
             // Smaller, tighter weight, brand-consistent (textFaint).
             Image(systemName: "chevron.right")
@@ -552,13 +519,6 @@ struct WorkoutRowView: View {
                 .foregroundColor(Color.textFaint)
         }
         .padding(.vertical, 12)
-        .padding(.horizontal, 12)
-        .background(Color.bgRaised)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.divider, lineWidth: 1)
-        )
     }
 
     private var statusLabel: String {
