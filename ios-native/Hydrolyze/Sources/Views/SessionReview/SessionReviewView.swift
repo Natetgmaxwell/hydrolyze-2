@@ -516,6 +516,10 @@ struct ReviewRowView: View {
                     .frame(width: 10, height: 10)
 
                 VStack(alignment: .leading, spacing: 2) {
+                    Text(row.swimmerName)
+                        .font(.bodyEmphasis)
+                        .foregroundColor(Color.textPrimary)
+
                     // PHASE 2.6 v1.14: LOUD variance hint for likelyWrong,
                     // rendered as the FIRST child of the row content.
                     // Amber (#F5B34B) 13pt semibold with warning-triangle
@@ -532,10 +536,6 @@ struct ReviewRowView: View {
                         .foregroundColor(Color.accentAmber)
                         .padding(.bottom, 4)
                     }
-
-                    Text(row.swimmerName)
-                        .font(.bodyEmphasis)
-                        .foregroundColor(Color.textPrimary)
 
                     HStack(spacing: 8) {
                         if let lane = row.lane {
@@ -627,6 +627,15 @@ struct ReviewRowView: View {
                     Image(systemName: "hand.thumbsup.fill")
                         .font(.system(size: 12))
                         .foregroundColor(Color.statusSuccess)
+                } else if row.confidence >= 80 {
+                    // V0.52.6 (2026-09-26): rows the engine auto-assigned
+                    // (confidence ≥ 80) get a quiet success checkmark at
+                    // 60% opacity — implicit acceptance without inviting
+                    // a tap. Chevron stays for rows the engine has NOT
+                    // committed to (below 80%).
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.statusSuccess.opacity(0.6))
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12))

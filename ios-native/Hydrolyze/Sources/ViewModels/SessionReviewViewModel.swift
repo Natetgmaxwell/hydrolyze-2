@@ -156,7 +156,13 @@ final class SessionReviewViewModel: ObservableObject {
             }
 
             var backgroundColor: Color {
-                color.opacity(0.15)
+                // V0.52.6 (2026-09-26): high-confidence rows render on the
+                // neutral raised surface, only flagged rows keep the
+                // tinted fill — the quiet green dot already conveys
+                // confidence, doubling it with a green fill is visual
+                // noise. `.green` == confidence >= 80 (see derivation
+                // above).
+                self == .green ? Color.bgRaised : color.opacity(0.15)
             }
         }
     }
