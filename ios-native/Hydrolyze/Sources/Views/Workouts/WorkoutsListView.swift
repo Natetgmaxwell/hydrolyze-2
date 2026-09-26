@@ -511,12 +511,6 @@ struct WorkoutRowView: View {
             }
 
             Spacer()
-
-            // ponytail: chevron via SF Symbol instead of raw '>' text.
-            // Smaller, tighter weight, brand-consistent (textFaint).
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(Color.textFaint)
         }
         .padding(.vertical, 12)
     }
