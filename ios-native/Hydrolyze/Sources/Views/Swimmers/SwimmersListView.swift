@@ -59,6 +59,7 @@ struct SwimmersListView: View {
                             .foregroundColor(Color.textMuted)
                     }
                 }
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Haptics.action()
