@@ -353,7 +353,7 @@ async function callMiniMax(
   const body = {
     model: MINIMAX_MODEL,
     messages,
-    temperature: 0.1,
+    temperature: 0,
     // V0.37 (2026-08-13): MiniMax-M3 is a reasoning model — it emits a
     // large `reasoning_content` BEFORE the JSON `content`. Two problems:
     // (1) with max_tokens 4096 the reasoning consumed the whole budget and
