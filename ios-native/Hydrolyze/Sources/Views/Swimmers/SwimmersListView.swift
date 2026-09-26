@@ -59,7 +59,9 @@ struct SwimmersListView: View {
                             .foregroundColor(Color.textMuted)
                     }
                 }
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                if #available(iOS 26.0, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Haptics.action()
