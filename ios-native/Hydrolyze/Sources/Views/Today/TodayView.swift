@@ -343,11 +343,11 @@ struct TodayView: View {
     private var dateSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(formattedDate)
-                .font(.titleMedium)
+                .font(.body)
                 .foregroundColor(Color.textPrimary)
 
             Text(greeting)
-                .font(.body)
+                .font(.caption)
                 .foregroundColor(Color.textMuted)
                 .opacity(animateIn ? 1.0 : 0.0)
                 .animation(

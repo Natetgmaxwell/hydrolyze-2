@@ -23,18 +23,7 @@ struct WorkoutCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(workout.amPm ?? "AM")
                         .font(.numericSmall)
-                        .foregroundColor(Color.accentAmber)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.accentAmber.opacity(0.15))
-                        .cornerRadius(4)
-                        // Soft breathing on the amber chip — the
-                        // card "feels scheduled" not "filed."
-                        .phaseAnimator([0.15, 0.25], trigger: animateIn && !reduceMotion) { content, opacity in
-                            content.background(Color.accentAmber.opacity(opacity))
-                        } animation: { _ in
-                            .easeInOut(duration: 1.8)
-                        }
+                        .foregroundColor(Color.textMuted)
 
                     Text(workout.title ?? "Workout")
                         .font(.titleSmall)
