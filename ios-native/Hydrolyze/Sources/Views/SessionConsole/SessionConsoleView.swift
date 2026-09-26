@@ -287,6 +287,8 @@ struct SessionConsoleView: View {
                 .cornerRadius(12)
         }
         .buttonStyle(PressFeedbackStyle())
+        .disabled(!viewModel.canStartSession)
+        .opacity(viewModel.canStartSession ? 1 : 0.4)
         .accessibilityLabel("Start session")
     }
 

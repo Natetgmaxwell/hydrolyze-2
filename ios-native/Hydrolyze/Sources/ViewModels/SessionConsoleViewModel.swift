@@ -191,6 +191,17 @@ final class SessionConsoleViewModel: ObservableObject {
         liveEnter()
     }
 
+    /// V0.52.6 (2026-09-26): gate START SESSION on the two preconditions
+    /// that actually make the console useful — at least one timable
+    /// set (distance > 0, `distance` is optional on WorkoutSet so we
+    /// coalesce nil to 0) and a non-empty attendance roster. Without
+    /// either, the LIVE transition would leave the coach staring at an
+    /// empty stopwatch / no swimmer chips. The view binds `.disabled`
+    /// and `.opacity` to this so the button visibly communicates state.
+    var canStartSession: Bool {
+        sets.contains { ($0.distance ?? 0) > 0 } && !attendanceEntries.isEmpty
+    }
+
     /// V0.54 S3 (2026-09-09): invoked on entering LIVE. Per spec §3 /
     /// decision 8, WaveAllocator runs HERE (the first rep's stopwatch
     /// is about to arm), NOT in PRE. The allocations are persisted
