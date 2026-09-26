@@ -802,7 +802,7 @@ function mergeOrphanFragmentSets(
       const isOrphan =
         rg.reps === 1 &&
         rg.interval == null &&
-        rg.note == null &&
+        
         fragments.length >= 2 &&
         prev !== undefined &&
         prev.fragments.length === 0 &&
