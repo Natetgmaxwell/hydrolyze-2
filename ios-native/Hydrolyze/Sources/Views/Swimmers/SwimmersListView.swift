@@ -142,53 +142,28 @@ struct SwimmersListView: View {
         }
     }
 
-    /// Sheet for moving a swimmer between squads.
+    /// V0.52.6 (2026-09-27): de-chrome — swap the custom pill row
+    /// for a native segmented Picker, matching the WorkoutsListView
+    /// change (cd2d1b9). The segmented control is iOS-canonical,
+    /// has its own selection state + animation, respects Dynamic
+    /// Type, and eliminates the bespoke stroke/background chrome.
+    /// The reload-on-change (`viewModel.loadSwimmers`) is preserved
+    /// via the .onChange below so the underlying fetch still fires
+    /// when the segment flips.
     private var filterPills: some View {
-        HStack(spacing: 8) {
+        Picker("Filter swimmers", selection: $viewModel.selectedFilter) {
             ForEach(SwimmerFilter.allCases, id: \.self) { filter in
-                Button {
-                    // Micro-interaction: selection haptic on filter
-                    // change. Pairs with the .animation on the
-                    // pill's foreground/background so the swap
-                    // has a consistent tactile + visual feel.
-                    Haptics.selection()
-                    viewModel.selectedFilter = filter
-                    Task { await viewModel.loadSwimmers(coachId: coachId) }
-                } label: {
-                    Text(filter.rawValue)
-                        .font(.captionStrong)
-                        .foregroundColor(
-                            viewModel.selectedFilter == filter
-                            ? Color.textPrimary
-                            : Color.textMuted
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            viewModel.selectedFilter == filter
-                            ? Color.bgSelected
-                            : Color.bgInset
-                        )
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(
-                                    viewModel.selectedFilter == filter ? Color.textMuted : Color.divider,
-                                    lineWidth: 1
-                                )
-                        )
-                        // Animate the foreground + background swap
-                        // when the selected filter changes, so the
-                        // pill "morphs" into the selected state
-                        // instead of jumping.
-                        .animation(Animations.snap, value: viewModel.selectedFilter)
-                }
-                .buttonStyle(PressFeedbackStyle(scale: 0.95, dim: 0.85))
+                Text(filter.rawValue)
+                    .tag(filter)
             }
-            Spacer()
         }
+        .pickerStyle(.segmented)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .onChange(of: viewModel.selectedFilter) { _, newFilter in
+            Haptics.selection()
+            Task { await viewModel.loadSwimmers(coachId: coachId) }
+        }
     }
 
     private var swimmersList: some View {
