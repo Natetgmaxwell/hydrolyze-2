@@ -779,6 +779,47 @@ function addIntensity(
   return sections;
 }
 
+// V0.52.6 (2026-09-26): deterministic post-validation merge. The LLM
+// sometimes emits a composite set's fragments as a SIBLING repGroup
+// (reps=1, no note, no interval, distance==sum of fragments) sitting
+// right after the parent rg (which it emitted with fragments=[]).
+// Detect and merge so the parent carries the fragments[] array,
+// matching the regex engine's locked semantics and unlocking the
+// jodie-04/07 C_intensity axis (per-fragment intensity only scores
+// when the fragments ride on a multi-rep parent).
+function mergeOrphanFragmentSets(
+  sections: ValidatedSection[],
+): ValidatedSection[] {
+  for (const section of sections) {
+    const merged: ValidatedRepGroup[] = [];
+    for (const rg of section.repGroups) {
+      const fragments = rg.fragments || [];
+      const fragmentSum = fragments.reduce(
+        (s, f) => s + (typeof f.distance === "number" ? f.distance : 0),
+        0,
+      );
+      const prev = merged[merged.length - 1];
+      const isOrphan =
+        rg.reps === 1 &&
+        rg.interval == null &&
+        rg.note == null &&
+        fragments.length >= 2 &&
+        prev !== undefined &&
+        prev.fragments.length === 0 &&
+        prev.distance === fragmentSum;
+      if (isOrphan) {
+        // Fragments are already cleaned by validateLLMOutput (id/intensity/
+        // gear/start_type derived); pass through as-is.
+        prev.fragments = fragments;
+        continue;
+      }
+      merged.push(rg);
+    }
+    section.repGroups = merged;
+  }
+  return sections;
+}
+
 // ─── Public API ────────────────────────────────────────────────────────────
 
 export async function parseWithLLM(
@@ -786,7 +827,9 @@ export async function parseWithLLM(
   coachVocabulary: ReadonlyArray<CoachVocabularyEntry> = [],
 ): Promise<Workout> {
   const llmOutput = await callMiniMax(workoutText, coachVocabulary);
-  const validated = addIntensity(validateLLMOutput(llmOutput, coachVocabulary), coachVocabulary);
+  const validated = mergeOrphanFragmentSets(
+    addIntensity(validateLLMOutput(llmOutput, coachVocabulary), coachVocabulary),
+  );
   // V0.52 (2026-09-08): pass the LLM-reported unmapped terms through
   // the scrub filter (catches descriptive over-emits like `breakout`,
   // `genuine`, `velocity`, etc.) and merge with the engine-side
