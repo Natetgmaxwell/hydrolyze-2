@@ -23,12 +23,22 @@ struct CoachPreferences: Codable, Equatable, Sendable {
     /// trend-aware variant for coaches who want form weighting.
     var predictionAlgorithm: PredictionAlgorithm
 
+    /// V0.52.6 (2026-09-27): "stats for nerds" toggle. Gates the
+    /// per-row σ (z-score) detail lines on the SessionReview screen
+    /// — the loud amber variance hint for likelyWrong rows AND the
+    /// subtle gray hint for likelyCorrect rows. Default OFF so the
+    /// standard coach sees a clean review surface; the analytics-
+    /// curious coach flips it on in Profile to inspect σ.
+    var showAdvancedStats: Bool
+
     init(
         showConfidencePercent: Bool = true,
-        predictionAlgorithm: PredictionAlgorithm = .median
+        predictionAlgorithm: PredictionAlgorithm = .median,
+        showAdvancedStats: Bool = false
     ) {
         self.showConfidencePercent = showConfidencePercent
         self.predictionAlgorithm = predictionAlgorithm
+        self.showAdvancedStats = showAdvancedStats
     }
 
     /// Coding keys for the Supabase JSONB column. Snake-case to match
@@ -36,6 +46,21 @@ struct CoachPreferences: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case showConfidencePercent = "show_confidence_percent"
         case predictionAlgorithm = "prediction_algorithm"
+        case showAdvancedStats = "show_advanced_stats"
+    }
+
+    /// V0.52.6 (2026-09-27): tolerant decoder. Existing coaches on
+    /// production already have a `coaches.preferences` JSONB row
+    /// that was written before this field existed; using the
+    /// synthesized init would throw `keyNotFound` on those rows
+    /// and force every existing coach to re-save their prefs. We
+    /// `decodeIfPresent` so a missing key coerces to the default
+    /// (false), keeping the schema additive without a migration.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.showConfidencePercent = try c.decodeIfPresent(Bool.self, forKey: .showConfidencePercent) ?? true
+        self.predictionAlgorithm   = try c.decodeIfPresent(PredictionAlgorithm.self, forKey: .predictionAlgorithm) ?? .median
+        self.showAdvancedStats     = try c.decodeIfPresent(Bool.self, forKey: .showAdvancedStats) ?? false
     }
 
     /// Default preferences (no saved settings yet, or column missing).

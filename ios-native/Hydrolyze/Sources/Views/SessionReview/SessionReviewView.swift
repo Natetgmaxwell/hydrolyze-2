@@ -485,6 +485,12 @@ struct ReviewRowView: View {
     let row: SessionReviewViewModel.ReviewRow
     var isAcceptedByCoach: Bool = false   // Phase 2.6 v1.1: coach explicitly accepted despite low confidence
     var onTap: () -> Void
+    // V0.52.6 (2026-09-27): "stats for nerds" gate. Inherited from
+    // the root .environment(authManager) injection in HydrolyzeApp —
+    // the row reads showAdvancedStats to decide whether to render the
+    // σ detail lines below. AuthManager is @Observable so toggling
+    // from Profile re-renders this row live.
+    @Environment(AuthManager.self) private var authManager
     /// PHASE 2.6 v1.14: callback for the inline ✓ accept button on
     /// .likelyCorrect rows. When non-nil, a checkmark icon appears
     /// on the right side of the subtle hint; tapping it accepts the
@@ -525,7 +531,10 @@ struct ReviewRowView: View {
                     // Amber (#F5B34B) 13pt semibold with warning-triangle
                     // icon — the coach understands WHY the row is flagged
                     // in <1s.
-                    if row.band == .likelyWrong, let h = row.varianceHint {
+                    // V0.52.6 (2026-09-27): gated behind `showAdvancedStats`
+                    // (Profile → Stats for nerds). Default OFF — the
+                    // standard review surface stays clean of σ detail.
+                    if row.band == .likelyWrong, let h = row.varianceHint, authManager.coachPreferences.showAdvancedStats {
                         HStack(spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 12, weight: .semibold))
@@ -558,7 +567,7 @@ struct ReviewRowView: View {
                     // — the row is probably right; this is a "FYI."
                     // The inline ✓ button on the right is a single-tap accept
                     // (added in Slice 3, per the spec's "Accept N + save" path).
-                    if row.band == .likelyCorrect, let h = row.varianceHint {
+                    if row.band == .likelyCorrect, let h = row.varianceHint, authManager.coachPreferences.showAdvancedStats {
                         HStack(spacing: 4) {
                             Image(systemName: "info.circle")
                                 .font(.system(size: 10))

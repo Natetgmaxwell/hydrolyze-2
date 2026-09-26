@@ -34,6 +34,7 @@ struct ProfileView: View {
                 VStack(spacing: 24) {
                     headerSection
                     predictionAlgorithmSection
+                    advancedStatsSection
                 }
                 .padding(.vertical, 16)
             }
@@ -166,6 +167,50 @@ struct ProfileView: View {
             get: { authManager.coachPreferences.predictionAlgorithm },
             set: { newValue in
                 authManager.coachPreferences.predictionAlgorithm = newValue
+            }
+        )
+    }
+
+    // MARK: - V0.52.6 "Stats for nerds" toggle
+    // Gates the per-row σ (z-score) detail lines on SessionReview.
+    // Default OFF so the standard review surface stays clean; the
+    // analytics-curious coach opts in to inspect variance.
+    private var advancedStatsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Statistics detail")
+                    .font(.eyebrow)
+                    .tracking(1.0)
+                    .foregroundColor(Color.textFaint)
+                Text("Show standard deviations and prediction detail on the review screen")
+                    .font(.caption)
+                    .foregroundColor(Color.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+
+            Toggle("Stats for nerds", isOn: advancedStatsBinding)
+                .padding(.horizontal, 24)
+                .onChange(of: authManager.coachPreferences.showAdvancedStats) { _, newValue in
+                    let updated = CoachPreferences(
+                        showConfidencePercent: authManager.coachPreferences.showConfidencePercent,
+                        predictionAlgorithm: authManager.coachPreferences.predictionAlgorithm,
+                        showAdvancedStats: newValue
+                    )
+                    Task { await authManager.saveCoachPreferences(updated) }
+                }
+        }
+    }
+
+    /// In-memory binding to the showAdvancedStats flag. Mirrors
+    /// `algorithmBinding`: the write happens synchronously so the
+    /// Toggle animates immediately, and the .onChange above fires
+    /// the persist Task on top of it.
+    private var advancedStatsBinding: Binding<Bool> {
+        Binding(
+            get: { authManager.coachPreferences.showAdvancedStats },
+            set: { newValue in
+                authManager.coachPreferences.showAdvancedStats = newValue
             }
         )
     }
