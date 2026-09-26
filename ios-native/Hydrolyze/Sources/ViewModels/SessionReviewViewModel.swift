@@ -1092,7 +1092,7 @@ final class SessionReviewViewModel: ObservableObject {
             row(5, "Zoe Martin", 34_780, 2, conf: 38, pred: 31_900),
             row(6, "Jack Reid", 32_140, 2, conf: 81, pred: 32_500),
         ]
-        filter = .all
+        filter = .likelyWrong
         isLoading = false
         errorMessage = nil
     }
