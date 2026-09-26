@@ -65,8 +65,15 @@ final class AuthManager {
     /// gates on `currentSwimmer`; the harness can't sign in, so this
     /// seeds the swimmer identity the view needs. DEBUG-only; the
     /// launch arg is only passed by the capture harness.
+    /// V0.52.6 (2026-09-27): broaden the arg check to also fire on
+    /// `-v46-demo-swimmers` (the plural coaches-side roster surface
+    /// added in the ContentView demo-harness seed). And seed
+    /// `coachId` too so the SwimmersListView's "Couldn't load your
+    /// account" empty state doesn't fire when the demo surface is
+    /// the plural coach-roster view.
     func seedV46DemoStateIfNeeded() {
-        guard ProcessInfo.processInfo.arguments.contains("-v46-demo-swimmer"),
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains("-v46-demo-swimmer") || args.contains("-v46-demo-swimmers"),
               currentSwimmer == nil else { return }
         var demo = Swimmer(
             id: "v46-swimmer-1",
@@ -85,6 +92,7 @@ final class AuthManager {
         demo.groups = []
         currentSwimmer = demo
         swimmerId = demo.id
+        coachId = demo.coachId
         isLoading = false
     }
     #endif
