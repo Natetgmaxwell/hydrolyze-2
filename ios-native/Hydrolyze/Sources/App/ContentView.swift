@@ -139,7 +139,7 @@ struct ContentView: View {
     /// builder with the jodie-09 Purposeful Threshold workout seeded
     /// in (see `seedV0531DesignABuilder`).
     private enum V46DemoSurface: String, CaseIterable {
-        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer, console, workoutPagePrototype, workoutDetailNativeList
+        case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer, console, workoutPagePrototype, workoutDetailNativeList, profile
 
         static func detect() -> V46DemoSurface? {
             let args = ProcessInfo.processInfo.arguments
@@ -265,6 +265,18 @@ struct ContentView: View {
             NavigationStack {
                 WorkoutDetailView_NativeListHarness()
             }
+        case .profile:
+            // V0.52.6 (2026-09-27): ProfileView harness. ProfileView
+            // depends on AuthManager for coachName / currentUser /
+            // coachPreferences / signOut() / deleteAccount(), so the
+            // case mirrors the .swimmer wiring — push the env into
+            // a fresh NavigationStack and seed the v46 demo state
+            // (which signs in as the demo coach) so the header +
+            // prediction-algorithm picker + delete-account entry
+            // all render in their real shapes.
+            NavigationStack { ProfileView() }
+                .environment(authManager)
+                .task { authManager.seedV46DemoStateIfNeeded() }
         }
     }
 
