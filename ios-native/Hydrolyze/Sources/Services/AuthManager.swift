@@ -303,6 +303,21 @@ final class AuthManager {
         self.needsOnboarding = false
     }
 
+    /// V0.52.6 (2026-09-27): App Store 5.1.1(v) account deletion. The
+    /// RPC `delete_coach_account` (defined in migration
+    /// 20260927000000_account_deletion.sql) wipes every coach-owned
+    /// row in one CASCADE chain and removes the auth.users row in the
+    /// same transaction. We then sign out locally so the UI clears
+    /// even if the auth event propagation lags. Errors are swallowed
+    /// for sign-out (matches the existing signOut() pattern) but the
+    /// RPC error is surfaced to the caller so the view can show a
+    /// banner — the user MUST know if their data wasn't actually
+    /// deleted.
+    func deleteAccount() async throws {
+        try await supabase.rpc("delete_coach_account").execute()
+        await signOut()
+    }
+
     func signIn(email: String, password: String) async throws {
         _ = try await supabase.auth.signIn(
             email: email,

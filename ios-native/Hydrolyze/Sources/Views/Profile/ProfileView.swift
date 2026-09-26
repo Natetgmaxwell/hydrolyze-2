@@ -12,6 +12,14 @@ struct ProfileView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
     @State private var showSignOutConfirm = false
+    // V0.52.6 (2026-09-27): App Store 5.1.1(v) account deletion. The
+    // confirm flow uses confirmationDialog (per iOS HIG — destructive
+    // actions on iPhone should use confirmationDialog, not alert, when
+    // the action follows a list/menu button so it gets the proper
+    // slide-up sheet treatment). `deleteError` carries any RPC failure
+    // back to the user via a secondary alert.
+    @State private var showDeleteConfirm = false
+    @State private var deleteError: String? = nil
     // ponytail (warmth-through-motion iter 6): on-appear reveal.
     // Same pattern as login reveal (d46c444), today reveal (0a90257),
     // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
@@ -30,7 +38,10 @@ struct ProfileView: View {
                 .padding(.vertical, 16)
             }
             Spacer()
-            signOutButton
+            VStack(spacing: 12) {
+                signOutButton
+                deleteAccountButton
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgBase)
@@ -48,6 +59,34 @@ struct ProfileView: View {
             }
         } message: {
             Text("You'll need to sign in again to use Hydrolyze.")
+        }
+        .confirmationDialog(
+            "Delete your account?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Account", role: .destructive) {
+                Task {
+                    do {
+                        try await authManager.deleteAccount()
+                    } catch {
+                        // Surface the failure — the coach needs to know
+                        // if their data was NOT actually deleted.
+                        deleteError = error.localizedDescription
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your account, swimmers, workouts, and all recorded times. This cannot be undone.")
+        }
+        .alert("Couldn't delete account", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
         }
     }
 
@@ -146,6 +185,28 @@ struct ProfileView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.statusError, lineWidth: 1)
                 )
+        }
+        .padding(.horizontal, 24)
+    }
+
+    /// V0.52.6 (2026-09-27): App Store 5.1.1(v) account-deletion
+    /// entry point. Visually mirrors the Sign Out button (textMuted
+    /// on bgInset, .body font per the slice-B spec, no red stroke —
+    /// a destructive stroke here would compete with the Sign Out
+    /// button and read as a double-error state). The destructive
+    /// role on the Button + the confirmationDialog's destructive
+    /// confirm carries the actual warning weight.
+    private var deleteAccountButton: some View {
+        Button(role: .destructive) {
+            showDeleteConfirm = true
+        } label: {
+            Text("Delete Account")
+                .font(.body)
+                .foregroundColor(Color.textMuted)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.bgInset)
+                .cornerRadius(12)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 40)
