@@ -140,6 +140,9 @@ struct ContentView: View {
     /// in (see `seedV0531DesignABuilder`).
     private enum V46DemoSurface: String, CaseIterable {
         case today, timing, review, swimmers, workouts, builder, builderJodie09, swimmer, console, workoutPagePrototype, workoutDetailNativeList, profile
+        #if DEBUG
+        case workoutDetailProdPath
+        #endif
 
         static func detect() -> V46DemoSurface? {
             let args = ProcessInfo.processInfo.arguments
@@ -220,6 +223,11 @@ struct ContentView: View {
             if args.contains("-detail-native-list") {
                 return .workoutDetailNativeList
             }
+            #if DEBUG
+            if args.contains("-detail-prod-path") {
+                return .workoutDetailProdPath
+            }
+            #endif
             return nil
         }
     }
@@ -274,6 +282,20 @@ struct ContentView: View {
             NavigationStack {
                 WorkoutDetailView_NativeListHarness()
             }
+        #if DEBUG
+        case .workoutDetailProdPath:
+            // V0.56 S1-fix (2026-09-27): the HONEST gate — mounts the
+            // real production WorkoutDetailView (full body: metadata,
+            // segmented picker, structured List vs as-written) with a
+            // seeded VM via the harnessSeed seam. Catches
+            // container-nesting defects the primitives-only harness
+            // cannot see (the blank-structured-tab bug shipped exactly
+            // because no harness rendered the production body).
+            NavigationStack {
+                WorkoutDetailView_ProdPathHarness()
+            }
+            .environment(authManager)
+        #endif
         case .profile:
             // V0.52.6 (2026-09-27): ProfileView harness. ProfileView
             // depends on AuthManager for coachName / currentUser /

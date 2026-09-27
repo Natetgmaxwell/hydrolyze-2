@@ -10,6 +10,13 @@ final class WorkoutDetailViewModel: ObservableObject {
 
     let workoutService = WorkoutService()
 
+    /// DEBUG-only seam for the production-path screenshot harness
+    /// (`-detail-prod-path`): when non-nil, `.task` in
+    /// WorkoutDetailView skips every DB fetch — the harness seeds
+    /// workout/sets directly and the REAL body renders offline.
+    /// Nil in production; no call site outside #if DEBUG touches it.
+    var harnessSeed: (workout: Workout, sets: [WorkoutSet])? = nil
+
     /// V0.49 Slice 1 (2026-08-22): cached snapshot of the most-recent
     /// session roster for this workout, populated once in `.task` and
     /// refreshed after a session is dismissed. `launchFragmentTiming`
@@ -640,6 +647,19 @@ struct WorkoutDetailView: View {
             )
         }
         .task {
+            // DEBUG harness seam: seeded workout renders the REAL
+            // production body offline (no DB, no auth). This is the
+            // honest gate for ScrollView-nesting class bugs — the
+            // native-list harness mounts primitives only and missed
+            // this exact defect.
+            #if DEBUG
+            if let seed = viewModel.harnessSeed {
+                viewModel.workout = seed.workout
+                viewModel.sets = seed.sets
+                viewModel.isLoading = false
+                return
+            }
+            #endif
             await viewModel.loadWorkout(workoutId: workoutId)
             // V0.47 (2026-08-22): load persisted fragment times so the
             // chips render on revisit, not just during live capture.
@@ -1882,3 +1902,89 @@ private struct NextTimeableCTA_Harness: View {
         .background(.ultraThinMaterial)
     }
 }
+
+// MARK: - Production-path screenshot harness (V0.56 S1-fix, 2026-09-27)
+//
+// `WorkoutDetailView_ProdPathHarness`: mounts the REAL production
+// `WorkoutDetailView` with a seeded `WorkoutDetailViewModel`. Unlike
+// `WorkoutDetailView_NativeListHarness` (which renders the chrome
+// primitives directly), this exercises the production body — ScrollView
+// branching, segmented picker, safeAreaInset CTA — so container-nesting
+// regressions surface in the screenshot gate. Routed via the
+// `-detail-prod-path` launch arg; strictly DEBUG-only.
+#if DEBUG
+@MainActor
+struct WorkoutDetailView_ProdPathHarness: View {
+    @StateObject private var viewModel = WorkoutDetailViewModel()
+
+    private func seed() {
+        let raw = """
+        Warm-up: 4 x 100 Free smooth on 1:30
+        Main: 4 x (12.5 strong / 12.5 easy) Free on :45, descend 1-4, race rhythm
+        8 x 50 Free race pace on 1:00
+        Cool-down: 300 easy
+        """
+        let workout = Workout(
+            id: "harness-workout",
+            coachId: "harness-coach",
+            title: "Tuesday Sprint",
+            description: raw,
+            scheduledAt: nil,
+            amPm: nil,
+            completedAt: nil,
+            status: .scheduled,
+            createdAt: "2026-09-27T00:00:00Z",
+            updatedAt: nil,
+            sessionType: nil,
+            groupId: nil
+        )
+        let sets = [
+            WorkoutSet(
+                id: "hs-0", workoutId: "harness-workout", orderIndex: 0,
+                reps: 4, distance: 100, stroke: "Free",
+                intervalText: "on 1:30", intensityType: "easy",
+                intensityLabel: "smooth", createdAt: "2026-09-27T00:00:00Z"
+            ),
+            WorkoutSet(
+                id: "hs-1", workoutId: "harness-workout", orderIndex: 1,
+                reps: 4, distance: 25, stroke: "Free",
+                intervalText: "on :45", intensityType: "race_pace",
+                intensityLabel: "race rhythm", note: "descend 1-4",
+                descend: "1-4", createdAt: "2026-09-27T00:00:00Z",
+                fragments: [
+                    WorkoutSetFragment(
+                        id: "hf-0", orderIndex: 0, distanceMeters: 13,
+                        reps: 4, intensity: "race_pace", startType: "push",
+                        paceTargetSec: nil, confidence: 1.0,
+                        distanceLabel: "12.5", intensityLabel: "strong"
+                    ),
+                    WorkoutSetFragment(
+                        id: "hf-1", orderIndex: 1, distanceMeters: 13,
+                        reps: 4, intensity: "easy", startType: "push",
+                        paceTargetSec: nil, confidence: 1.0,
+                        distanceLabel: "12.5", intensityLabel: "easy"
+                    )
+                ]
+            ),
+            WorkoutSet(
+                id: "hs-2", workoutId: "harness-workout", orderIndex: 2,
+                reps: 8, distance: 50, stroke: "Free",
+                intervalText: "on 1:00", intensityType: "race_pace",
+                intensityLabel: "race pace", createdAt: "2026-09-27T00:00:00Z"
+            ),
+            WorkoutSet(
+                id: "hs-3", workoutId: "harness-workout", orderIndex: 3,
+                reps: 1, distance: 300, stroke: "Free",
+                intervalText: nil, intensityType: "easy",
+                intensityLabel: "easy", createdAt: "2026-09-27T00:00:00Z"
+            )
+        ]
+        viewModel.harnessSeed = (workout, sets)
+    }
+
+    var body: some View {
+        WorkoutDetailView(workoutId: "harness-workout")
+            .onAppear { seed() }
+    }
+}
+#endif
