@@ -350,139 +350,34 @@ struct WorkoutDetailView: View {
         ZStack {
             Color.bgBase.ignoresSafeArea()
 
-            ScrollView {
-                if let workout = viewModel.workout {
-                    VStack(alignment: .leading, spacing: 20) {
-                        metadataSection(workout: workout)
-                        // V0.55 S0a (2026-09-13): segmented picker —
-                        // `Structured | As written`. Default `.structured`
-                        // so today's WorkoutPreview stays the default
-                        // surface; the new RawWorkoutTextView renders
-                        // only when the user opts in. S2 replaces the
-                        // picker copy + wiring + adds bidirectional
-                        // linkage; S0a only adds the toggle. Segmented
-                        // style is the platform primitive per the
-                        // design-quality gate (no custom chrome).
-                        Picker("Display mode", selection: $displayMode) {
-                            ForEach(WorkoutDisplayMode.allCases) { mode in
-                                Text(mode.label).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal, 16)
-
-                        // V0.55 S1: shared render surface. Both
-                        // the details page and the builder preview
-                        // route through `WorkoutStructureView`, which
-                        // internally calls the single
-                        // `WorkoutPreviewBuilder.fromWorkoutAndSets`
-                        // projection. Adding a field to the
-                        // projection (e.g. a future zone-term round-
-                        // trip) now propagates to both surfaces from
-                        // exactly one call site — no drift risk. S2
-                        // will rework this into the rep-identity card
-                        // layout; S1 only extracts the existing
-                        // `WorkoutPreview` rendering behind the
-                        // shared surface. The `switch displayMode`
-                        // below routes between the structured
-                        // preview and the as-written surface
-                        // (S0a), exactly one of which renders at a
-                        // time.
-                        switch displayMode {
-                        case .structured:
-                            // V0.56 S1 (2026-09-23): the new native-list
-                            // chrome (ported from the V0.55 prototype,
-                            // commit 7269e38). Source of truth for the
-                            // data is unchanged — WorkoutPreviewBuilder
-                            // — but the chrome is now a List of native
-                            // sections (matching the prototype's Variant 1
-                            // anatomy) instead of the legacy WorkoutPreview
-                            // card stack.
-                            //
-                            // The legacy `WorkoutStructureView` wrapper
-                            // stays in the codebase for the builder's
-                            // preview; only this structured-mode path
-                            // uses the new chrome. Recorded-times chips
-                            // for non-composite sets still render below
-                            // the new list via the host's `setChipsRow`
-                            // path (untouched).
-                            WorkoutNativeListView(
-                                phases: nativeListPhases(
-                                    parsed: WorkoutPreviewBuilder.fromWorkoutAndSets(
-                                        workout, sets: viewModel.sets
-                                    ),
-                                    sets: viewModel.sets
-                                ),
-                                onFragmentTap: { sourceSetIndex, fragment in
-                                    // sourceSetIndex IS the index into
-                                    // viewModel.sets (the source-array
-                                    // position the nativeListPhases helper
-                                    // walked). The existing
-                                    // launchFragmentTiming looks up
-                                    // viewModel.sets[safe: repGroupIndex]
-                                    // for parent set metadata; passing
-                                    // sourceSetIndex directly gives the
-                                    // call the right value. The legacy
-                                    // WorkoutStructureView chain had a
-                                    // subtle bug here (passed the
-                                    // within-namedSet repGroupIndex
-                                    // instead, so composite launches
-                                    // missed the parent set). This port
-                                    // fixes that bug incidentally for any
-                                    // fragment row that arrives via the
-                                    // new chrome.
-                                    launchFragmentTiming(repGroupIndex: sourceSetIndex, fragment: fragment)
-                                }
-                            )
-                            .listRowSpacing(6)
-                            .environment(\.defaultMinListRowHeight, 0)
-                            // V0.56 S1 bottom-inset fix from the prototype:
-                            // .contentMargins keeps the LAST list row fully
-                            // visible above the safeAreaInset CTA bar. The
-                            // prototype suffered a bleed-over; this kills it.
-                            .contentMargins(.bottom, 140, for: .scrollContent)
-                        case .asWritten:
-                            // Raw text lives on `workout.description`
-                            // (the `workout_text` column in Postgres).
-                            // Empty / nil → show a single-line note so
-                            // the surface isn't blank.
-                            let raw = (workout.description?.isEmpty == false)
-                                ? workout.description!
-                                : "No raw text recorded for this workout."
-                            RawWorkoutTextView(rawText: raw)
-                                .background(Color.bgRaised)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .padding(.horizontal, 16)
-                        }
-                        if let errorMessage = viewModel.errorMessage {
-                            Text(errorMessage)
-                                .font(.caption)
-                                .foregroundColor(Color.statusError)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .frame(maxWidth: .infinity)
-                                .background(Color.statusError.opacity(0.1))
-                                .cornerRadius(8)
-                                .padding(.horizontal, 16)
-                        }
-                        // V0.56 S1: legacy `setsList` removed (the new
-                        // native-list chrome renders every set, composite
-                        // and non-composite, with the same per-row anatomy).
-                        // The recorded-times chip strip for non-composite
-                        // sets still attaches below the WorkoutNativeListView
-                        // via `setChipsRow`; the legacy setRow Button path
-                        // is gone (V0.57 will re-wire as an inline tap).
-                        actionButtons(workout: workout)
+            // V0.56 S1 fix (2026-09-27): the structured-mode
+            // WorkoutNativeListView is a SwiftUI List. Lists collapse
+            // to zero height when nested inside a ScrollView (they
+            // expect to BE the scroll container), which is exactly
+            // why the structured tab rendered blank. Branch the body
+            // on displayMode: structured gets a top-level VStack with
+            // the List as the scrolling content (no outer ScrollView),
+            // asWritten keeps the original ScrollView-with-VStack
+            // layout. The shared metadata + picker + errorMessage +
+            // actionButtons chrome is extracted into `workoutBody`
+            // so both branches render identically except for the
+            // List-vs-TextView content.
+            if let workout = viewModel.workout {
+                if displayMode == .structured {
+                    workoutStructuredBody(workout: workout)
+                } else {
+                    ScrollView {
+                        workoutBody(workout: workout)
                     }
-                    .padding(.vertical, 16)
-                } else if !viewModel.isLoading {
+                }
+            } else if !viewModel.isLoading {
+                ScrollView {
                     Text(viewModel.errorMessage ?? "Workout not found")
                         .foregroundColor(Color.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 60)
                 }
             }
-            .redacted(reason: viewModel.isLoading && viewModel.workout == nil ? .placeholder : [])
 
             // V0.56 S1 (2026-09-23): bottom CTA via safeAreaInset,
             // ported from the V0.55 prototype (commit 7269e38). The
@@ -491,7 +386,8 @@ struct WorkoutDetailView: View {
             // rep pill in the new chrome); no other coral anywhere
             // on the detail surface. .contentMargins(96) on the
             // inner list keeps the last row fully visible above the
-            // inset.
+            // inset. Applied to the ZStack so the bar floats above
+            // BOTH the structured List AND the asWritten ScrollView.
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let workout = viewModel.workout {
                     NextTimeableCTA(workout: workout, sets: viewModel.sets)
@@ -793,6 +689,138 @@ struct WorkoutDetailView: View {
                 await viewModel.loadLatestRoster(workoutId: workoutId)
             }
         }
+    }
+
+    // V0.56 S1 fix (2026-09-27): extracted shared body for the
+    // asWritten ScrollView path and the structured VStack path.
+    // Both branches wrap this same VStack (metadata + picker +
+    // errorMessage + actionButtons); the only branch-specific
+    // piece is the display-mode content (WorkoutNativeListView vs
+    // RawWorkoutTextView), which is rendered above the errorMessage
+    // row by `body` (the body for-loop ordering is preserved).
+    // This function deliberately omits the List / TextView; the
+    // outer caller inserts the mode-specific content as the third
+    // child of this VStack via a `switch displayMode` injected into
+    // the surrounding scaffold. To avoid that plumbing, we return
+    // a Group that already contains the display-mode branch.
+    @ViewBuilder
+    private func workoutBody(workout: Workout) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            metadataSection(workout: workout)
+            // V0.55 S0a (2026-09-13): segmented picker —
+            // `Structured | As written`. Default `.structured`
+            // so today's WorkoutPreview stays the default
+            // surface; the new RawWorkoutTextView renders
+            // only when the user opts in.
+            Picker("Display mode", selection: $displayMode) {
+                ForEach(WorkoutDisplayMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+
+            // As-written surface lives here (the structured
+            // surface is in workoutStructuredBody below, outside
+            // the ScrollView). Raw text lives on `workout.description`.
+            // Empty / nil → show a single-line note so the surface
+            // isn't blank.
+            let raw = (workout.description?.isEmpty == false)
+                ? workout.description!
+                : "No raw text recorded for this workout."
+            RawWorkoutTextView(rawText: raw)
+                .background(Color.bgRaised)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 16)
+
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundColor(Color.statusError)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.statusError.opacity(0.1))
+                    .cornerRadius(8)
+                    .padding(.horizontal, 16)
+            }
+            actionButtons(workout: workout)
+        }
+        .padding(.vertical, 16)
+    }
+
+    // V0.56 S1 fix (2026-09-27): structured-mode body. The
+    // WorkoutNativeListView is a SwiftUI List and Lists collapse
+    // to zero height when nested inside a ScrollView. So this
+    // branch returns a top-level VStack (no ScrollView wrapper).
+    // The metadata + picker sit statically above the List; the
+    // List itself is the only scrolling container; the errorMessage
+    // + actionButtons sit statically below. The .contentMargins on
+    // the List keeps the last row visible above the safeAreaInset
+    // CTA bar. safeAreaInset is attached at the ZStack level so the
+    // bar floats above BOTH modes identically.
+    @ViewBuilder
+    private func workoutStructuredBody(workout: Workout) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            metadataSection(workout: workout)
+            Picker("Display mode", selection: $displayMode) {
+                ForEach(WorkoutDisplayMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+
+            // V0.56 S1 (2026-09-23): the new native-list
+            // chrome (ported from the V0.55 prototype, commit
+            // 7269e38). Source of truth for the data is
+            // unchanged — WorkoutPreviewBuilder — but the chrome
+            // is now a List of native sections (matching the
+            // prototype's Variant 1 anatomy) instead of the
+            // legacy WorkoutPreview card stack.
+            WorkoutNativeListView(
+                phases: nativeListPhases(
+                    parsed: WorkoutPreviewBuilder.fromWorkoutAndSets(
+                        workout, sets: viewModel.sets
+                    ),
+                    sets: viewModel.sets
+                ),
+                onFragmentTap: { sourceSetIndex, fragment in
+                    // sourceSetIndex IS the index into viewModel.sets
+                    // (the source-array position the nativeListPhases
+                    // helper walked). The existing launchFragmentTiming
+                    // looks up viewModel.sets[safe: repGroupIndex] for
+                    // parent set metadata; passing sourceSetIndex
+                    // directly gives the call the right value. The
+                    // legacy WorkoutStructureView chain had a subtle
+                    // bug here (passed the within-namedSet repGroupIndex
+                    // instead, so composite launches missed the parent
+                    // set). This port fixes that bug incidentally for
+                    // any fragment row that arrives via the new chrome.
+                    launchFragmentTiming(repGroupIndex: sourceSetIndex, fragment: fragment)
+                }
+            )
+            .listRowSpacing(6)
+            .environment(\.defaultMinListRowHeight, 0)
+            // V0.56 S1 bottom-inset fix from the prototype:
+            // .contentMargins keeps the LAST list row fully visible
+            // above the safeAreaInset CTA bar.
+            .contentMargins(.bottom, 140, for: .scrollContent)
+
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundColor(Color.statusError)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.statusError.opacity(0.1))
+                    .cornerRadius(8)
+                    .padding(.horizontal, 16)
+            }
+            actionButtons(workout: workout)
+        }
+        .padding(.vertical, 16)
     }
 
     // Per-set start buttons — inline in the sets list.
