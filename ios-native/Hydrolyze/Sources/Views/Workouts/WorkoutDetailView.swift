@@ -246,7 +246,17 @@ struct WorkoutDetailView: View {
     let workoutId: String
     @Environment(AuthManager.self) private var authManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
-    @StateObject private var viewModel = WorkoutDetailViewModel()
+    // DEBUG-only injection seam: the -detail-prod-path harness passes
+    // a pre-seeded VM (harnessSeed non-nil) so the REAL body renders
+    // offline. Production call sites use the default init; _viewModel
+    // wrapping keeps SwiftUI's StateObject ownership semantics intact.
+    @StateObject private var viewModel: WorkoutDetailViewModel
+    #if DEBUG
+    init(workoutId: String, harnessViewModel: WorkoutDetailViewModel? = nil) {
+        self.workoutId = workoutId
+        _viewModel = StateObject(wrappedValue: harnessViewModel ?? WorkoutDetailViewModel())
+    }
+    #endif
     @Environment(\.dismiss) private var dismiss
     @State private var activeSession: ActiveSession? = nil
     @State private var navigateToBuilder = false
@@ -1985,7 +1995,7 @@ struct WorkoutDetailView_ProdPathHarness: View {
     }
 
     var body: some View {
-        WorkoutDetailView(workoutId: "harness-workout")
+        WorkoutDetailView(workoutId: "harness-workout", harnessViewModel: viewModel)
             .onAppear { seed() }
     }
 }
