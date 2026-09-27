@@ -379,24 +379,26 @@ struct WorkoutDetailView: View {
                 }
             }
 
-            // V0.56 S1 (2026-09-23): bottom CTA via safeAreaInset,
-            // ported from the V0.55 prototype (commit 7269e38). The
-            // CTA names the next timeable fragment + a REST counter
-            // pill. Coral is reserved for THIS bar (and the active
-            // rep pill in the new chrome); no other coral anywhere
-            // on the detail surface. .contentMargins(96) on the
-            // inner list keeps the last row fully visible above the
-            // inset. Applied to the ZStack so the bar floats above
-            // BOTH the structured List AND the asWritten ScrollView.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let workout = viewModel.workout {
-                    NextTimeableCTA(workout: workout, sets: viewModel.sets)
-                }
-            }
-
             if viewModel.isLoading && viewModel.workout == nil {
                 ProgressView()
                     .tint(Color.textMuted)
+            }
+        }
+        // V0.56 S1 (2026-09-23): bottom CTA via safeAreaInset,
+        // ported from the V0.55 prototype (commit 7269e38). The
+        // CTA names the next timeable fragment + a REST counter
+        // pill. Coral is reserved for THIS bar (and the active
+        // rep pill in the new chrome); no other coral anywhere
+        // on the detail surface. .contentMargins(96) on the
+        // inner list keeps the last row fully visible above the
+        // inset. Applied to the ZStack so the bar floats above
+        // BOTH the structured List AND the asWritten ScrollView
+        // (chained here — not inside the ZStack builder — because
+        // a modifier after an if/else statement has no contextual
+        // type and fails to compile).
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let workout = viewModel.workout {
+                NextTimeableCTA(workout: workout, sets: viewModel.sets)
             }
         }
         .navigationTitle("")  // V0.54 details-tidy: blank nav title.
