@@ -357,12 +357,20 @@ struct TimingView: View {
                         .font(.eyebrow)
                         .foregroundColor(Color.textFaint)
 
-                    FlowLayout(spacing: 8) {
+                    // V0.52.6 (2026-09-27): de-chrome — swap the
+                    // FlowLayout-of-chips for a native segmented Picker.
+                    // Segmented control is iOS-canonical, has its own
+                    // selection state + animation, respects Dynamic Type,
+                    // and eliminates the bespoke chip chrome. Haptics
+                    // fires via .onChange once the binding settles.
+                    Picker("Stroke", selection: $viewModel.stroke) {
                         ForEach(["Free", "Back", "Breast", "Fly", "IM"], id: \.self) { stroke in
-                            strokeChip(stroke, selected: viewModel.stroke == stroke) {
-                                viewModel.stroke = stroke
-                            }
+                            Text(stroke).tag(stroke)
                         }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: viewModel.stroke) { _, _ in
+                        Haptics.selection()
                     }
                 }
                 .padding(.horizontal, 24)
@@ -372,12 +380,14 @@ struct TimingView: View {
                         .font(.eyebrow)
                         .foregroundColor(Color.textFaint)
 
-                    FlowLayout(spacing: 8) {
+                    Picker("Distance", selection: $viewModel.distance) {
                         ForEach([25, 50, 100, 200], id: \.self) { dist in
-                            strokeChip("\(dist)m", selected: viewModel.distance == dist) {
-                                viewModel.distance = dist
-                            }
+                            Text("\(dist)m").tag(dist)
                         }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: viewModel.distance) { _, _ in
+                        Haptics.selection()
                     }
                 }
                 .padding(.horizontal, 24)
@@ -534,25 +544,6 @@ struct TimingView: View {
             }
             #endif
         }
-    }
-
-    private func strokeChip(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.selection()
-            action()
-        } label: {
-            Text(label)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(selected ? Color.textPrimary : Color.textMuted)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(selected ? Color.bgSelected : Color.bgRaised)
-                .cornerRadius(20)
-        }
-        // Subtle scale on press for the chip — these are tappable
-        // pills and the scale sells the press without making the
-        // chip "bounce."
-        .buttonStyle(PressFeedbackStyle(scale: 0.94, dim: 0.85))
     }
 
     // MARK: - Ready (V0.46: deep-teal instrument panel)
