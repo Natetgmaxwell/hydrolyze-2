@@ -30,7 +30,6 @@ targets:
         # User sets their team ID in Xcode (Settings → Accounts), automatic signing handles the rest
         CODE_SIGN_STYLE: "Automatic"
         DEVELOPMENT_TEAM: "37S7KT7W83"
-        CODE_SIGN_IDENTITY: "iPhone Developer"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     dependencies:
       - package: Supabase
