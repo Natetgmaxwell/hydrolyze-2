@@ -15,7 +15,19 @@ final class WorkoutDetailViewModel: ObservableObject {
     /// WorkoutDetailView skips every DB fetch — the harness seeds
     /// workout/sets directly and the REAL body renders offline.
     /// Nil in production; no call site outside #if DEBUG touches it.
-    var harnessSeed: (workout: Workout, sets: [WorkoutSet])? = nil
+    var harnessSeed: (workout: Workout, sets: [WorkoutSet])? = nil {
+        didSet {
+            // Harness path: when the seed lands, publish it immediately.
+            // This closes the .task race (child .task can fire before the
+            // wrapper's onAppear seed()): by the time .task checks, the
+            // workout/sets are already published.
+            if let s = harnessSeed {
+                workout = s.workout
+                sets = s.sets
+                isLoading = false
+            }
+        }
+    }
 
     /// V0.49 Slice 1 (2026-08-22): cached snapshot of the most-recent
     /// session roster for this workout, populated once in `.task` and
