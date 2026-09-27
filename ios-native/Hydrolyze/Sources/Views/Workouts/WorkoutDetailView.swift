@@ -1949,8 +1949,7 @@ struct WorkoutDetailView_ProdPathHarness: View {
                 id: "hs-1", workoutId: "harness-workout", orderIndex: 1,
                 reps: 4, distance: 25, stroke: "Free",
                 intervalText: "on :45", intensityType: "race_pace",
-                intensityLabel: "race rhythm", note: "descend 1-4",
-                descend: "1-4", createdAt: "2026-09-27T00:00:00Z",
+                intensityLabel: "race rhythm",
                 fragments: [
                     WorkoutSetFragment(
                         id: "hf-0", orderIndex: 0, distanceMeters: 13,
@@ -1964,7 +1963,10 @@ struct WorkoutDetailView_ProdPathHarness: View {
                         paceTargetSec: nil, confidence: 1.0,
                         distanceLabel: "12.5", intensityLabel: "easy"
                     )
-                ]
+                ],
+                note: "descend 1-4",
+                descend: "1-4",
+                createdAt: "2026-09-27T00:00:00Z"
             ),
             WorkoutSet(
                 id: "hs-2", workoutId: "harness-workout", orderIndex: 2,
