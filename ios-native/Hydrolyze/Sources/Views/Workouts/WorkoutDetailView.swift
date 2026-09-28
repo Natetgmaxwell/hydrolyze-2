@@ -18,9 +18,6 @@ final class WorkoutDetailViewModel: ObservableObject {
     var harnessSeed: (workout: Workout, sets: [WorkoutSet])? = nil {
         didSet {
             // Harness path: when the seed lands, publish it immediately.
-            // This closes the .task race (child .task can fire before the
-            // wrapper's onAppear seed()): by the time .task checks, the
-            // workout/sets are already published.
             if let s = harnessSeed {
                 workout = s.workout
                 sets = s.sets
@@ -28,6 +25,18 @@ final class WorkoutDetailViewModel: ObservableObject {
             }
         }
     }
+
+    #if DEBUG
+    /// Production-path screenshot harness: construct the VM with the
+    /// seed already published, so the child's .task always observes a
+    /// non-nil harnessSeed BEFORE its first read. This removes the
+    /// onAppear-vs-.task ordering race entirely — no DB call can ever
+    /// fire under the harness.
+    convenience init(harnessSeed seed: (workout: Workout, sets: [WorkoutSet])) {
+        self.init()
+        self.harnessSeed = seed
+    }
+    #endif
 
     /// V0.49 Slice 1 (2026-08-22): cached snapshot of the most-recent
     /// session roster for this workout, populated once in `.task` and
@@ -1937,9 +1946,9 @@ private struct NextTimeableCTA_Harness: View {
 #if DEBUG
 @MainActor
 struct WorkoutDetailView_ProdPathHarness: View {
-    @StateObject private var viewModel = WorkoutDetailViewModel()
+    @StateObject private var viewModel = WorkoutDetailViewModel(harnessSeed: Self.makeSeed())
 
-    private func seed() {
+    private static func makeSeed() -> (workout: Workout, sets: [WorkoutSet]) {
         let raw = """
         Warm-up: 4 x 100 Free smooth on 1:30
         Main: 4 x (12.5 strong / 12.5 easy) Free on :45, descend 1-4, race rhythm
@@ -2003,12 +2012,11 @@ struct WorkoutDetailView_ProdPathHarness: View {
                 intensityLabel: "easy", createdAt: "2026-09-27T00:00:00Z"
             )
         ]
-        viewModel.harnessSeed = (workout, sets)
+        return (workout, sets)
     }
 
     var body: some View {
         WorkoutDetailView(workoutId: "harness-workout", harnessViewModel: viewModel)
-            .onAppear { seed() }
     }
 }
 #endif
