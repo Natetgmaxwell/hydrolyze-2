@@ -1532,11 +1532,24 @@ private struct NextTimeableCTA: View {
     /// coherent story. Falls back to the first timeable set if
     /// the active rule returns nothing.
     private var nextTimeable: WorkoutSet? {
-        sets.first { s in
+        // V0.56 S2 cohesion (2026-09-28): the CTA must name the SAME
+        // set the list highlights. The list's rule (WorkoutNativeListView
+        // .isActiveRow) lights the first set with descend or fragments;
+        // the coral rep pill marks the active rep inside it. So the CTA
+        // prefers that row first, falling back to the first timeable set
+        // when no descend/fragment row exists. One rule, three signals:
+        // card highlight + coral pill + CTA label all agree.
+        let isActive: (WorkoutSet) -> Bool = { s in
+            let hasFragments = (s.fragments ?? []).count > 0
+            let hasDescend = !(s.descend ?? "").isEmpty
+            return hasFragments || hasDescend
+        }
+        let isTimeable: (WorkoutSet) -> Bool = { s in
             let dist = s.distance ?? 0
             let hasFragments = (s.fragments ?? []).count > 0
             return dist > 0 || hasFragments
         }
+        return sets.first(where: isActive) ?? sets.first(where: isTimeable)
     }
 
     /// V0.56 S2 (2026-09-23): REST pill interval normalised via
