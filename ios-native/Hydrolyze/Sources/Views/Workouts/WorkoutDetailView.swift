@@ -18,15 +18,34 @@ final class WorkoutDetailViewModel: ObservableObject {
     var harnessSeed: (workout: Workout, sets: [WorkoutSet])? = nil {
         didSet {
             // Harness path: when the seed lands, publish it immediately.
-            if let s = harnessSeed {
-                workout = s.workout
-                sets = s.sets
-                isLoading = false
-            }
+            applyHarnessSeed()
         }
     }
 
     #if DEBUG
+    /// V0.56 S2 live-rep: publish the harness seed. Called from BOTH
+    /// the didSet and the .task harness branch — Swift does not fire
+    /// didSet during init, so the convenience init alone never ran
+    /// this (the .task path is what actually seeded workout/sets;
+    /// the times map stayed empty and the live-rep pills read rep 1).
+    fileprivate func applyHarnessSeedIfNeeded() { applyHarnessSeed() }
+
+    private func applyHarnessSeed() {
+        guard let s = harnessSeed else { return }
+        workout = s.workout
+        sets = s.sets
+        isLoading = false
+        // V0.56 S2 live-rep harness: simulate two captured times on
+        // the descend set's first fragment (reps 1+2 swum) so the
+        // pill + CTA render rep 3 of 4.
+        recordedTimesByFragmentId = [
+            "hf-0": [
+                FragmentTimeRecord(swimmerName: nil, timeMs: 41300, capturedAt: Date(timeIntervalSinceNow: -120)),
+                FragmentTimeRecord(swimmerName: nil, timeMs: 40800, capturedAt: Date(timeIntervalSinceNow: -60))
+            ]
+        ]
+    }
+
     /// Production-path screenshot harness: construct the VM with the
     /// seed already published, so the child's .task always observes a
     /// non-nil harnessSeed BEFORE its first read. This removes the
@@ -99,6 +118,26 @@ final class WorkoutDetailViewModel: ObservableObject {
     /// Load path joins swimmer names via `paired_swimmer_id` in a single
     /// bulk fetch (≤2 round trips total: one for times, one for swimmers).
     @Published var recordedTimesByFragmentId: [String: [FragmentTimeRecord]] = [:]
+
+    /// V0.56 S2 live-rep (2026-09-28): completed-rep count per set,
+    /// derived from recorded fragment times. One captured time on any
+    /// fragment of the set's reps == one rep swum. Keyed by WorkoutSet.id
+    /// so both the row pill and the CTA derive from the same map.
+    /// Republished whenever recordedTimesByFragmentId changes (computed
+    /// on read — cheap: at most a few dozen fragments per workout).
+    var completedRepsBySetId: [String: Int] {
+        var out: [String: Int] = [:]
+        for set in sets {
+            let fids = Set((set.fragments ?? []).map { $0.id })
+            guard !fids.isEmpty else { continue }
+            var count = 0
+            for (fid, recs) in recordedTimesByFragmentId {
+                if fids.contains(fid) { count += recs.count }
+            }
+            out[set.id] = count
+        }
+        return out
+    }
 
     func loadFragmentTimes() async {
         guard !sets.isEmpty else { return }
@@ -316,6 +355,40 @@ struct WorkoutDetailView: View {
     // renders the owned chip form. Merge with the VM's DB map in
     // `.task` and append to by onRecord on each capture.
     @State private var recordedTimesByFragmentId: [String: [FragmentTimeRecord]] = [:]
+
+    /// V0.56 S2 live-rep (2026-09-28): completed-rep counts from the
+    /// LIVE (unsaved-in-VM) capture map — same derivation as
+    /// WorkoutDetailViewModel.completedRepsBySetId but reading the
+    /// host's own @State (which merges live captures immediately).
+    /// V0.56 S2 live-rep: max-merge for completed-rep Int maps.
+    /// Persisted counts come from the VM (DB-loaded), live counts
+    /// from this visit's captures; a set's true completed count is
+    /// the larger of the two (the live map lags the DB save).
+    private func mergeRepCounts(persisted: [String: Int], live: [String: Int]) -> [String: Int] {
+        var out = persisted
+        for (k, v) in live { out[k] = max(out[k] ?? 0, v) }
+        return out
+    }
+
+    private func liveCompletedReps() -> [String: Int] {
+        var out: [String: Int] = [:]
+        // V0.56 S2 live-rep: union of host @State captures AND the
+        // VM map (harness seeds the VM map; live captures land in
+        // host @State first, then persist + reload into the VM map).
+        let allRecords = [recordedTimesByFragmentId, viewModel.recordedTimesByFragmentId]
+        for set in viewModel.sets {
+            let fids = Set((set.fragments ?? []).map { $0.id })
+            guard !fids.isEmpty else { continue }
+            var count = 0
+            for source in allRecords {
+                for (fid, recs) in source where fids.contains(fid) {
+                    count += recs.count
+                }
+            }
+            out[set.id] = count
+        }
+        return out
+    }
     // ponytail (warmth-through-motion iter 6): on-appear reveal.
     // Same pattern as login reveal (d46c444), today reveal (0a90257),
     // workouts reveal (06c6823), swimmers reveal (61404f1, 1ffa02c),
@@ -436,7 +509,14 @@ struct WorkoutDetailView: View {
         // type and fails to compile).
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let workout = viewModel.workout {
-                NextTimeableCTA(workout: workout, sets: viewModel.sets)
+                NextTimeableCTA(
+                    workout: workout,
+                    sets: viewModel.sets,
+                    viewModelCompletedReps: mergeRepCounts(
+                        persisted: viewModel.completedRepsBySetId,
+                        live: liveCompletedReps()
+                    )
+                )
             }
         }
         .navigationTitle("")  // V0.54 details-tidy: blank nav title.
@@ -684,10 +764,11 @@ struct WorkoutDetailView: View {
             // native-list harness mounts primitives only and missed
             // this exact defect.
             #if DEBUG
-            if let seed = viewModel.harnessSeed {
-                viewModel.workout = seed.workout
-                viewModel.sets = seed.sets
-                viewModel.isLoading = false
+            if viewModel.harnessSeed != nil {
+                // V0.56 S2 live-rep fix: didSet never fires during
+                // init, so this branch re-publishes the full seed
+                // (workout + sets + simulated capture times).
+                viewModel.applyHarnessSeedIfNeeded()
                 return
             }
             #endif
@@ -836,7 +917,11 @@ struct WorkoutDetailView: View {
                     parsed: WorkoutPreviewBuilder.fromWorkoutAndSets(
                         workout, sets: viewModel.sets
                     ),
-                    sets: viewModel.sets
+                    sets: viewModel.sets,
+                    completedRepsBySetId: mergeRepCounts(
+                        persisted: viewModel.completedRepsBySetId,
+                        live: liveCompletedReps()
+                    )
                 ),
                 onFragmentTap: { sourceSetIndex, fragment in
                     // sourceSetIndex IS the index into viewModel.sets
@@ -1520,6 +1605,9 @@ private struct NextTimeableCTA: View {
     let workout: Workout
     let sets: [WorkoutSet]
 
+    /// V0.56 S2 live-rep: completed reps by set id (host-injected).
+    var viewModelCompletedReps: [String: Int] = [:]
+
     /// The next timeable set: first set with distance > 0 OR
     /// fragments non-empty. We don't track "current rep" outside
     /// the live stopwatch session, so the CTA points at the next
@@ -1596,7 +1684,11 @@ private struct NextTimeableCTA: View {
                             // + CTA tell one coherent story. Mirrors
                             // the harness CTA format.
                             if s.descend != nil, reps > 1 {
-                                let activeRep = (reps - 1) / 2 + 1
+                                // V0.56 S2 live-rep (2026-09-28): active rep
+                                // derives from captured times (completed+1),
+                                // not the prototype's static (reps-1)/2 rule.
+                                let done = viewModelCompletedReps[s.id] ?? 0
+                                let activeRep = min(done + 1, reps)
                                 let descendRange = s.descend ?? ""
                                 return "· Rep \(activeRep) of \(reps) · \(dist) m \(stroke)"
                                     + (descendRange.isEmpty ? "" : " · descend \(descendRange)")

@@ -303,7 +303,8 @@ struct WorkoutNativeListView: View {
 /// parent via that index.
 func nativeListPhases(
     parsed: ParsedWorkout,
-    sets: [WorkoutSet]
+    sets: [WorkoutSet],
+    completedRepsBySetId: [String: Int] = [:]
 ) -> [NativeListPhase] {
     var phases: [NativeListPhase] = []
     var setIndex = 0
@@ -313,7 +314,22 @@ func nativeListPhases(
         var totalReps = 0
         for namedSet in section.namedSets {
             for rg in namedSet.repGroups {
-                rows.append(NativeListRow(sourceSetIndex: setIndex, repGroup: rg))
+                // V0.56 S2 live-rep (2026-09-28): when the host supplies
+                // completed reps for this row's source set, the active
+                // rep pill = completed + 1 (clamped). Falls back to the
+                // static prototype rule when no times are captured —
+                // first-run behaviour identical to before.
+                var override: Int?
+                if setIndex < sets.count,
+                   let done = completedRepsBySetId[sets[setIndex].id],
+                   let reps = rg.reps, reps > 1 {
+                    override = min(done, reps - 1)
+                }
+                rows.append(NativeListRow(
+                    sourceSetIndex: setIndex,
+                    repGroup: rg,
+                    activeRepIdxOverride: override
+                ))
                 totalMeters += (rg.distance ?? 0) * (rg.reps ?? 1)
                 totalReps += (rg.reps ?? 1)
                 setIndex += 1
