@@ -4,7 +4,7 @@
 
 A mobile-first coaching companion for swim practice. Captures lap times with a single tap, automatically assigns them to the right swimmer, and turns a chaotic set into clean data — without the coach ever taking their eyes off the pool.
 
-**Private repository.** All rights reserved. See [LICENSE](./LICENSE).
+**Source available for reading.** All rights reserved; not licensed for reuse. See [LICENSE](./LICENSE).
 
 ---
 
